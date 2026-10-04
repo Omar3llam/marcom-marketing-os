@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
+import * as accuracyEngine from './decisionAccuracyEngine.js';
 import {
   accuracySurface, COVERAGE_VERDICT, LIFT_STATUS, CALIBRATION_DIRECTION, DEFAULT_CONFIG,
   SCORABLE_VERDICT, SUCCESS_PREDICATES,
@@ -351,5 +352,159 @@ describe('decisionAccuracyEngine — boundary (§2.4): no report-confidence leak
       const src = readFileSync(join(here, f), 'utf8');
       expect(importFrom.test(src)).toBe(false);
     }
+  });
+});
+
+// P7-06A: evidence periods and the server's fit population are distinct facts.
+// Successful predictions at confidence (1 - error) give a measured ECE of error.
+function cohort(label, error, count) {
+  return Array.from({ length: count }, (_, i) => scored(`${label}-${i}`, {
+    confidence: 1 - error, success: true,
+    at: Date.parse(`${label}-10T00:00:00Z`) + i * 1000,
+  }));
+}
+
+describe('P7-06A — server-published velocity fit membership', () => {
+  it('keeps an under-sampled outlier as evidence but fits only the published included subset', () => {
+    const { velocity } = calculateDecisionAccuracy({ now: NOW, decisions: [
+      ...cohort('2025-11', 0.9, 2),
+      ...cohort('2025-12', 0.1, 30),
+      ...cohort('2026-01', 0.1, 30),
+    ] });
+    expect(velocity).toEqual({
+      periods: [
+        { label: '2025-11', calibrationError: 0.9, sampleSize: 2, includedInTrend: false },
+        { label: '2025-12', calibrationError: 0.1, sampleSize: 30, includedInTrend: true },
+        { label: '2026-01', calibrationError: 0.1, sampleSize: 30, includedInTrend: true },
+      ],
+      trend: LIFT_STATUS.FLAT, slope: 0,
+    });
+    expect(velocity.periods.filter((p) => p.includedInTrend).map((p) => p.label))
+      .toEqual(['2025-12', '2026-01']);
+  });
+
+  it('publishes membership even when only one period qualifies and no regression can be fitted', () => {
+    const { velocity } = calculateDecisionAccuracy({ now: NOW, decisions: [
+      ...cohort('2025-11', 0.3, 30),
+      ...cohort('2025-12', 0.9, 2),
+      ...cohort('2026-01', 0.1, 2),
+    ] });
+    expect(velocity.periods.map((p) => p.includedInTrend)).toEqual([true, false, false]);
+    expect(velocity.trend).toBe(LIFT_STATUS.INSUFFICIENT_DATA);
+    expect(velocity.slope).toBeNull();
+  });
+
+  it('includes all qualifying periods without changing calendar gaps or the index-based slope', () => {
+    const { velocity } = calculateDecisionAccuracy({ now: NOW, decisions: [
+      ...cohort('2026-02', 0.1, 30),
+      ...cohort('2025-11', 0.3, 30),
+      ...cohort('2026-01', 0.2, 30),
+    ] });
+    expect(velocity).toEqual({
+      periods: [
+        { label: '2025-11', calibrationError: 0.3, sampleSize: 30, includedInTrend: true },
+        { label: '2026-01', calibrationError: 0.2, sampleSize: 30, includedInTrend: true },
+        { label: '2026-02', calibrationError: 0.1, sampleSize: 30, includedInTrend: true },
+      ],
+      trend: LIFT_STATUS.IMPROVING, slope: -0.1,
+    });
+  });
+
+  it('uses the canonical configured floor rather than hardcoding thirty', () => {
+    const decisions = [
+      ...cohort('2025-11', 0.3, 10),
+      ...cohort('2025-12', 0.2, 10),
+      ...cohort('2026-01', 0.1, 10),
+    ];
+    const ordinary = calculateDecisionAccuracy({ now: NOW, decisions });
+    expect(ordinary.velocity.periods.map((p) => p.includedInTrend)).toEqual([false, false, false]);
+    expect(ordinary.velocity).toMatchObject({ trend: LIFT_STATUS.INSUFFICIENT_DATA, slope: null });
+    const configured = calculateDecisionAccuracy({ now: NOW, decisions, config: { minSample: 10 } });
+    expect(configured.velocity.periods.map((p) => p.includedInTrend)).toEqual([true, true, true]);
+    expect(configured.velocity).toMatchObject({ trend: LIFT_STATUS.IMPROVING, slope: -0.1 });
+  });
+
+  it('uses equal period weights and compresses excluded periods out of the fit index', () => {
+    const { velocity } = calculateDecisionAccuracy({ now: NOW, decisions: [
+      ...cohort('2025-10', 0.3, 30),
+      ...cohort('2025-11', 0.9, 2),
+      ...cohort('2025-12', 0.2, 100),
+      ...cohort('2026-02', 0.1, 30),
+    ] });
+    expect(velocity.periods.map((p) => p.includedInTrend)).toEqual([true, false, true, true]);
+    expect(velocity).toMatchObject({ trend: LIFT_STATUS.IMPROVING, slope: -0.1 });
+  });
+
+  it('does not mutate published input measurements at the pure trend seam', () => {
+    const periods = Object.freeze([
+      Object.freeze({ label: '2025-11', calibrationError: 0.3, sampleSize: 30 }),
+      Object.freeze({ label: '2025-12', calibrationError: 0.1, sampleSize: 30 }),
+    ]);
+    const velocity = accuracyEngine.calculateVelocityTrend(periods);
+    expect(velocity.periods.every((p) => p.includedInTrend)).toBe(true);
+    expect(periods[0]).not.toHaveProperty('includedInTrend');
+    expect(velocity).toMatchObject({ trend: LIFT_STATUS.IMPROVING, slope: -0.2 });
+  });
+});
+
+describe('P7-06A — AccountLift zero-baseline direction', () => {
+  it.each([
+    [0, LIFT_STATUS.FLAT],
+    [0.0001, LIFT_STATUS.DEGRADING],
+    [0.4, LIFT_STATUS.DEGRADING],
+  ])('early zero → recent %s uses measured direction and leaves relative improvement undefined', (recent, status) => {
+    const result = calculateDecisionAccuracy({ now: NOW, decisions: [
+      ...cohort('2025-11', 0, 50), ...cohort('2026-01', recent, 50),
+    ], config: { liftEpsilon: 0.9, velocitySlopeEps: 0.9 } });
+    expect(result.accountLift.earlyWindow.calibrationError).toBe(0);
+    expect(result.accountLift.recentWindow.calibrationError).toBe(recent);
+    expect(result.accountLift.status).toBe(status);
+    expect(result.accountLift.calibrationImprovementPct).toBeNull();
+  });
+
+  it.each([
+    [0.4, 0.2, 0.5, LIFT_STATUS.IMPROVING],
+    [0.2, 0.4, -1, LIFT_STATUS.DEGRADING],
+    [0.2, 0.2, 0, LIFT_STATUS.FLAT],
+    [0.2, 0.19, 0.05, LIFT_STATUS.FLAT],
+    [0.2, 0.21, -0.05, LIFT_STATUS.FLAT],
+  ])('positive baseline %s → %s preserves relative improvement %s and status %s', (early, recent, improvement, status) => {
+    const { accountLift } = calculateDecisionAccuracy({ now: NOW, decisions: [
+      ...cohort('2025-11', early, 50), ...cohort('2026-01', recent, 50),
+    ] });
+    expect(accountLift.calibrationImprovementPct).toBe(improvement);
+    expect(accountLift.status).toBe(status);
+  });
+
+  it('preserves current calibration and coverage on the existing scored population', () => {
+    const result = calculateDecisionAccuracy({ now: NOW, decisions: bigSet() });
+    expect(result.coverage).toEqual({
+      totalDecisions: 120, scored: 120, unscorable: 0, pendingMaturation: 0,
+      dismissed: 0, notAPrediction: 0, scoredFraction: 1, verdict: COVERAGE_VERDICT.RELIABLE,
+      note: 'calibration measured on executed decisions only',
+    });
+    expect(result.calibration).toMatchObject({
+      expectedCalibrationError: 0.4, brierScore: 0.41, accuracy: 0.5,
+      direction: CALIBRATION_DIRECTION.OVERCONFIDENT, sampleSize: 120,
+    });
+    expect(result.calibration.bins).toHaveLength(10);
+    expect(result.calibration.bins[9]).toEqual({ band: '90-100%', predicted: 0.9, observed: 0.5, count: 120, gap: 0.4 });
+  });
+
+  it('keeps coverage and numeric suppression independent of a degrading zero-baseline lift', () => {
+    const decisions = [
+      ...cohort('2025-11', 0, 50), ...cohort('2026-01', 0.4, 50),
+      ...Array.from({ length: 101 }, (_, i) => ({
+        id: `unscorable-${i}`, accuracyStatus: 'EXECUTED', verdict: 'KILL', confidence: 0.8,
+        createdAt: '2025-10-01T00:00:00Z', outcome: null,
+      })),
+    ];
+    const result = calculateDecisionAccuracy({ now: NOW, decisions });
+    expect(result.coverage).toMatchObject({ scored: 100, unscorable: 101, scoredFraction: 0.4975, verdict: COVERAGE_VERDICT.THIN });
+    expect(result.accountLift.status).toBe(LIFT_STATUS.DEGRADING);
+    expect(accuracySurface(result)).toMatchObject({ gated: true, status: null, calibrationErrorPct: null, improvementPct: null });
+    const insufficient = calculateDecisionAccuracy({ now: NOW, decisions: cohort('2025-11', 0, 29) });
+    expect(insufficient.coverage.verdict).toBe(COVERAGE_VERDICT.INSUFFICIENT_DATA);
+    expect(accuracySurface(insufficient).gated).toBe(true);
   });
 });

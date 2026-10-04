@@ -298,7 +298,11 @@ function computeAccountLift(scored, cfg) {
   const improvementPct = earlyWindow.calibrationError > 0
     ? r4((earlyWindow.calibrationError - recentWindow.calibrationError) / earlyWindow.calibrationError)
     : null;
-  const status = improvementPct == null ? LIFT_STATUS.FLAT
+  // P7-06A — a zero baseline has no relative percentage, but its measured
+  // direction is known: zero stays flat; any positive recent error is worse.
+  const status = earlyWindow.calibrationError === 0 && recentWindow.calibrationError > 0
+    ? LIFT_STATUS.DEGRADING
+    : improvementPct == null ? LIFT_STATUS.FLAT
     : improvementPct > cfg.liftEpsilon ? LIFT_STATUS.IMPROVING
       : improvementPct < -cfg.liftEpsilon ? LIFT_STATUS.DEGRADING
         : LIFT_STATUS.FLAT;
@@ -344,7 +348,7 @@ function computeVelocity(scored, cfg) {
     byPeriod.get(label).push(d);
   }
 
-  const periods = [...byPeriod.entries()]
+  const rawPeriods = [...byPeriod.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([label, items]) => ({
       label,
@@ -358,10 +362,20 @@ function computeVelocity(scored, cfg) {
       sampleSize: items.length,
     }));
 
-  // A thin month must not swing the trend — only fit on qualifying periods, and
-  // only on periods that actually produced a number. `calibrationError` is now
-  // nullable, and linregSlope over a null would poison the whole slope.
-  const fit = periods.filter((p) => p.sampleSize >= cfg.minSample && p.calibrationError != null);
+  return calculateVelocityTrend(rawPeriods, cfg);
+}
+
+// Pure seam for the nullable-period contract: ordinary non-empty cohorts still
+// produce numeric ECE. Membership is published once, and the fit consumes that
+// exact authority. With fewer than two qualifying periods no fit is possible,
+// but their membership remains visible beside INSUFFICIENT_DATA / null slope.
+export function calculateVelocityTrend(rawPeriods, config = {}) {
+  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const periods = rawPeriods.map((period) => ({
+    ...period,
+    includedInTrend: period.sampleSize >= cfg.minSample && period.calibrationError != null,
+  }));
+  const fit = periods.filter((period) => period.includedInTrend);
   if (fit.length < 2) return { periods, trend: LIFT_STATUS.INSUFFICIENT_DATA, slope: null };
 
   const slope = r4(linregSlope(fit.map((p, i) => [i, p.calibrationError])));
