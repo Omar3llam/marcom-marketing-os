@@ -169,6 +169,15 @@ describe('buildHeroNarrative — the calmer states', () => {
 });
 
 describe('buildHeroNarrative — LEARNING covers two different situations', () => {
+  it.each([
+    ['connected/no campaigns', { hasConnectedChannel: true, canSuggestConnect: false }, "A channel is connected, but Lumi doesn't have campaign data to score yet."],
+    ['unknown cause', { hasConnectedChannel: false, canSuggestConnect: false }, "Lumi doesn't have campaign data to score yet."],
+    ['missing cause', {}, "Lumi doesn't have campaign data to score yet."],
+    ['confirmed absence', { canSuggestConnect: true }, 'Connect a channel to get your first verdict.'],
+    ['scorable campaigns', { hasScorableData: true }, 'Your campaigns are syncing. Verdicts appear once enough signal has accumulated.'],
+  ])('P7-05C %s uses only evidenced cause context', (_, facts, copy) => {
+    expect(buildHeroNarrative({ state: ACCOUNT_STATE.LEARNING, ...facts })[1]).toBe(copy);
+  });
   it('names the workspace when it has one', () => {
     expect(buildHeroNarrative({ state: ACCOUNT_STATE.LEARNING, workspaceName: 'Acme' })[0])
       .toBe('Building confidence in Acme.');
@@ -179,8 +188,8 @@ describe('buildHeroNarrative — LEARNING covers two different situations', () =
       .toBe('Building confidence in this workspace.');
   });
 
-  it('never synced → tells them to connect a channel', () => {
-    expect(buildHeroNarrative({ state: ACCOUNT_STATE.LEARNING, hasAnyData: false })[1])
+  it('confirmed connector absence → tells them to connect a channel', () => {
+    expect(buildHeroNarrative({ state: ACCOUNT_STATE.LEARNING, hasAnyData: false, canSuggestConnect: true })[1])
       .toBe('Connect a channel to get your first verdict.');
   });
 
@@ -195,14 +204,10 @@ describe('buildHeroNarrative — LEARNING covers two different situations', () =
     expect(second).not.toMatch(/connect/i);
   });
 
-  // PREMISE CORRECTION. The branch used to be on hasAnyData, but the scoring
-  // engine reads the CONNECTOR graph only (/entities/health runs over
-  // getConnectorCampaigns). A workspace holding legacy CampaignState rows and no
-  // connector campaigns has data and can NEVER be scored — telling it to wait
-  // for accumulating signal points it at a verdict that cannot arrive.
-  it('legacy rows but no connector channel → says connect, not wait', () => {
+  // Legacy campaign rows cannot establish the cause; setup needs its own fact.
+  it('legacy rows plus confirmed connector absence → says connect, not wait', () => {
     const [, second] = buildHeroNarrative({
-      state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: false,
+      state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: false, canSuggestConnect: true,
     });
     expect(second).toBe('Connect a channel to get your first verdict.');
     expect(second).not.toMatch(/syncing|accumulat/i);
@@ -254,7 +259,7 @@ describe('the empty-feed explanation lives in the hero', () => {
   });
 
   it('no connector channel → says connect, never "syncing"', () => {
-    const l = line({ hasAnyData: true, hasScorableData: false });
+    const l = line({ hasAnyData: true, hasScorableData: false, canSuggestConnect: true });
     expect(l).toMatch(/connect a channel/i);
     expect(l).not.toMatch(/syncing|accumulat/i);
   });

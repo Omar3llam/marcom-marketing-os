@@ -15,6 +15,14 @@ const setup = (props = {}) => render(
 );
 
 describe('per-state headline', () => {
+  it.each([
+    [{ hasConnectedChannel: true, canSuggestConnect: false }, "A channel is connected, but Lumi doesn't have campaign data to score yet."],
+    [{ hasConnectedChannel: false, canSuggestConnect: false }, "Lumi doesn't have campaign data to score yet."],
+    [{ canSuggestConnect: true }, 'Connect a channel to get your first verdict.'],
+  ])('P7-05C forwards explicit setup facts %j into the rendered narrative', (facts, copy) => {
+    setup(facts);
+    expect(screen.getByText(copy)).toBeInTheDocument();
+  });
   it('ACTION_REQUIRED counts the decisions', () => {
     setup({ state: ACCOUNT_STATE.ACTION_REQUIRED, actNowTotal: 2 });
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('2 decisions need your attention.');
@@ -115,17 +123,15 @@ describe('money at risk', () => {
     expect(screen.getByText('21 campaigns performing well.')).toBeInTheDocument();
   });
 
-  // The advice branches on hasScorableData (the CONNECTOR graph), not on
-  // hasAnyData — the scoring engine reads nothing else, so legacy-only rows are
-  // "connect a channel", not "wait for signal".
+  // Campaign/scoring facts do not establish connector setup cause.
   it('a scorable substrate picks the wait-for-signal advice', () => {
     setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: true });
     expect(screen.getByText(/Verdicts appear once enough signal has accumulated/)).toBeInTheDocument();
     expect(screen.queryByText(/Connect a channel/)).not.toBeInTheDocument();
   });
 
-  it('legacy rows with no connector channel are told to connect', () => {
-    setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: false });
+  it('legacy rows with confirmed connector absence are told to connect', () => {
+    setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: false, canSuggestConnect: true });
     expect(screen.getByText('Connect a channel to get your first verdict.')).toBeInTheDocument();
   });
 });

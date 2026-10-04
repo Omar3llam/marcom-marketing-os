@@ -93,6 +93,9 @@ export default function ConnectorsView() {
   const { data, loading, error, refetch } = useConnections();
   const { projectId } = useProjectId();
   const [switching, setSwitching] = useState(null);
+  const connectionReadKnown = !loading && !error && data != null;
+  const hasResolvedWorkspace = connectionReadKnown
+    && typeof data.workspaceId === 'string' && data.workspaceId.length > 0;
 
   // Switch the active ad account (server validates it against the token's accounts),
   // then refetch connection truth. The PATCH awaits best-effort sync; its success
@@ -128,9 +131,11 @@ export default function ConnectorsView() {
 
       {loading && <div className="space-y-3"><CardSkeleton /></div>}
       {!loading && error && <EmptyPanel Icon={Scale} text="Couldn't load connections right now. Try again shortly." />}
-      {!loading && !error && (
+      {!loading && !error && !connectionReadKnown && <EmptyPanel Icon={Plug} text="Channel setup unavailable." />}
+      {connectionReadKnown && !hasResolvedWorkspace && <EmptyPanel Icon={Plug} text="A workspace is required before channels can be connected." />}
+      {hasResolvedWorkspace && (
         <ConnectionsView
-          connections={data?.connections ?? []}
+          connections={data.connections}
           projectId={projectId}
           onSwitchAccount={handleSwitchAccount}
           switching={switching}

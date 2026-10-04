@@ -13,6 +13,7 @@ const ctx = (over = {}) => ({
   loading: false,
   firstRunFlag: false,
   hasAnyData: false,
+  canSuggestConnect: true,
   hasConnectorData: false,
   hasEverSynced: false,
   hasRevenueData: false,
@@ -26,6 +27,23 @@ const SYNCED_NO_REVENUE = {
 };
 
 describe('at most one', () => {
+  it.each([
+    ['FIRST_RUN unreadable', { firstRunFlag: true, hasAnyData: false, unreadable: true, canSuggestConnect: true }],
+    ['FIRST_RUN connected', { firstRunFlag: true, hasAnyData: false, hasConnectedChannel: true, canSuggestConnect: false }],
+    ['FIRST_RUN workspace absent', { firstRunFlag: true, hasAnyData: false, canSuggestConnect: false }],
+    ['CONNECT connected', { hasAnyData: false, hasConnectedChannel: true, canSuggestConnect: false }],
+    ['CONNECT unknown cause', { hasAnyData: false, canSuggestConnect: false }],
+    ['CONNECT unreadable', { hasAnyData: false, unreadable: true, canSuggestConnect: true }],
+    ['missing authority', { hasAnyData: false }],
+  ])('P7-05C %s cannot produce a connect instruction', (_, input) => {
+    expect(pickInterrupt(input)).toBeNull();
+  });
+  it('P7-05C missing context is not confirmed connector absence', () => {
+    expect(pickInterrupt()).toBeNull();
+  });
+  it.each([false, true])('P7-05C explicit connect authority retains positive control, firstRun=%s', (firstRunFlag) => {
+    expect(pickInterrupt({ hasAnyData: false, firstRunFlag, canSuggestConnect: true })).toBe(firstRunFlag ? INTERRUPT.FIRST_RUN : INTERRUPT.CONNECT);
+  });
   it('a brand-new account gets the stepped banner, not the generic empty state', () => {
     expect(pickInterrupt(ctx({ firstRunFlag: true }))).toBe(INTERRUPT.FIRST_RUN);
   });
@@ -93,14 +111,12 @@ describe('readiness', () => {
 });
 
 describe('robustness', () => {
-  // Mirrors getAccountState()'s precedent: a degenerate call yields the
-  // empty-account answer rather than throwing. Nothing known about the
-  // workspace reads as nothing connected, which is what CONNECT says.
-  it('no argument at all is the empty-account nudge, not a throw', () => {
-    expect(pickInterrupt()).toBe(INTERRUPT.CONNECT);
+  // Missing context is unknown, never confirmed setup absence.
+  it('no argument at all produces no instruction and does not throw', () => {
+    expect(pickInterrupt()).toBeNull();
   });
 
   it('a missing dismissed set is treated as nothing dismissed', () => {
-    expect(pickInterrupt({ hasAnyData: false })).toBe(INTERRUPT.CONNECT);
+    expect(pickInterrupt({ hasAnyData: false, canSuggestConnect: true })).toBe(INTERRUPT.CONNECT);
   });
 });

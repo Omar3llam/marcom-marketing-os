@@ -229,14 +229,31 @@ describe('Sidebar — mobile drawer visibility', () => {
 });
 
 describe('Sidebar — connect-a-channel shortcut (self-hiding)', () => {
+  it.each([
+    ['HTTP failure', { data: null, loading: false, error: new Error('500') }, false],
+    ['contract failure', { data: null, loading: false, error: new Error('contract validation') }, false],
+    ['unknown response', { data: null, loading: false, error: null }, false],
+    ['loading', { data: null, loading: true, error: null }, false],
+    ['workspace null', { data: { workspaceId: null, connections: [] }, loading: false, error: null }, false],
+    ['workspace missing', { data: { connections: [] }, loading: false, error: null }, false],
+    ['workspace empty string', { data: { workspaceId: '', connections: [] }, loading: false, error: null }, false],
+    ['known empty', { data: { workspaceId: 'ws', connections: [] }, loading: false, error: null }, true],
+    ['inactive only', { data: { workspaceId: 'ws', connections: [{ connected: false }] }, loading: false, error: null }, true],
+    ['connected never synced', { data: { workspaceId: 'ws', connections: [{ connected: true, readiness: 'NEVER_SYNCED' }] }, loading: false, error: null }, false],
+  ])('P7-05C %s preserves cause authority and standard navigation', (_, read, allowed) => {
+    useConnections.mockReturnValue(read);
+    const view = renderSidebar({ mobileMenuOpen: true });
+    expect(Boolean(view.queryByText('Connect a channel'))).toBe(allowed);
+    expect(view.getByRole('link', { name: /^Connectors/ })).toHaveAttribute('href', '/app/connections');
+  });
   it('no channel connected → shows the highlighted "Connect a channel" entry', () => {
-    useConnections.mockReturnValue({ data: { connections: [] }, loading: false, error: null });
+    useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [] }, loading: false, error: null });
     const { getByText } = renderSidebar({ mobileMenuOpen: true });
     expect(getByText('Connect a channel')).toBeTruthy();
   });
 
   it('a channel is connected → the shortcut disappears (existing users never see it)', () => {
-    useConnections.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
+    useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
     const { queryByText } = renderSidebar({ mobileMenuOpen: true });
     expect(queryByText('Connect a channel')).toBeNull();
   });
@@ -249,6 +266,11 @@ describe('Sidebar — connect-a-channel shortcut (self-hiding)', () => {
 });
 
 describe('Sidebar — Publishing approval badge', () => {
+  it('CLIENT cannot receive connector mutation advice even on confirmed absence', () => {
+    useCollabRole.mockReturnValue({ role: 'CLIENT', status: ROLE_READ.PRESENT, loading: false, error: null });
+    useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [] }, loading: false, error: null });
+    expect(renderSidebar().queryByText('Connect a channel')).toBeNull();
+  });
   it('shows the pending-approval count on the Publishing nav item (operator seat)', () => {
     usePendingApprovals.mockReturnValue({ pending: [{}, {}, {}], loading: false, error: null, refetch: vi.fn() });
     const { getByText } = renderSidebar({ mobileMenuOpen: true });

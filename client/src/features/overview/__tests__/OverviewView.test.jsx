@@ -70,7 +70,7 @@ beforeEach(() => {
   useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
   // Default: no channel has ever synced → the revenue-onboarding banner stays hidden
   // and every pre-existing test is unaffected. Revenue-banner tests override this.
-  useConnections.mockReturnValue({ data: null, loading: false, error: null, refetch: vi.fn() });
+  useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [] }, loading: false, error: null, refetch: vi.fn() });
   // Default: nothing scored → the decision feed renders its honest empty line.
   useAccountHealth.mockReturnValue({ health: { campaigns: [], score: null, label: null }, loading: false, error: null, refetch: vi.fn() });
   useConnectorVerdicts.mockReturnValue({ verdicts: [], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
@@ -659,11 +659,11 @@ describe('OverviewView — first-run activation banner (wires the onboarding fla
 
 describe('OverviewView — post-first-sync revenue onboarding banner', () => {
   const SYNCED = {
-    data: { connections: [{ platform: 'META', lastSyncedAt: '2026-07-16T00:00:00Z' }] },
+    data: { workspaceId: 'ws', connections: [{ platform: 'META', connected: true, lastSuccessfulSync: '2026-07-16T00:00:00Z' }] },
     loading: false, error: null, refetch: vi.fn(),
   };
   const NEVER_SYNCED = {
-    data: { connections: [{ platform: 'META', lastSyncedAt: null }] },
+    data: { workspaceId: 'ws', connections: [{ platform: 'META', connected: true, lastSuccessfulSync: null }] },
     loading: false, error: null, refetch: vi.fn(),
   };
   const withCampaigns = (rows) => ({ campaigns: rows, loading: false, error: null, refetch: vi.fn() });

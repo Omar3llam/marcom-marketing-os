@@ -27,6 +27,8 @@ export default function AccountStateHero({
   workspace = null,
   hasAnyData = false,
   hasScorableData = false,
+  hasConnectedChannel = false,
+  canSuggestConnect = false,
   insight = null,   // LLM prose; the caller owns the freshness + role gating
   partial = false,
 }) {
@@ -37,7 +39,7 @@ export default function AccountStateHero({
   const config = STATE_CONFIG[state] ?? STATE_CONFIG[ACCOUNT_STATE.LEARNING];
   const narrative = buildHeroNarrative({
     state, actNowTotal, watchTotal, healthyCount,
-    wastedAmount, currency, hasAnyData, hasScorableData, partial,
+    wastedAmount, currency, hasAnyData, hasScorableData, hasConnectedChannel, canSuggestConnect, partial,
     workspaceName: workspace?.name ?? null,
   });
 

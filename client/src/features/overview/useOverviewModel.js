@@ -64,7 +64,7 @@ export function useOverviewModel() {
   // withhold the connect-a-channel instruction that would have helped.
   // NAME EVERY SUBSTRATE A CLAIM READS — and no others.
   const { campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError, refetch: connectorRetry } = useConnectorCampaigns();
-  const { data: connectionsData, loading: connectionsLoading, error: connectionsError, refetch: connectionsRetry } = useConnections(); // channel sync status (lastSyncedAt)
+  const { data: connectionsData, loading: connectionsLoading, error: connectionsError, refetch: connectionsRetry } = useConnections(); // published connection/setup facts and resolved success clock
   // `loading` is destructured DELIBERATELY — see the readiness gate below.
   const { health, loading: healthLoading, error: healthError, refetch: healthRetry, forbidden: healthForbidden } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
   const { home, isStale: homeStale, error: homeError, refetch: homeRetry } = useHome(); // agentic loop home (includes aiInsight)
@@ -213,6 +213,15 @@ export function useOverviewModel() {
   // CampaignState rows will never receive a verdict, however long it waits.
   const hasScorableData = hasConnectorData;
 
+  // Connector setup has its own cause. Campaign absence and freshness never
+  // establish credential absence or a workspace where setup can be performed.
+  const connectionReadKnown = !connectionsLoading && !connectionsError && connectionsData != null;
+  const hasResolvedWorkspace = connectionReadKnown
+    && typeof connectionsData.workspaceId === 'string' && connectionsData.workspaceId.length > 0;
+  const hasConnectedChannel = hasResolvedWorkspace
+    && connectionsData.connections.some((c) => c.connected === true);
+  const canSuggestConnect = hasResolvedWorkspace && !hasConnectedChannel;
+
   // /entities/health is gated to BUYER|STRATEGIST while /entities/campaigns is
   // ungated, so a CLIENT sees campaigns and receives health: null — zero bands
   // from AUTHORIZATION, not from absent data. Derived from the role rather than
@@ -287,7 +296,8 @@ export function useOverviewModel() {
     ? (home.aiInsight ?? null) : null;
 
   // ── The one interrupt, and the plan that orders everything ──
-  const hasEverSynced = connectionsData?.connections?.some((c) => c.lastSyncedAt != null) ?? false;
+  const hasEverSynced = hasResolvedWorkspace
+    && connectionsData.connections.some((c) => c.lastSuccessfulSync != null);
   const hasRevenueData = hasConnectorData && connectorCampaigns.some((c) => (c.revenueMinor ?? 0) > 0);
   const { firstRunFlag, dismissed, dismiss } = useDismissals({ hasAnyData });
 
@@ -297,6 +307,7 @@ export function useOverviewModel() {
     hasAnyData,
     hasConnectorData,
     hasEverSynced,
+    canSuggestConnect: canSuggestConnect && [WORKSPACE_ROLE.STRATEGIST, WORKSPACE_ROLE.BUYER].includes(collabRole),
     hasRevenueData,
     isStrategist: collabRole === WORKSPACE_ROLE.STRATEGIST,
     dismissed,
@@ -323,6 +334,10 @@ export function useOverviewModel() {
     hasAnyData,
     hasConnectorData,
     hasScorableData,
+    connectionReadKnown,
+    hasResolvedWorkspace,
+    hasConnectedChannel,
+    canSuggestConnect,
     scoringHidden,
 
     // what shows, in what order (+ the single interrupt)
