@@ -25,11 +25,11 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('per-channel status', () => {
   it('renders one line per channel with its real sync time', () => {
-    ok([{ platform: 'META', connected: true, stale: false, lastSyncedAt: new Date(Date.now() - 30 * 60_000).toISOString() }]);
+    ok([{ platform: 'META', connected: true, stale: false, readiness: 'CURRENT', availability: 'OK', completeness: 'COMPLETE', lastSuccessfulSync: new Date(Date.now() - 30 * 60_000).toISOString() }]);
     rail();
     expect(screen.getByText('Channels')).toBeInTheDocument();
     expect(screen.getByText('Meta')).toBeInTheDocument();
-    expect(screen.getByText(/Synced 30m ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Current · Last successful sync 30m ago/)).toBeInTheDocument();
   });
 
   it('a never-connected channel says so, it does not go blank', () => {
@@ -39,9 +39,9 @@ describe('per-channel status', () => {
   });
 
   it('a stale channel is called stale, not synced', () => {
-    ok([{ platform: 'META', connected: true, stale: true, lastSyncedAt: new Date(Date.now() - 3 * 86_400_000).toISOString() }]);
+    ok([{ platform: 'META', connected: true, stale: true, readiness: 'STALE', availability: 'OK', completeness: 'COMPLETE', lastSuccessfulSync: new Date(Date.now() - 3 * 86_400_000).toISOString() }]);
     rail();
-    expect(screen.getByText(/Stale · 3d ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Stale · Last successful sync 3d ago/)).toBeInTheDocument();
     expect(screen.queryByText(/^Synced/)).not.toBeInTheDocument();
   });
 
@@ -73,13 +73,13 @@ describe('never goes quiet', () => {
   });
 });
 
-describe('the full-width variant is untouched', () => {
+describe('the full-width variant keeps its layout and shares semantic copy', () => {
   it('still renders its own layout, not the rail one', () => {
-    ok([{ platform: 'META', connected: true, stale: false, lastSyncedAt: new Date().toISOString() }]);
+    ok([{ platform: 'META', connected: true, stale: false, readiness: 'CURRENT', availability: 'OK', completeness: 'COMPLETE', lastSuccessfulSync: new Date().toISOString() }]);
     const { container } = full();
-    // full variant keeps the bordered pill row and lowercase status copy
+    // Full variant keeps the bordered row and explicit successful event copy.
     expect(container.querySelector('.rounded-xl')).toBeTruthy();
-    expect(screen.getByText(/synced/)).toBeInTheDocument();   // lowercase
+    expect(screen.getByText(/Current · Last successful sync/)).toBeInTheDocument();
     expect(screen.queryByText(/^Synced/)).not.toBeInTheDocument();
   });
 });
