@@ -26,6 +26,7 @@ import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import UpgradePrompt from '@/components/plan/UpgradePrompt.jsx';
+import { gapPresentation, channelGapText } from './gapPresentation.js';
 
 // Null/non-finite ROAS → "—" (honest empty), never a fabricated 0.0× that reads
 // as a real (terrible) return. A genuine finite 0 still formats as 0.0×.
@@ -47,6 +48,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
 
   const single = channels.length < 2;
   const currency = portfolio?.monetaryStatus === 'MONETARY_VALID' ? portfolio.currency : null;
+  const gap = gapPresentation(portfolio?.gapPct, portfolio?.gapMinor);
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
   const staleChannels = channels.filter((c) => c.stale);
 
@@ -77,9 +79,11 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
           ) : (
             <p className="decision-title text-lumi-text leading-snug">Blended monetary comparison unavailable.</p>
           )}
-          {currency && portfolio.gapPct != null && portfolio.gapMinor != null ? (
-            <p className="mt-2 text-sm text-signal-kill font-mono">
-              Over-reported by {Math.round(portfolio.gapPct)}% · {formatCurrency(portfolio.gapMinor, currency)} of revenue you&apos;d have over-allocated against.
+          {currency && portfolio.gapMinor != null && gap.direction !== 'UNAVAILABLE' ? (
+            <p className="mt-2 text-sm text-lumi-subtle font-mono">
+              {gap.direction === 'MATCH'
+                ? 'Platform-reported revenue matches blended revenue for this comparison.'
+                : <>Revenue gap: {gap.pctText} {gap.direction === 'ABOVE' ? 'above' : 'below'} · {formatCurrency(gap.magnitudeMinor, currency)} difference from blended revenue (gap as a share of platform-reported revenue).</>}
             </p>
           ) : (
             <p className="mt-2 text-sm text-lumi-subtle font-mono">Monetary comparison unavailable{portfolio.monetaryReason ? `: ${portfolio.monetaryReason}` : '.'}</p>
@@ -137,7 +141,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
                   </td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(c.platformRoas)}</td>
                   <td className="px-4 py-2.5 text-lumi-text font-mono">{fx(c.blendedRevenueEfficiency?.value)}</td>
-                  <td className="px-4 py-2.5 font-mono text-signal-kill">{c.gapPct == null ? '—' : `${Math.round(c.gapPct)}%`}</td>
+                  <td className="px-4 py-2.5 font-mono text-lumi-muted">{channelGapText(c.gapPct)}</td>
                   <td className="px-4 py-2.5">
                     <span className={`font-mono text-xs ${c.coverage === 'RECONCILED' ? 'text-signal-scale' : 'text-lumi-subtle'}`}>
                       {c.coverage} · {c.confidence}

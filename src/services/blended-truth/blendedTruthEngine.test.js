@@ -19,6 +19,54 @@ const proven = (c) => {
 const reconcileProven = ({ channels }) => reconcile({ channels: channels.map(proven) });
 
 describe('blendedTruthEngine.reconcile', () => {
+  it('withholds the channel percentage for zero platform revenue and nonzero actual revenue', () => {
+    const { channels } = reconcileProven({ channels: [
+      { channelId: 'meta', platformRevenueMinor: 0, actualRevenueMinor: 100, spendMinor: 50 },
+    ] });
+    expect(channels[0].gapMinor).toBe(-100);
+    expect(channels[0].gapPct).toBeNull();
+    expect(channels[0].monetaryStatus).toBe('MONETARY_VALID');
+  });
+
+  it('withholds the portfolio percentage for a zero total denominator with a nonzero gap', () => {
+    const { portfolio } = reconcileProven({ channels: [
+      { channelId: 'meta', platformRevenueMinor: 0, actualRevenueMinor: 75, spendMinor: 50 },
+      { channelId: 'google', platformRevenueMinor: 0, actualRevenueMinor: 25, spendMinor: 50 },
+    ] });
+    expect(portfolio.platformRevenueMinor).toBe(0);
+    expect(portfolio.blendedRevenueMinor).toBe(100);
+    expect(portfolio.gapMinor).toBe(-100);
+    expect(portfolio.gapPct).toBeNull();
+    expect(portfolio.monetaryStatus).toBe('MONETARY_VALID');
+  });
+
+  it.each([
+    [100, 75, 25, 0.25],
+    [100, 125, -25, -0.25],
+    [0, 0, 0, 0],
+    [0, 100, -100, null],
+  ])('keeps channel and portfolio gap semantics aligned for %s versus %s', (platform, actual, gapMinor, gapPct) => {
+    const result = reconcileProven({ channels: [
+      { channelId: 'meta', platformRevenueMinor: platform, actualRevenueMinor: actual, spendMinor: 50 },
+    ] });
+    for (const comparison of [result.channels[0], result.portfolio]) {
+      expect(comparison.gapMinor).toBe(gapMinor);
+      expect(comparison.gapPct).toBe(gapPct);
+      expect(comparison.monetaryStatus).toBe('MONETARY_VALID');
+    }
+  });
+
+  it('still withholds money and percentage without proven comparison evidence', () => {
+    const result = reconcile({ channels: [
+      { channelId: 'meta', platformRevenueMinor: 0, actualRevenueMinor: 100, spendMinor: 50 },
+    ] });
+    for (const comparison of [result.channels[0], result.portfolio]) {
+      expect(comparison.gapMinor).toBeNull();
+      expect(comparison.gapPct).toBeNull();
+      expect(comparison.monetaryStatus).not.toBe('MONETARY_VALID');
+    }
+  });
+
   it('uses the GA4/Shopify actual where present and surfaces the inflation gap', () => {
     // Meta claims 84,200 (EGP minor) but GA4 actual is 63,150 on 20,000 spend.
     const { channels } = reconcileProven({
