@@ -5,7 +5,7 @@
 //   [{ entityId, name, channel, currentFrequency, velocity,
 //      daysUntilSaturation, status, confidence }]
 // Read-only; the server reuses the least-squares forecaster over the connector
-// substrate. Honest states: loading, error (→ empty), and empty (→ panel hides).
+// substrate. Loading/error stay explicit; only successful empty hides the panel.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api.js';
@@ -15,27 +15,31 @@ export function useFatigueForecast() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const aliveRef = useRef(true);
+  const attemptRef = useRef(0);
 
   const load = useCallback(async () => {
+    if (!aliveRef.current) return;
+    const attempt = ++attemptRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const res = await api.get('/api/lumi/entities/fatigue');
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       setForecast(Array.isArray(res.data?.forecast) ? res.data.forecast : []);
     } catch (err) {
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       setError(err);
       setForecast([]);
     } finally {
-      if (aliveRef.current) setIsLoading(false);
+      if (aliveRef.current && attempt === attemptRef.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const attempts = attemptRef;
     aliveRef.current = true;
     load();
-    return () => { aliveRef.current = false; };
+    return () => { aliveRef.current = false; ++attempts.current; };
   }, [load]);
 
   return { forecast, isLoading, error, refetch: load };
