@@ -40,6 +40,24 @@ const payload = (over = {}) => ({
   ...over,
 });
 
+describe('P7-04B same-response comparison', () => {
+  it('carries the evidence parent and formats the published gap despite contradictory raw arithmetic', () => {
+    const vm = buildCreativeIntelligenceViewModel({ parent: { ctr: 0.02 }, evidence: payload() });
+    expect(vm.comparison).toMatchObject({ metricLabel: 'CTR', childValue: '0.91%', parentValue: '2.00%', gap: '-34%', relation: '34% below ad set' });
+    expect(vm.ad.id).toBe('ad-2');
+  });
+  it('withholds unknown metrics instead of inventing a format', () => {
+    expect(buildCreativeIntelligenceViewModel({ parent: { ctr: 0.02 }, evidence: payload({ metric: 'thumbstop' }) })).toBeNull();
+  });
+  it.each([['ctr', -0.34, '34% below ad set'], ['roas', -0.34, '34% below ad set'],
+    ['frequency', 0.42, '42% above ad set'], ['frequency', 0, 'matches ad set']])(
+    '%s preserves the server direction', (metric, gap, relation) => {
+      const vm = buildCreativeIntelligenceViewModel({ parent: { ctr: 0.02, roas: 2, frequency: 2 },
+        evidence: payload({ metric, summary: { bottom: ad({ _gap: gap }) } }) });
+      expect(vm.comparison.relation).toBe(relation);
+    });
+});
+
 describe('the ad it names is the one the server named', () => {
   it('reads summary.bottom, never a row it picked itself', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload() });
@@ -93,9 +111,9 @@ describe('the ranking is the server’s answer, not an ordinal', () => {
     expect(buildCreativeIntelligenceViewModel({ evidence: payload({ metric: 'roas' }) }).ranking.metricLabel).toBe('ROAS');
   });
 
-  it('passes an unmapped metric through rather than dropping the finding', () => {
+  it('withholds an unmapped ranking metric', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload({ metric: 'thumbstop' }) });
-    expect(vm.ranking.metricLabel).toBe('THUMBSTOP');
+    expect(vm).toBeNull();
   });
 
   it('rounds the server’s own gap into a percentage', () => {
@@ -113,7 +131,7 @@ describe('the ranking is the server’s answer, not an ordinal', () => {
 describe('the finding, in words', () => {
   it('states what the number did and where it stood', () => {
     expect(buildCreativeIntelligenceViewModel({ evidence: payload() }).ranking.label)
-      .toBe('CTR 34% below the ad set of 2 reporting ads');
+      .toBe('CTR 34% below the ad set within 2 reporting ads');
   });
 
   // The sign is a fact about the figure, not a judgement. A frequency over its
@@ -122,7 +140,7 @@ describe('the finding, in words', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload({
       metric: 'frequency', summary: { bottom: ad({ _gap: 0.42 }) },
     }) });
-    expect(vm.ranking.label).toBe('Frequency 42% above the ad set of 2 reporting ads');
+    expect(vm.ranking.label).toBe('Frequency 42% above the ad set within 2 reporting ads');
   });
 
   // `summary.bottom` is the WORST row, and for a ceiling metric the worst row is
@@ -131,7 +149,7 @@ describe('the finding, in words', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload({
       metric: 'frequency', summary: { bottom: ad({ _gap: null }) },
     }) });
-    expect(vm.ranking.label).toBe('Furthest behind on Frequency of 2 reporting ads');
+    expect(vm.ranking.label).toBe('Furthest behind on Frequency within 2 reporting ads');
     expect(vm.ranking.label).not.toMatch(/lowest/i);
   });
 

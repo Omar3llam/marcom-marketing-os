@@ -24,12 +24,7 @@
 // engine or from the operator.
 // ============================================================
 
-/** The ranking metric's display name. The server sends the ROW FIELD, lowercase. */
-const METRIC_LABELS = Object.freeze({
-  ctr:       'CTR',
-  roas:      'ROAS',
-  frequency: 'Frequency',
-});
+import { evidenceMetricLabel, formatEvidenceValue, formatEvidenceGap } from './executionContext.js';
 
 /** The video signals the ad-level ingestion lands, in funnel order. */
 const VIDEO_KEYS = Object.freeze(['videoView', 'video25', 'video50', 'video95']);
@@ -89,12 +84,14 @@ function videoSignalsOf(actionMetrics) {
  * @returns {object|null} null whenever the payload cannot support the surface —
  *   which the renderer turns into nothing at all, never into an empty card.
  */
-export function buildCreativeIntelligenceViewModel({ evidence } = {}) {
+export function buildCreativeIntelligenceViewModel({ evidence, parent } = {}) {
   const worst = evidence?.summary?.bottom ?? null;
   if (!worst) return null;
 
   const metric = typeof evidence.metric === 'string' ? evidence.metric : null;
-  const metricLabel = metric ? (METRIC_LABELS[metric] ?? metric.toUpperCase()) : null;
+  const metricLabel = evidenceMetricLabel(metric);
+  if (!metricLabel) return null;
+  const gap = formatEvidenceGap(worst._gap, 'ad set');
   // The set the server actually ranked, after its own rankability filter. Not
   // the number of ads in the ad set: rows too thin to compare were excluded, and
   // counting them would overstate how many this one came last out of.
@@ -127,6 +124,13 @@ export function buildCreativeIntelligenceViewModel({ evidence } = {}) {
       conversions: num(worst.conversions),
     },
     videoSignals: videoSignalsOf(worst.actionMetrics),
+    comparison: {
+      metricLabel,
+      childValue: formatEvidenceValue(metric, worst[metric]),
+      parentValue: formatEvidenceValue(metric, parent?.[metric]),
+      gap: gap?.signed ?? null,
+      relation: gap?.relation ?? null,
+    },
     ranking: {
       // The server's word for the end of its own sorted list, not an index.
       rank: 'BOTTOM',
@@ -138,7 +142,7 @@ export function buildCreativeIntelligenceViewModel({ evidence } = {}) {
       // the number DID — "below"/"above" is the sign, not a judgement — and stops
       // there. A frequency 42% over its ad set reads "above", because that is
       // what happened; whether that is bad is the verdict engine's call.
-      label: rankingLabel({ metricLabel, gapPercent, comparedCount }),
+      label: rankingLabel({ metricLabel, gapPercent, comparedCount, gap: worst._gap }),
     },
   };
 }
@@ -147,13 +151,14 @@ export function buildCreativeIntelligenceViewModel({ evidence } = {}) {
  * PURE: the finding, in words. Degrades a clause at a time rather than all at
  * once — a payload with a gap but no cohort size still has something true to say.
  */
-function rankingLabel({ metricLabel, gapPercent, comparedCount }) {
+function rankingLabel({ metricLabel, gapPercent, comparedCount, gap }) {
   if (!metricLabel) return null;
-  const cohort = comparedCount >= 2 ? ` of ${comparedCount} reporting ads` : '';
+  const cohort = comparedCount >= 2 ? ` within ${comparedCount} reporting ads` : '';
   // Direction-neutral, because the ranking is not: `summary.bottom` is the WORST
   // row, and for a ceiling metric like frequency the worst row is the HIGHEST
   // one. "Lowest frequency" would name the healthiest ad in the set.
   if (gapPercent == null) return `Furthest behind on ${metricLabel}${cohort}`;
-  const direction = gapPercent < 0 ? 'below' : 'above';
+  if (gap === 0) return `${metricLabel} matches the ad set${cohort}`;
+  const direction = gap < 0 ? 'below' : 'above';
   return `${metricLabel} ${Math.abs(gapPercent)}% ${direction} the ad set${cohort}`;
 }

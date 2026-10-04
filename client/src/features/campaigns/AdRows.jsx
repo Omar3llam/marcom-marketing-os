@@ -68,7 +68,9 @@ export function AdRows({
   // The ranking is the server's; this only maps it for display. null whenever
   // the engine declined — EvidenceState below says which of the three refusals
   // it was, and a refusal is not an error.
-  const creative = buildCreativeIntelligenceViewModel({ evidence: evidence?.evidence ?? null });
+  const creative = buildCreativeIntelligenceViewModel({
+    evidence: evidence?.evidence ?? null, parent: evidence?.entity ?? null,
+  });
 
   return (
     <>

@@ -57,6 +57,27 @@ const EVIDENCE_ROUTE = Object.freeze({
   ad:    (parentId) => `/api/lumi/entities/${parentId}/evidence`,
 });
 
+const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const finite = (value) => typeof value === 'number' && Number.isFinite(value);
+const CONTRACT_ERROR = 'Evidence response failed contract validation';
+
+// Validate this route's success/refusal envelope only. Never reconstruct a
+// comparison or validate its arithmetic against the published values.
+function validResponse(data, metric) {
+  if (!object(data)) return false;
+  if (data.insufficientData === true) {
+    return data.evidence === null && typeof data.reasonKey === 'string' && data.reasonKey.trim().length > 0;
+  }
+  const evidence = data.evidence;
+  const bottom = evidence?.summary?.bottom;
+  return data.insufficientData === false && data.reasonKey === null
+    && ['ctr', 'roas', 'frequency'].includes(metric)
+    && object(data.entity) && finite(data.entity[metric])
+    && object(evidence) && evidence.metric === metric
+    && Array.isArray(evidence.ranked) && object(evidence.summary) && object(bottom)
+    && finite(bottom[metric]) && finite(bottom._gap);
+}
+
 /**
  * @param {{dimension?: 'adset'|'ad'}} [opts] — which level's children to rank.
  *   Defaults to 'adset', the original behaviour. An unknown dimension falls back
@@ -82,21 +103,20 @@ export function useEvidence({ dimension = 'adset' } = {}) {
 
     try {
       const res = await api.get(route(parentId), { params: { metric } });
+      if (!validResponse(res.data, metric)) throw new Error(CONTRACT_ERROR);
       setById((s) => ({
         ...s,
         [key]: {
           entity:    res.data?.entity ?? null,
           objective: res.data?.objective ?? null,
           evidence:  res.data?.evidence ?? null,
-          // A body that says nothing about sufficiency is treated as a refusal,
-          // never as a ranking: the alternative is rendering `evidence: null` as
-          // if it were data. `=== true` so a missing field cannot read as false.
-          insufficientData: res.data?.insufficientData === true || res.data?.evidence == null,
+          insufficientData: res.data.insufficientData,
           reasonKey: res.data?.reasonKey ?? null,
         },
       }));
     } catch (err) {
-      const failure = drillDownFailure(err);
+      const failure = err?.message === CONTRACT_ERROR
+        ? { kind: 'CONTRACT_INVALID', retryable: true } : drillDownFailure(err);
       if (failure.retryable) seen.current.delete(key);
       setFailures((s) => ({ ...s, [key]: failure }));
       setErrors((s) => ({ ...s, [key]: err?.message ?? 'Failed to load evidence' }));

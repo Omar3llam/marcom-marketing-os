@@ -70,10 +70,10 @@ const Impact = ({ score, relativeRank }) => {
     return <span className={cn('font-semibold', impactColor(score))} title={`Impact ${score}/10 — priority to act`}>{score}</span>;
   }
   if (relativeRank === 'TOP') {
-    return <span className="text-signal-scale" title="Strongest engagement in its group — no revenue data to score impact">↑</span>;
+    return <span className="text-lumi-muted" title="Strongest engagement in its group — no revenue data to score impact">↑</span>;
   }
   if (relativeRank === 'BOTTOM') {
-    return <span className="text-signal-kill" title="Weakest engagement in its group — no revenue data to score impact">↓</span>;
+    return <span className="text-lumi-muted" title="Weakest engagement in its group — no revenue data to score impact">↓</span>;
   }
   return <Dash />;
 };
@@ -606,6 +606,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                   <ExecutionContext
                     campaign={c}
                     evidence={ev.evidence}
+                    parent={ev.entity}
                     verdict={verdict}
                   />
                 )}

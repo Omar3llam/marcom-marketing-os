@@ -31,6 +31,15 @@ const campaign = (over = {}) => ({
   spendMinor: 50000, roas: null, ctr: 0.012, frequency: 2.4, currency: 'USD', ...over,
 });
 
+describe('P7-04B relative standing styling', () => {
+  it.each(['TOP', 'BOTTOM'])('%s standing does not borrow verdict colour', (rank) => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} relativeRanks={{ c1: rank }} />);
+    const indicator = screen.getByTitle(new RegExp(rank === 'TOP' ? 'Strongest engagement' : 'Weakest engagement'));
+    expect(indicator).not.toHaveClass('text-signal-scale');
+    expect(indicator).not.toHaveClass('text-signal-kill');
+  });
+});
+
 // ── PARITY-03 · five states, five different claims (C-07) ──────────────────
 describe('deepLinkState', () => {
   const rows = [{ entityId: 'c1' }];
