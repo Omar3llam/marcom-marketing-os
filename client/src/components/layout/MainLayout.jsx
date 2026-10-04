@@ -54,18 +54,8 @@ function MainLayoutShell() {
     return <RoleUnavailable status={roleStatus} canRetry={canRetry} onRetry={refetch} />;
   }
 
-  // FE-03 — `highPriorityAlerts` was built here from
-  // campaigns[].alerts[] off the legacy CampaignState feed, and fed the
-  // Sidebar's `alertsData` → the notification-bell count and the Attention
-  // nav badge. S1-B deleted that array, so the count has been 0 for every
-  // workspace on every render.
-  //
-  // Removed rather than repointed. The badge is a MISSING SIGNAL now, not a
-  // false one — a count of nothing is not a claim that there is nothing to do,
-  // because the number simply never appears. Rebuilding it over the connector
-  // verdicts is a feature (which band counts? whose seat?) and belongs to a
-  // slice that rules on it, not to a repoint. Sidebar already defaults
-  // `alertsData = []`.
+  // The legacy alert count is retired. No global monitoring status is published;
+  // the Sidebar bell opens the Inbox, which reads its own live evidence on open.
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-lumi-bg">

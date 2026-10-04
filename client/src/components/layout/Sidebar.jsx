@@ -28,7 +28,6 @@ import NotificationBell from '@/components/ui/NotificationBell.jsx';
 import InboxPanel from '@/features/inbox/InboxPanel.jsx';
 import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 import CommandPalette from '@/components/ui/CommandPalette.jsx';
-import RadarStrip from './RadarStrip.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
 import LumiStar from '@/components/brand/LumiStar.jsx';
 
@@ -216,7 +215,6 @@ function WorkspaceHQ({ workspace, onNewProject }) {
 export default function Sidebar({
   collapsed,
   onToggle,
-  alertsData = [],
   recentDecisions = [],
   mobileMenuOpen = false,
   onMobileMenuToggle,
@@ -349,12 +347,8 @@ export default function Sidebar({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // High-priority alerts for notification bell
-  const highAlerts = alertsData.filter((a) => a.priority === 'HIGH');
-  const alertCount = highAlerts.length;
-
-  // Alert counts per nav item
-  const alertsByKey = { overview: alertCount, publishing: pendingApprovalCount };
+  // Only the live Publishing approval feed establishes a navigation count.
+  const alertsByKey = { publishing: pendingApprovalCount };
 
   const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
   const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
@@ -417,7 +411,6 @@ export default function Sidebar({
         {!collapsed && (
           <div className="flex items-center gap-0.5">
             <NotificationBell
-              alertCount={alertCount}
               open={notifOpen}
               onToggle={() => setNotifOpen((p) => !p)}
             >
@@ -579,11 +572,6 @@ export default function Sidebar({
           </div>
         )}
       </div>
-
-      {/* ── RADAR STRIP (live countdown + alert pulse) ─────── */}
-      {!collapsed && (
-        <RadarStrip hasHighAlerts={alertCount > 0} />
-      )}
 
       {/* ── FOOTER with evidenced user identity ───────────── */}
       <div className={cn(
