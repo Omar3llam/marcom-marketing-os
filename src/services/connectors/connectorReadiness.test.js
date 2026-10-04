@@ -25,7 +25,7 @@ import { DAILY_STATE } from './connectorConfig.js';
 import {
   CONNECTION_STATE, AVAILABILITY_STATE, COMPLETENESS_STATE,
   READINESS_STATE, CAPABILITY_RUN, CAPABILITY,
-  connectionOf, availabilityOf, completenessOf, readinessOf, capabilitiesOf,
+  connectionOf, availabilityOf, completenessOf, readinessOf, freshnessOf, capabilitiesOf,
 } from './connectorReadiness.js';
 
 const T0 = new Date('2026-06-01T00:00:00.000Z');
@@ -150,6 +150,10 @@ describe('COMPLETENESS — did the data that landed arrive whole', () => {
 
 // ════════════════════════════════════════════════════════════
 describe('READINESS — how old is the last SUCCESS', () => {
+  it.each(['not-a-date', '2026-06-01T07:00:00.000Z'])('does not classify unusable success %s as CURRENT or NEVER_SYNCED', (timestamp) => {
+    expect(readinessOf({ lastSuccessfulSync: timestamp }, NOW)).toBeNull();
+  });
+
   it('a recent success is CURRENT', () => {
     expect(readinessOf(synced(), NOW)).toBe(READINESS_STATE.CURRENT);
   });
@@ -180,6 +184,47 @@ describe('READINESS — how old is the last SUCCESS', () => {
   // axis describes the CONNECTOR and nothing downstream of it.
   it('is a three-state answer, never a boolean', () => {
     expect(new Set(Object.values(READINESS_STATE)).size).toBe(3);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+describe('P7-05A — resolved freshness evidence', () => {
+  it.each([[T0.toISOString(), NOW, 'CURRENT', false], [T0.toISOString(), LATER, 'STALE', true]])(
+    'accepts legacy success %s without editing the source health', (timestamp, now, readiness, stale) => {
+      const row = Object.freeze({ health: null, lastSyncedAt: timestamp });
+      expect(freshnessOf(row, now)).toEqual({ lastSuccessfulSync: timestamp, readiness, readinessKnowledge: 'KNOWN', stale });
+    },
+  );
+
+  it.each([null, undefined, {}])('has NEVER_SYNCED only when both sources are absent: %j', (row) => {
+    expect(freshnessOf(row, NOW)).toEqual({ lastSuccessfulSync: null, readiness: 'NEVER_SYNCED', readinessKnowledge: 'NOTHING_THERE', stale: true });
+  });
+
+  it.each(['bad-date', '', 'Infinity', Number.NaN, Number.POSITIVE_INFINITY, 0, '2026-06-01T07:00:00.000Z'])(
+    'unusable success %j is unavailable rather than a known freshness claim', (timestamp) => {
+      for (const row of [{ health: { lastSuccessfulSync: timestamp } }, { lastSyncedAt: timestamp }]) {
+        expect(freshnessOf(row, NOW)).toEqual({ lastSuccessfulSync: null, readiness: null, readinessKnowledge: null, stale: true });
+      }
+    },
+  );
+
+  it.each(['bad-date', '2026-06-01T07:00:00.000Z'])('uses independently valid legacy evidence when health success %s is unusable', (timestamp) => {
+    const h = Object.freeze({ lastSuccessfulSync: timestamp });
+    const row = Object.freeze({ health: h, lastSyncedAt: T0.toISOString() });
+    expect(freshnessOf(row, NOW)).toEqual({ lastSuccessfulSync: T0.toISOString(), readiness: 'CURRENT', readinessKnowledge: 'KNOWN', stale: false });
+    expect(h.lastSuccessfulSync).toBe(timestamp);
+  });
+
+  it('does not let invalid legacy evidence displace usable health authority', () => {
+    expect(freshnessOf({ health: synced(), lastSyncedAt: 'bad-date' }, NOW).lastSuccessfulSync).toBe(T0.toISOString());
+  });
+
+  it('keeps the existing strict stale boundary and accepts success exactly at now', () => {
+    const row = { lastSyncedAt: T0.toISOString() };
+    expect(freshnessOf(row, T0).readiness).toBe('CURRENT');
+    expect(freshnessOf(row, new Date(T0.getTime() + 24 * 3600000)).readiness).toBe('CURRENT');
+    expect(freshnessOf(row, new Date(T0.getTime() + 24 * 3600000 + 1)).readiness).toBe('STALE');
+    expect(freshnessOf(row, NOW, 4).readiness).toBe('STALE');
   });
 });
 

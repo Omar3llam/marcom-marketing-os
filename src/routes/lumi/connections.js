@@ -8,10 +8,9 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { isStale } from '../../services/connectors/connectorTypes.js';
 import {
-  connectionOf, availabilityOf, completenessOf, readinessOf, capabilitiesOf,
-  AVAILABILITY_KNOWLEDGE, COMPLETENESS_KNOWLEDGE, READINESS_KNOWLEDGE,
+  connectionOf, availabilityOf, completenessOf, freshnessOf, capabilitiesOf,
+  AVAILABILITY_KNOWLEDGE, COMPLETENESS_KNOWLEDGE,
 } from '../../services/connectors/connectorReadiness.js';
 import { listConnections, updateCredentialAccount } from '../../services/connectors/credentialStore.js';
 import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
@@ -24,34 +23,28 @@ export const connectionsRouter = Router();
 async function resolveWorkspaceId(req) {
   if (req.workspaceId) return req.workspaceId;
   if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
-    return u?.workspaceId ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[lumi/connections] workspaceId fallback failed');
-    return null;
-  }
+  const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
+  return u?.workspaceId ?? null;
 }
 
 connectionsRouter.get('/connections', async (req, res) => {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.json({ workspaceId: null, connections: [] });
+  let wsId = null;
   try {
+    wsId = await resolveWorkspaceId(req);
+    if (!wsId) return res.json({ workspaceId: null, connections: [] });
     const rows = await listConnections(wsId); // marcom_credentials display fields — no tokens
     const now = new Date();
     const connections = rows.map((c) => {
-      const lastSuccess = c.health?.lastSuccessfulSync ?? c.lastSyncedAt ?? null;
+      const freshness = freshnessOf(c, now);
       return {
         platform: c.platform,
         isActive: c.isActive,
         connected: c.isActive,
-        // KEPT, unchanged. `stale` is a two-state answer and `readiness` below
-        // is the honest three-state one, but BlendedTruthService consumes the
-        // same isStale() for a different question and ConnectionHealthStrip
-        // renders this field today. Removing it would be a second change paid
-        // for by the first; it is superseded, not replaced.
-        stale: isStale(lastSuccess, now),
+        // Compatibility boolean: shares readiness's resolved success clock;
+        // null success still means no fresh data, not the human word "stale".
+        stale: freshness.stale,
         lastSyncedAt: c.lastSyncedAt ?? null,
+        lastSuccessfulSync: freshness.lastSuccessfulSync,
         accountId: c.accountId ?? null,
         availableAccounts: c.availableAccounts ?? [],
         health: c.health ?? null,
@@ -79,8 +72,8 @@ connectionsRouter.get('/connections', async (req, res) => {
         completenessKnowledge: COMPLETENESS_KNOWLEDGE.knowledgeOf(completenessOf(c.health)),
         // Three states, so "never synced" stops being reported as "stale" — a
         // word that claims we used to have data and it aged.
-        readiness:    readinessOf(c.health, now),
-        readinessKnowledge: READINESS_KNOWLEDGE.knowledgeOf(readinessOf(c.health, now)),
+        readiness:    freshness.readiness,
+        readinessKnowledge: freshness.readinessKnowledge,
         // One line per capability, never a single verdict for the source.
         capabilities: capabilitiesOf(c.platform, c.health),
       };
@@ -100,9 +93,10 @@ connectionsRouter.get('/connections', async (req, res) => {
 // project-scoped meta_ads credential. Per-channel failures are isolated inside
 // the service and surface in `results`, so a single bad channel still returns 200.
 connectionsRouter.post('/connections/sync', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
+  let wsId = null;
   try {
+    wsId = await resolveWorkspaceId(req);
+    if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
     const datePreset = typeof req.body?.datePreset === 'string' ? req.body.datePreset : DEFAULT_MANUAL_SYNC_DATE_PRESET;
     const result = await runConnectorSync(wsId, { datePreset });
     return res.json({ ok: true, workspaceId: wsId, ...result });
@@ -121,16 +115,16 @@ connectionsRouter.post('/connections/sync', requireCollabRole(WORKSPACE_ROLE.BUY
 // Switching the active ad account changes the workspace's data source — a
 // configuration change that belongs to the STRATEGIST/owner, not a buyer seat.
 connectionsRouter.patch('/connections/account', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
-
-  const platform = String(req.body?.platform || '').toUpperCase();
-  const accountId = req.body?.accountId == null ? '' : String(req.body.accountId);
-  if (!platform || !accountId) {
-    return res.status(400).json({ error: 'BadRequest', message: 'platform and accountId are required' });
-  }
-
+  let wsId = null;
+  let platform = null;
   try {
+    wsId = await resolveWorkspaceId(req);
+    if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
+    platform = String(req.body?.platform || '').toUpperCase();
+    const accountId = req.body?.accountId == null ? '' : String(req.body.accountId);
+    if (!platform || !accountId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'platform and accountId are required' });
+    }
     const rows = await listConnections(wsId);
     const target = rows.find((c) => c.platform === platform);
     const allowed = (target?.availableAccounts ?? []).map((a) => String(a.id));

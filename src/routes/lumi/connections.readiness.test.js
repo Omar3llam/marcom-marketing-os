@@ -10,7 +10,7 @@
 // ============================================================
 import express from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { listConnections } = vi.hoisted(() => ({ listConnections: vi.fn() }));
 vi.mock('../../services/connectors/credentialStore.js', () => ({
@@ -55,6 +55,88 @@ const row = (over = {}) => ({
 });
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('P7-05A — one resolved success clock reaches the wire', () => {
+  const now = new Date('2026-10-04T12:00:00.000Z');
+  const recent = '2026-10-04T10:00:00.000Z';
+  const old = '2026-10-02T12:00:00.000Z';
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now); });
+  afterEach(() => vi.useRealTimers());
+  const read = async (over) => {
+    listConnections.mockResolvedValue([row(over)]);
+    return (await get().expect(200)).body.connections[0];
+  };
+
+  it.each([[recent, 'CURRENT', false], [old, 'STALE', true]])(
+    'uses legacy success %s for readiness %s without inventing other outcomes',
+    async (timestamp, readiness, stale) => {
+      const c = await read({ health: null, lastSyncedAt: timestamp });
+      expect(c).toMatchObject({ lastSuccessfulSync: timestamp, lastSyncedAt: timestamp,
+        readiness, readinessKnowledge: 'KNOWN', stale,
+        availability: 'NOT_RECORDED', availabilityKnowledge: 'COULD_NOT_LOOK',
+        completeness: 'NOT_RECORDED', completenessKnowledge: 'COULD_NOT_LOOK' });
+      expect(c.capabilities.find((x) => x.capability === 'DAILY_OBSERVATIONS').lastRun).toBe('NOT_RECORDED');
+      expect(c.health).toBeNull();
+    },
+  );
+
+  it.each([[recent, old, 'CURRENT', false], [old, recent, 'STALE', true]])(
+    'prefers health success %s over column %s, rather than choosing the newest',
+    async (modern, legacy, readiness, stale) => {
+      const h = health({ now: new Date(modern) });
+      const c = await read({ health: h, lastSyncedAt: legacy });
+      expect(c).toMatchObject({ lastSuccessfulSync: modern, lastSyncedAt: legacy, readiness, readinessKnowledge: 'KNOWN', stale });
+      expect(c.health).toEqual(h);
+    },
+  );
+
+  it('preserves never-synced independently from the legacy freshness boolean', async () => {
+    const c = await read({ health: null, lastSyncedAt: null });
+    expect(c).toMatchObject({ lastSuccessfulSync: null, readiness: 'NEVER_SYNCED',
+      readinessKnowledge: 'NOTHING_THERE', stale: true, availability: 'NOT_RECORDED', completeness: 'NOT_RECORDED' });
+  });
+
+  it('a later failed attempt preserves prior successful freshness and partial-data warning', async () => {
+    const previous = health({ now: new Date(recent), warning: 'pagination limit', capabilities: { DAILY_OBSERVATIONS: 'NO_DATA' } });
+    const h = nextHealth(previous, { platform: 'META', ok: false, error: 'rate limited', now });
+    const c = await read({ health: h, lastSyncedAt: recent });
+    expect(c).toMatchObject({ lastSuccessfulSync: recent, readiness: 'CURRENT', stale: false,
+      availability: 'FAILING', completeness: 'INCOMPLETE' });
+    expect(c.health.lastAttemptedSync).toBe(now.toISOString());
+    expect(c.health.lastWarning).toBe('pagination limit');
+    expect(c.capabilities.find((x) => x.capability === 'DAILY_OBSERVATIONS').lastRun).toBe('NO_DATA');
+  });
+
+  it('incomplete success still advances the resolved freshness clock', async () => {
+    const h = nextHealth(health({ now: new Date(old) }), { platform: 'META', ok: true, warning: 'short read', now: new Date(recent) });
+    const c = await read({ health: h, lastSyncedAt: recent });
+    expect(c).toMatchObject({ lastSuccessfulSync: recent, readiness: 'CURRENT',
+      readinessKnowledge: 'KNOWN', stale: false, availability: 'OK', completeness: 'INCOMPLETE' });
+  });
+
+  it.each(['not-a-date', '2026-10-04T13:00:00.000Z'])('withholds malformed/future health evidence %s', async (timestamp) => {
+    const h = { lastSuccessfulSync: timestamp };
+    const c = await read({ health: h, lastSyncedAt: null });
+    expect(c).toMatchObject({ lastSuccessfulSync: null, readiness: null, readinessKnowledge: null, stale: true });
+    expect(c.health).toEqual(h);
+  });
+
+  it.each(['not-a-date', '2026-10-04T13:00:00.000Z'])('withholds malformed/future legacy evidence %s without failing other rows', async (timestamp) => {
+    listConnections.mockResolvedValue([row({ health: null, lastSyncedAt: timestamp }), row({ platform: 'GOOGLE', health: health(), lastSyncedAt: now.toISOString() })]);
+    const { body } = await get().expect(200);
+    expect(body.connections).toHaveLength(2);
+    expect(body.connections[0]).toMatchObject({ lastSyncedAt: timestamp, lastSuccessfulSync: null,
+      readiness: null, readinessKnowledge: null, stale: true, availability: 'NOT_RECORDED', completeness: 'NOT_RECORDED' });
+    expect(body.connections[1].readiness).toBe('CURRENT');
+  });
+
+  it('retains every existing field and adds only display-safe successful time', async () => {
+    const c = await read({ health: null, lastSyncedAt: recent });
+    expect(Object.keys(c).sort()).toEqual(['platform', 'isActive', 'connected', 'stale', 'lastSyncedAt',
+      'lastSuccessfulSync', 'accountId', 'availableAccounts', 'health', 'connection', 'availability',
+      'availabilityKnowledge', 'completeness', 'completenessKnowledge', 'readiness', 'readinessKnowledge', 'capabilities'].sort());
+  });
+});
 
 describe('the five axes are published, separately', () => {
   it('a healthy channel reports all five', async () => {
@@ -183,7 +265,7 @@ describe('C-06 · each axis carries its knowledge token', () => {
     // that need an attempt, NEVER_SYNCED on the one that needs a success. The
     // two are different sentences and C-06 keeps them different — this is the
     // distinction C-04 was fought over, now stated in one language.
-    listConnections.mockResolvedValue([row({ health: null })]);
+    listConnections.mockResolvedValue([row({ health: null, lastSyncedAt: null })]);
     const c = (await get()).body.connections[0];
     expect(c.availabilityKnowledge).toBe('COULD_NOT_LOOK');
     expect(c.completenessKnowledge).toBe('COULD_NOT_LOOK');
