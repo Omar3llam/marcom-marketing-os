@@ -12,6 +12,7 @@ import { api } from '@/lib/api.js';
 
 export function useFatigueForecast() {
   const [forecast, setForecast] = useState([]);
+  const [frequencyCeiling, setFrequencyCeiling] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const aliveRef = useRef(true);
@@ -22,14 +23,18 @@ export function useFatigueForecast() {
     const attempt = ++attemptRef.current;
     setIsLoading(true);
     setError(null);
+    setFrequencyCeiling(null);
     try {
       const res = await api.get('/api/lumi/entities/fatigue');
       if (!aliveRef.current || attempt !== attemptRef.current) return;
       setForecast(Array.isArray(res.data?.forecast) ? res.data.forecast : []);
+      const ceiling = res.data?.frequencyCeiling;
+      setFrequencyCeiling(Array.isArray(res.data?.forecast) && typeof ceiling === 'number' && Number.isFinite(ceiling) && ceiling > 0 ? ceiling : null);
     } catch (err) {
       if (!aliveRef.current || attempt !== attemptRef.current) return;
       setError(err);
       setForecast([]);
+      setFrequencyCeiling(null);
     } finally {
       if (aliveRef.current && attempt === attemptRef.current) setIsLoading(false);
     }
@@ -42,5 +47,5 @@ export function useFatigueForecast() {
     return () => { aliveRef.current = false; ++attempts.current; };
   }, [load]);
 
-  return { forecast, isLoading, error, refetch: load };
+  return { forecast, frequencyCeiling, isLoading, error, refetch: load };
 }

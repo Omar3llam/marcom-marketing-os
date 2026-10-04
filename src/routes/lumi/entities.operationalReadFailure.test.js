@@ -18,6 +18,7 @@ vi.mock('../../services/entity-graph/drillBasis.js', () => ({ drillBasisFor: vi.
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { entitiesRouter } from './entities.js';
+import { FATIGUE_FREQ } from '../../services/verdict-engine/benchmarkProvider.js';
 
 const WS = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -39,6 +40,21 @@ const snapshotFailure = (level, error) => prisma.metricSnapshot.findMany.mockImp
   where.entityLevel === level ? Promise.reject(error) : Promise.resolve([]));
 
 describe('Y9 DB failures through real EntityGraphService and real entity routes', () => {
+  it.each([false, true])('successful fatigue publishes canonical ceiling, empty=%s', async (empty) => {
+    if (!empty) prisma.metricSnapshot.findMany.mockResolvedValue([{
+      entityId: C, entityLevel: 'CAMPAIGN', date: new Date().toISOString(),
+      frequency: FATIGUE_FREQ, ctr: 0.02, reach: 5000,
+    }]);
+    const res = await request(app).get('/entities/fatigue').expect(200);
+    expect(res.body.workspaceId).toBe(WS);
+    expect(Number.isFinite(Date.parse(res.body.generatedAt))).toBe(true);
+    expect(res.body.frequencyCeiling).toBe(FATIGUE_FREQ);
+    expect(res.body.forecast).toHaveLength(empty ? 0 : 1);
+    if (!empty) expect(res.body.forecast[0]).toMatchObject({
+      entityId: C, status: 'SATURATED', exhaustionPct: 100,
+    });
+  });
+
   it.each([
     ['/entities/campaigns', 'EntitiesUnavailable', 'CAMPAIGN'],
     ['/entities/health', 'HealthUnavailable', 'CAMPAIGN'],

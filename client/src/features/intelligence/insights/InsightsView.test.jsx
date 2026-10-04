@@ -70,6 +70,16 @@ const growthSummary = (over = {}) => ({
 const renderBoard = () =>
   render(<MemoryRouter><GrowthStrategyBoard /></MemoryRouter>);
 
+it('passes the API-backed ceiling through to the fatigue panel', () => {
+  useFatigueForecast.mockReturnValue({
+    forecast: [{ entityId: 'c1', name: 'A', status: 'SATURATED', currentFrequency: 4, exhaustionPct: 91 }],
+    frequencyCeiling: 4, isLoading: false, error: null,
+  });
+  renderBoard();
+  expect(screen.getByText('Saturation threshold: frequency ≥ 4 · re-scored each sync')).toBeInTheDocument();
+  expect(screen.getByText(/91% of ceiling/)).toBeInTheDocument();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   useGrowthStrategySummary.mockReturnValue(growthSummary());

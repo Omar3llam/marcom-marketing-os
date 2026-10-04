@@ -25,13 +25,13 @@ import { forecastFatigue }   from './fatigueForecaster.js';
 import { resolvePrediction } from './FatiguePredictionService.js';
 import { selectCanonicalFatigueSnapshots } from './canonicalFatigueEvidence.js';
 import { TEMPORAL }          from '../../config/temporal.js';
+import { FATIGUE_FREQ as CEILING } from '../verdict-engine/benchmarkProvider.js';
 
 // Bounds MetricSnapshot.date — the SYNC timestamp — on rows that are already
 // canonical CUMULATIVE_30D observations. Shares one setting with
 // FatigueForecastService on purpose: two names would let the two drift onto
 // different populations, which is the defect Phase K closed. Value unchanged (30).
 const SYNC_RECENCY_DAYS = TEMPORAL.fatigueSyncRecencyDays;
-const CEILING       = Number(process.env.FATIGUE_CEILING || 3.5);
 const MIN_POINTS    = 2; // the forecaster needs ≥2 to fit a trend
 
 const dayKey = (d) => new Date(d).toISOString().slice(0, 10);

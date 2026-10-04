@@ -25,6 +25,7 @@ import { ENTITY_LEVEL } from '../../services/connectors/connectorTypes.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
 import { classifyCurrencyHomogeneity, currencyUnavailableReason } from '../../lib/currencyHomogeneity.js';
 import { computeFatigueForecast } from '../../services/analysis/FatigueForecastService.js';
+import { FATIGUE_FREQ } from '../../services/verdict-engine/benchmarkProvider.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { prisma } from '../../lib/prisma.js';
@@ -198,7 +199,7 @@ entitiesRouter.get('/entities/fatigue', requireCollabRole(WORKSPACE_ROLE.BUYER, 
   try {
     const campaigns = await getConnectorCampaigns(req.workspaceId);
     const forecast = await computeFatigueForecast(req.workspaceId, campaigns);
-    return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), forecast });
+    return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), frequencyCeiling: FATIGUE_FREQ, forecast });
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] fatigue failed');
     return res.status(500).json({ error: 'FatigueUnavailable', message: 'Request failed' });

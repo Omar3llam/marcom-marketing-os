@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { FatigueForecastPanel } from './FatigueForecastPanel.jsx';
+import { HELP } from '@/lib/helpContent.js';
 
 const row = (o = {}) => ({
   entityId: 'c1', name: 'Ramadan Wave', channel: 'meta',
@@ -15,6 +16,24 @@ const row = (o = {}) => ({
 const renderPanel = (props) => render(<MemoryRouter><FatigueForecastPanel {...props} /></MemoryRouter>);
 
 describe('FatigueForecastPanel', () => {
+  it.each([4, 2.75])('renders only the server ceiling %s, preserving backend exhaustion', (frequencyCeiling) => {
+    renderPanel({ forecast: [row({ exhaustionPct: 91 })], frequencyCeiling });
+    expect(screen.getByText(`Saturation threshold: frequency ≥ ${frequencyCeiling} · re-scored each sync`)).toBeInTheDocument();
+    expect(screen.queryByText(/Saturation threshold: frequency ≥ 3\.5/)).not.toBeInTheDocument();
+    expect(screen.getByText(/91% of ceiling/)).toBeInTheDocument();
+  });
+
+  it.each([undefined, null, 0, -1, NaN, Infinity, '4'])('omits numerical threshold for unavailable ceiling %s', (frequencyCeiling) => {
+    renderPanel({ forecast: [row()], frequencyCeiling });
+    expect(screen.queryByText(/Saturation threshold/)).not.toBeInTheDocument();
+    expect(screen.getByText('saturated now')).toBeInTheDocument();
+  });
+
+  it('explains canonical ceiling without a static number', () => {
+    expect(HELP.FATIGUE_FORECAST.description).not.toContain('3.5');
+    expect(HELP.FATIGUE_FORECAST.description).toMatch(/ceiling/);
+  });
+
   it('renders a skeleton while loading', () => {
     renderPanel({ forecast: [], loading: true });
     expect(screen.getByText(/Loading/)).toBeInTheDocument();

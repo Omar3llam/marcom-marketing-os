@@ -53,7 +53,7 @@ function breachLabel(item) {
   }
 }
 
-export function FatigueForecastPanel({ forecast = [], loading = false, error = null, refetch }) {
+export function FatigueForecastPanel({ forecast = [], frequencyCeiling = null, loading = false, error = null, refetch }) {
   if (loading) {
     return (
       <section className="mb-10">
@@ -134,9 +134,11 @@ export function FatigueForecastPanel({ forecast = [], loading = false, error = n
         })}
       </ul>
 
-      <p className="mt-3 font-mono text-[10px] text-lumi-subtle">
-        Saturation threshold: frequency ≥ 3.5 · re-scored each sync
-      </p>
+      {typeof frequencyCeiling === 'number' && Number.isFinite(frequencyCeiling) && frequencyCeiling > 0 && (
+        <p className="mt-3 font-mono text-[10px] text-lumi-subtle">
+          Saturation threshold: frequency ≥ {frequencyCeiling} · re-scored each sync
+        </p>
+      )}
     </section>
   );
 }

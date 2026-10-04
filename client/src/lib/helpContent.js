@@ -42,7 +42,7 @@ export const HELP = {
   },
   FATIGUE_FORECAST: {
     title: 'Fatigue Forecast',
-    description: 'Projects when each campaign’s audience will saturate — frequency reaching ~3.5 — by fitting how fast frequency is rising across recent daily syncs. Re-scored on every sync; a campaign with flat or falling frequency reads as stable, and one already past the ceiling as saturated now. Where Meta reports it, reach (unique people reached) is shown, and “% of ceiling” is how far current frequency sits toward the 3.5× saturation line.',
+    description: 'Projects when each campaign’s audience will saturate — frequency reaching the canonical fatigue ceiling — by fitting how fast frequency is rising across recent daily syncs. Re-scored on every sync; a campaign with flat or falling frequency reads as stable, and one already past the ceiling as saturated now. Where Meta reports it, reach (unique people reached) is shown, and “% of ceiling” is how far current frequency sits toward that ceiling.',
   },
   ACCOUNT_HEALTH: {
     title: 'Account Health (0–100)',

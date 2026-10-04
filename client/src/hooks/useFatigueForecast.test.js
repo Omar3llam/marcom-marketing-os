@@ -11,6 +11,44 @@ vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 describe('useFatigueForecast', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it.each([4, 2.75])('carries the published ceiling %s on successful empty', async (frequencyCeiling) => {
+    api.get.mockResolvedValueOnce({ data: { forecast: [], frequencyCeiling } });
+    const { result } = renderHook(() => useFatigueForecast());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.frequencyCeiling).toBe(frequencyCeiling);
+    expect(result.current.forecast).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it.each([undefined, null, 0, -1, NaN, Infinity, '4'])('has no fallback for invalid ceiling %s', async (frequencyCeiling) => {
+    api.get.mockResolvedValueOnce({ data: { forecast: [{ entityId: 'c1' }], frequencyCeiling } });
+    const { result } = renderHook(() => useFatigueForecast());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.frequencyCeiling).toBeNull();
+    expect(result.current.forecast).toEqual([{ entityId: 'c1' }]);
+  });
+
+  it('does not publish ceiling from a malformed forecast envelope', async () => {
+    api.get.mockResolvedValueOnce({ data: { frequencyCeiling: 4 } });
+    const { result } = renderHook(() => useFatigueForecast());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.frequencyCeiling).toBeNull();
+  });
+
+  it('clears previous ceiling during retry and after failure', async () => {
+    api.get.mockResolvedValueOnce({ data: { forecast: [], frequencyCeiling: 4 } });
+    const { result } = renderHook(() => useFatigueForecast());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    let rejectRetry;
+    api.get.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRetry = reject; }));
+    let retry;
+    act(() => { retry = result.current.refetch(); });
+    expect(result.current.frequencyCeiling).toBeNull();
+    await act(async () => { rejectRetry(new Error('500')); await retry; });
+    expect(result.current.frequencyCeiling).toBeNull();
+    expect(result.current.error).toBeTruthy();
+  });
+
   it('loads the forecast from /api/lumi/entities/fatigue', async () => {
     api.get.mockResolvedValueOnce({ data: { forecast: [{ entityId: 'c1', name: 'A', status: 'SATURATED' }] } });
     const { result } = renderHook(() => useFatigueForecast());
@@ -46,28 +84,31 @@ describe('useFatigueForecast', () => {
     let retry;
     act(() => { retry = result.current.refetch(); });
     await act(async () => {
-      if (outcome === 'resolve') resolveOld({ data: { forecast: [{ entityId: 'old' }] } });
+      if (outcome === 'resolve') resolveOld({ data: { forecast: [{ entityId: 'old' }], frequencyCeiling: 9 } });
       else rejectOld(new Error('old failure'));
     });
     expect(result.current.isLoading).toBe(true);
     expect(result.current.error).toBeNull();
     expect(result.current.forecast).toEqual([]);
+    expect(result.current.frequencyCeiling).toBeNull();
     await act(async () => {
-      resolveNew({ data: { forecast: [{ entityId: 'new' }] } });
+      resolveNew({ data: { forecast: [{ entityId: 'new' }], frequencyCeiling: 4 } });
       await retry;
     });
     expect(result.current.isLoading).toBe(false);
     expect(result.current.forecast).toEqual([{ entityId: 'new' }]);
+    expect(result.current.frequencyCeiling).toBe(4);
   });
 
   it('a late older response cannot replace the latest successful retry', async () => {
     let resolveOld;
     api.get.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
     const { result } = renderHook(() => useFatigueForecast());
-    api.get.mockResolvedValueOnce({ data: { forecast: [{ entityId: 'new' }] } });
+    api.get.mockResolvedValueOnce({ data: { forecast: [{ entityId: 'new' }], frequencyCeiling: 4 } });
     await act(async () => { await result.current.refetch(); });
-    await act(async () => { resolveOld({ data: { forecast: [{ entityId: 'old' }] } }); });
+    await act(async () => { resolveOld({ data: { forecast: [{ entityId: 'old' }], frequencyCeiling: 9 } }); });
     expect(result.current.forecast).toEqual([{ entityId: 'new' }]);
+    expect(result.current.frequencyCeiling).toBe(4);
   });
 
   it('unmount invalidates pending work and retained refetch cannot start another read', async () => {

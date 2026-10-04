@@ -180,9 +180,9 @@ describe('P7-02A — real fatigue rejection reaches the surface', () => {
     fireEvent.click(within(section).getByRole('button', { name: 'Try again' }));
     expect(screen.queryByText(/couldn.t read fatigue forecast/i)).not.toBeInTheDocument();
     expect(screen.getByText('Fatigue Forecast').closest('section').textContent).toContain('Loading…');
-    await act(async () => { resolveRead({ data: { forecast: [fatigueRow] } }); });
+    await act(async () => { resolveRead({ data: { forecast: [fatigueRow], frequencyCeiling: 4 } }); });
     expect(screen.getByRole('link', { name: /Forecast campaign/ })).toBeInTheDocument();
     expect(screen.getByText('saturated now')).toBeInTheDocument();
-    expect(screen.getByText(/Saturation threshold: frequency ≥ 3.5/)).toBeInTheDocument();
+    expect(screen.getByText(/Saturation threshold: frequency ≥ 4/)).toBeInTheDocument();
   });
 });
