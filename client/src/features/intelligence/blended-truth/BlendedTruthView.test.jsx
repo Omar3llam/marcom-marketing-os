@@ -6,7 +6,7 @@
 // carries the right target for a STRATEGIST viewer.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import BlendedTruth, { BlendedTruthView } from './BlendedTruthView.jsx';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
@@ -25,11 +25,95 @@ vi.mock('../IntelligenceSubNav.jsx', () => ({ default: () => null }));
 
 const data = {
   channels: [
-    { channelId: 'meta', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2, blendedRevenueEfficiency: { status: 'VALID', value: 2.2 }, gapPct: 29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD' },
-    { channelId: 'google', channel: 'GOOGLE', platformRoas: 2.0, blendedRoas: 1.5, blendedRevenueEfficiency: { status: 'VALID', value: 1.5 }, gapPct: 25, coverage: 'PARTIAL', confidence: 'MED', currency: 'USD' },
+    { channelId: 'meta', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2, blendedRevenueEfficiency: { status: 'VALID', value: 2.2 }, gapPct: 0.29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD' },
+    { channelId: 'google', channel: 'GOOGLE', platformRoas: 2.0, blendedRoas: 1.5, blendedRevenueEfficiency: { status: 'VALID', value: 1.5 }, gapPct: 0.25, coverage: 'PARTIAL', confidence: 'MED', currency: 'USD' },
   ],
-  portfolio: { platformRoas: 2.7, blendedRoas: 1.9, blendedRevenueEfficiency: { status: 'VALID', value: 1.9 }, gapPct: 30, gapMinor: 120000, reconciledCount: 1, unverifiedCount: 1 },
+  portfolio: { platformRoas: 2.7, blendedRoas: 1.9, blendedRevenueEfficiency: { status: 'VALID', value: 1.9 }, gapPct: 0.30, gapMinor: 120000, reconciledCount: 1, unverifiedCount: 1 },
 };
+
+describe('BlendedTruthView — signed ratio gap truth', () => {
+  const portfolioData = (over = {}) => ({
+    ...data,
+    portfolio: { ...data.portfolio, monetaryStatus: 'MONETARY_VALID', currency: 'USD', ...over },
+  });
+  const show = (over = {}, role = 'BUYER', channels = data.channels) => render(
+    <MemoryRouter>
+      <BlendedTruthView data={{ ...portfolioData(over), channels }} role={role} />
+    </MemoryRouter>,
+  );
+
+  it.each([
+    [0.25, 120000, 'above'],
+    [-0.25, -120000, 'below'],
+  ])('renders signed ratio %s with absolute money and direction', (gapPct, gapMinor, direction) => {
+    show({ gapPct, gapMinor });
+    const sentence = screen.getByText(new RegExp(`25% ${direction}`));
+    expect(sentence).toHaveTextContent('$1,200');
+    expect(sentence).toHaveTextContent('of platform-reported revenue');
+    expect(sentence).not.toHaveTextContent('-$');
+    expect(sentence).not.toHaveClass('text-signal-kill', 'text-signal-scale');
+    expect(screen.queryByText(/Over-reported|over-allocated/i)).not.toBeInTheDocument();
+  });
+
+  it('renders zero as a neutral match', () => {
+    show({ gapPct: 0, gapMinor: 0 });
+    const sentence = screen.getByText(/matches blended revenue for this comparison/i);
+    expect(sentence).not.toHaveClass('text-signal-kill', 'text-signal-scale');
+    expect(screen.queryByText(/Over-reported|0%/i)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { gapPct: null }, { gapMinor: null }, { currency: null },
+    { monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED' },
+    { gapPct: Number.NaN }, { gapMinor: Number.POSITIVE_INFINITY },
+  ])('withholds partial or unavailable portfolio evidence: %j', (over) => {
+    show({ gapPct: 0.25, gapMinor: 120000, ...over });
+    expect(screen.getByText(/^Monetary comparison unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText(/25% above|matches blended revenue|\$1,200/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [0.256, 120000, '26% above'],
+    [0.004, 100, '0% above'],
+    [-0.004, -100, '0% below'],
+    [0.006, 100, '1% above'],
+  ])('rounds magnitude consistently without rounding direction: %s', (gapPct, gapMinor, text) => {
+    show({ gapPct, gapMinor });
+    expect(screen.getByText(new RegExp(text))).toBeInTheDocument();
+  });
+
+  it.each([
+    [0.29, '29% above'], [-0.10, '10% below'], [0, '0%'], [null, '—'],
+    [0.256, '26% above'], [-0.004, '0% below'], [Number.NaN, '—'],
+  ])('renders channel gap %s neutrally as %s', (gapPct, text) => {
+    show({}, 'STRATEGIST', [{ ...data.channels[0], gapPct }]);
+    const row = screen.getByRole('link', { name: 'META' }).closest('tr');
+    const cell = within(row).getAllByRole('cell')[3];
+    expect(cell).toHaveTextContent(text);
+    expect(cell.textContent).toBe(text);
+    expect(cell).not.toHaveClass('text-signal-kill', 'text-signal-scale');
+  });
+
+  it('preserves the stale warning and historical comparison', () => {
+    show({ gapPct: -0.25, gapMinor: -120000 }, 'STRATEGIST',
+      data.channels.map((channel) => ({ ...channel, stale: true })));
+    expect(screen.getByText(/data is stale/)).toBeInTheDocument();
+    expect(screen.getByText(/25% below/)).toBeInTheDocument();
+  });
+
+  it('keeps the single-channel state without a portfolio hero', () => {
+    show({ gapPct: 0.25, gapMinor: 120000 }, 'BUYER', [data.channels[0]]);
+    expect(screen.getByText(/reconciles across ≥2 channels/)).toBeInTheDocument();
+    expect(screen.queryByText(/Platform claims vs reality/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/25% above/)).not.toBeInTheDocument();
+  });
+
+  it.each(['BUYER', 'STRATEGIST'])('preserves %s detail visibility', (role) => {
+    show({ gapPct: 0.25, gapMinor: 120000 }, role);
+    expect(screen.getByText(/Revenue gap: 25% above/)).toBeInTheDocument();
+    expect(Boolean(screen.queryByRole('table'))).toBe(role === 'STRATEGIST');
+  });
+});
 
 describe('BlendedTruthView — channel cross-link', () => {
   it('links each channel name to the Campaigns page filtered by that channel', () => {
@@ -48,7 +132,7 @@ describe('BlendedTruthView — channel cross-link', () => {
 describe('BlendedTruthView — channel identity fallback', () => {
   const row = (over) => ({
     channelId: '4e7f8d9b-uuid', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2,
-    gapPct: 29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD', ...over,
+    gapPct: 0.29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD', ...over,
   });
   const renderRow = (over) =>
     render(
@@ -121,6 +205,27 @@ describe('BlendedTruth (wrapper) — tier gate', () => {
     renderWrapper();
     expect(screen.getAllByText(/SPEND_CURRENCY_MIXED/).length).toBeGreaterThan(0);
     expect(screen.queryByText('USD')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
+  });
+
+  it.each([
+    [0.25, 120000], [-0.25, -120000], [0, 0], [null, null],
+  ])('keeps allocation eligibility independent of gap direction: %s', (gapPct, gapMinor) => {
+    useBlendedTruth.mockReturnValue({ data: {
+      ...data, portfolio: { ...data.portfolio, currency: 'USD', monetaryStatus: 'MONETARY_VALID', gapPct, gapMinor },
+    }, loading: false, error: null, gated: false });
+    renderWrapper();
+    fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /preview allocation/i }));
+    expect(previewAllocation).toHaveBeenCalledWith({ totalBudgetMinor: 50000, totalBudgetCurrency: 'USD' });
+  });
+
+  it('keeps allocation disabled without authoritative efficiency even when gap is valid', () => {
+    useBlendedTruth.mockReturnValue({ data: {
+      ...data, portfolio: { ...data.portfolio, currency: 'USD', monetaryStatus: 'MONETARY_VALID',
+        gapPct: 0.25, gapMinor: 120000, blendedRevenueEfficiency: { status: 'UNAVAILABLE', value: null } },
+    }, loading: false, error: null, gated: false });
+    renderWrapper();
     expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
   });
 });
