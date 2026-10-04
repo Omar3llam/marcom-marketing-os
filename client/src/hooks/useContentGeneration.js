@@ -15,7 +15,6 @@ export function useContentGeneration() {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState(null);
 
   /**
    * Generate content with options
@@ -32,7 +31,6 @@ export function useContentGeneration() {
   }) => {
     setLoading(true);
     setError(null);
-    setProgress(null);
     setContent(null);
 
     try {
@@ -47,8 +45,6 @@ export function useContentGeneration() {
         format,
         dimensions,
       });
-
-      setProgress(100);
 
       if (response.data?.status === 'ok' && response.data?.content) {
         setContent(response.data.content);
@@ -73,7 +69,6 @@ export function useContentGeneration() {
     setContent(null);
     setLoading(false);
     setError(null);
-    setProgress(null);
   }, []);
 
   return {
@@ -81,7 +76,6 @@ export function useContentGeneration() {
     content,
     loading,
     error,
-    progress,
     reset,
   };
 }

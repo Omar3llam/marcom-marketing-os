@@ -8,7 +8,24 @@
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { OutputDone } from './OutputComponents.jsx';
+import { OutputDone, OutputGenerating } from './OutputComponents.jsx';
+
+describe('OutputGenerating — request truth', () => {
+  it('does not invent stages or engine telemetry while waiting', () => {
+    const { container } = render(<OutputGenerating />);
+    expect(screen.queryAllByText(/Reading diagnosis|Loading brand voice|Drafting copy|Composing visuals|Pressure-testing|Intelligence Engine Active/i)).toHaveLength(0);
+    expect(container.textContent).not.toMatch(/\d+%|countdown|finalizing|complete|done/i);
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('announces the pending request with understandable visible copy', () => {
+    render(<OutputGenerating />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toHaveAttribute('aria-atomic', 'true');
+    expect(screen.getByText('Generating content…')).toBeVisible();
+  });
+});
 
 const STRATEGY = {
   objective: 'Book private viewings',

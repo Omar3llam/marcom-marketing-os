@@ -11,13 +11,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const generateSpy = vi.fn();
+const resetSpy = vi.fn();
 
 vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { id: 'ws' } }) }));
 vi.mock('@/hooks/useOnboardingContext.js', () => ({ useOnboardingContext: vi.fn() }));
 vi.mock('@/hooks/useContentGeneration.js', () => ({
-  useContentGeneration: () => ({
-    generate: generateSpy, content: null, loading: false, error: null, progress: null, reset: vi.fn(),
-  }),
+  useContentGeneration: vi.fn(),
 }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
@@ -28,6 +27,7 @@ import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useContentHistory } from '@/hooks/useContentHistory.js';
+import { useContentGeneration } from '@/hooks/useContentGeneration.js';
 
 const ONBOARDING = {
   name: 'Acme', industry: 'ecommerce',
@@ -46,10 +46,59 @@ const renderView = () => render(<MemoryRouter><ContentLabView /></MemoryRouter>)
 
 beforeEach(() => {
   generateSpy.mockReset();
+  resetSpy.mockReset();
+  useContentGeneration.mockReturnValue({
+    generate: generateSpy, content: null, loading: false, error: null, reset: resetSpy,
+  });
   useOnboardingContext.mockReturnValue({ context: ONBOARDING, loading: false, error: null });
   useConnectorCampaigns.mockReturnValue({ campaigns: CAMPAIGNS, loading: false, error: null, refetch: vi.fn() });
   useConnectorVerdicts.mockReturnValue({ verdicts: [], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
   useContentHistory.mockReturnValue({ generations: [], isLoading: false, error: null, refetch: vi.fn() });
+});
+
+describe('ContentLabView — real request state routing', () => {
+  it('routes loading to honest waiting without fake progress or premature output', () => {
+    useContentGeneration.mockReturnValue({
+      generate: generateSpy, content: { copy: [{ tag: 'STORY', text: 'Previous response' }] },
+      loading: true, error: null, reset: resetSpy,
+    });
+    const { container } = renderView();
+    expect(screen.queryAllByText(/Reading diagnosis|Loading brand voice|Drafting copy|Composing visuals|Pressure-testing|Intelligence Engine Active/i)).toHaveLength(0);
+    expect(container.querySelector('.animate-progress-sweep')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generating content, please wait' })).toBeDisabled();
+    expect(screen.queryByText('Previous response')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Generated ·/)).not.toBeInTheDocument();
+  });
+
+  it('keeps idle empty output and actual error/reset distinct without clearing form input', () => {
+    const view = renderView();
+    expect(screen.getByText('Pick what to generate')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/golf villa/i), { target: { value: 'Operator brief' } });
+    useContentGeneration.mockReturnValue({
+      generate: generateSpy, content: null, loading: false, error: 'Provider refused this request', reset: resetSpy,
+    });
+    view.rerender(<MemoryRouter><ContentLabView /></MemoryRouter>);
+    expect(screen.getByText('Generation failed')).toBeInTheDocument();
+    expect(screen.getByText('Provider refused this request')).toBeInTheDocument();
+    expect(screen.queryByText('Pick what to generate')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByPlaceholderText(/golf villa/i)).toHaveValue('Operator brief');
+  });
+
+  it('routes actual successful content to output and preserves regenerate', () => {
+    useContentGeneration.mockReturnValue({
+      generate: generateSpy, content: { copy: [{ tag: 'STORY', text: 'Actual response copy' }] },
+      loading: false, error: null, reset: resetSpy,
+    });
+    renderView();
+    expect(screen.getByText('Actual response copy')).toBeInTheDocument();
+    expect(screen.queryByText('Pick what to generate')).not.toBeInTheDocument();
+    expect(screen.queryByText('Generating content…')).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn.t generate headlines/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ContentLabView — tone is grounded in onboarding and overridable', () => {
