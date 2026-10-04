@@ -12,7 +12,7 @@
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GATING_REASON } from '@marcom/runtime-contracts';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useGrowthStrategySummary } from './useGrowthStrategySummary.js';
 import { useConnectorCampaigns } from './useConnectorCampaigns.js';
 import { useConnectorVerdicts } from './useConnectorVerdicts.js';
@@ -27,6 +27,40 @@ const mkCampaigns = (n) => Array.from({ length: n }, (_, i) => ({ entityId: `c${
 const mkVerdict   = (verdict) => ({ id: verdict, verdict });
 
 const run = () => renderHook(() => useGrowthStrategySummary()).result.current;
+
+describe('P7-02A — composition recovery ownership', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('exposes a stable explicit recovery that refreshes both required sources', async () => {
+    const cRefetch = vi.fn().mockResolvedValue(undefined);
+    const vRefetch = vi.fn().mockResolvedValue(undefined);
+    useConnectorCampaigns.mockReturnValue(campaignsHook({ refetch: cRefetch }));
+    useConnectorVerdicts.mockReturnValue(verdictsHook({ refetch: vRefetch }));
+    const { result, rerender } = renderHook(() => useGrowthStrategySummary());
+    const recovery = result.current.refetch;
+    rerender();
+    expect(result.current.refetch).toBe(recovery);
+    expect(cRefetch).not.toHaveBeenCalled();
+    expect(vRefetch).not.toHaveBeenCalled();
+    await act(async () => { await recovery(); });
+    expect(cRefetch).toHaveBeenCalledTimes(1);
+    expect(vRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [new Error('network'), null, true],
+    [null, { httpStatus: 500 }, true],
+    [{ httpStatus: 429 }, { response: { status: 408 } }, true],
+    [{ httpStatus: 500 }, { httpStatus: 403 }, false],
+    [{ httpStatus: 403 }, { httpStatus: 500 }, false],
+    [new Error('Campaigns response failed contract validation'), null, false],
+    [null, { context: { roleReason: 'ROLE_UNKNOWN' } }, false],
+  ])('all failed sources must permit retry: %j / %j', (cError, vError, expected) => {
+    useConnectorCampaigns.mockReturnValue(campaignsHook({ error: cError }));
+    useConnectorVerdicts.mockReturnValue(verdictsHook({ error: vError }));
+    expect(run().canRetry).toBe(expected);
+  });
+});
 
 describe('useGrowthStrategySummary', () => {
   beforeEach(() => vi.clearAllMocks());

@@ -46,8 +46,8 @@ import { ApprovalsPanel } from './ApprovalsPanel.jsx';
 export default function GrowthStrategyBoard() {
   // The connector substrate, so this count matches CampaignsView rather than
   // "campaigns with a pending Action" — a population that stopped growing at B3-C.
-  const { summary: growth, loading: growthLoading } = useGrowthStrategySummary();
-  const { forecast: fatigueForecast, isLoading: fatigueLoading } = useFatigueForecast();
+  const { summary: growth, loading: growthLoading, error: growthError, refetch: refetchGrowth, canRetry: canRetryGrowth } = useGrowthStrategySummary();
+  const { forecast: fatigueForecast, isLoading: fatigueLoading, error: fatigueError, refetch: refetchFatigue } = useFatigueForecast();
   const { role: collabRole } = useCollabRole();
   const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
   const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
@@ -113,8 +113,17 @@ export default function GrowthStrategyBoard() {
         />
         <MetricCard
           label="Active Campaigns"
-          primary={growthLoading ? '…' : growth.total}
-          secondary={growthLoading ? 'Loading…' : <ActiveCampaignsBreakdown g={growth} />}
+          primary={growthLoading ? '…' : growthError ? '—' : growth.total}
+          secondary={growthLoading ? 'Loading…' : growthError ? (
+            <span role="alert">
+              Couldn’t read campaign strategy data.
+              {canRetryGrowth && (
+                <button type="button" onClick={refetchGrowth} className="ml-2 underline">
+                  Try again
+                </button>
+              )}
+            </span>
+          ) : <ActiveCampaignsBreakdown g={growth} />}
         />
       </section>
 
@@ -122,7 +131,7 @@ export default function GrowthStrategyBoard() {
           above it. Both read the retired CampaignState feed; see the header. */}
 
       {/* ── FATIGUE FORECAST (forward signal · per-campaign, named) ─── */}
-      <FatigueForecastPanel forecast={fatigueForecast} loading={fatigueLoading} />
+      <FatigueForecastPanel forecast={fatigueForecast} loading={fatigueLoading} error={fatigueError} refetch={refetchFatigue} />
 
       {/* ── FE-02 · the ACROSS axis left this board ──────────────
           The "System Learnings — The Memory Layer" timeline and the account

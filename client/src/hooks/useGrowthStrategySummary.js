@@ -32,7 +32,9 @@
 // layers — CampaignState.stage / Action verdict / connector engine verdict.
 // A future rename (LifecycleStage vs OptimizationVerdict) would disambiguate.
 // ============================================================
+import { useCallback } from 'react';
 import { summarizeGatedOut } from '@/features/campaigns/gatingReasonCopy.js';
+import { isRetryableReadError } from '@/design-system/states/readStatus.js';
 import { useConnectorCampaigns } from './useConnectorCampaigns.js';
 import { useConnectorVerdicts } from './useConnectorVerdicts.js';
 
@@ -53,15 +55,23 @@ const EMPTY_SUMMARY = Object.freeze({
 });
 
 export function useGrowthStrategySummary() {
-  const { campaigns, loading: cLoading, error: cError } = useConnectorCampaigns();
-  const { verdicts, gatedOut, loading: vLoading, error: vError } = useConnectorVerdicts();
+  const { campaigns, loading: cLoading, error: cError, refetch: refetchCampaigns } = useConnectorCampaigns();
+  const { verdicts, gatedOut, loading: vLoading, error: vError, refetch: refetchVerdicts } = useConnectorVerdicts();
+  const refetch = useCallback(() => Promise.all([
+    refetchCampaigns(),
+    refetchVerdicts(),
+  ]), [refetchCampaigns, refetchVerdicts]);
 
   const loading = cLoading || vLoading;
   const error   = cError || vError;
+  // Both sources are required. A transient failure cannot authorize a blind
+  // retry while the other source has a permanent/contract refusal.
+  const canRetry = !loading && Boolean(error)
+    && [cError, vError].filter(Boolean).every(isRetryableReadError);
 
   // Always return a stable shape — never a null summary.
-  if (loading) return { loading: true,  error: null,  summary: { ...EMPTY_SUMMARY } };
-  if (error)   return { loading: false, error,        summary: { ...EMPTY_SUMMARY } };
+  if (loading) return { loading: true,  error: null,  summary: { ...EMPTY_SUMMARY }, refetch, canRetry };
+  if (error)   return { loading: false, error,        summary: { ...EMPTY_SUMMARY }, refetch, canRetry };
 
   // total: the same connector array CampaignsView counts (no revenue filter).
   const total = campaigns?.length ?? 0;
@@ -95,6 +105,8 @@ export function useGrowthStrategySummary() {
   return {
     loading: false,
     error:   null,
+    refetch,
+    canRetry,
     summary: {
       total,
       byVerdict,

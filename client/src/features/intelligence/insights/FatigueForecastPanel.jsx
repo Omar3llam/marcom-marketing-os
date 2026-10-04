@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils.js';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
+import { isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 const STATUS = {
   SATURATED: { text: 'text-signal-kill',  bg: 'bg-signal-kill-bg'  },
@@ -52,13 +53,29 @@ function breachLabel(item) {
   }
 }
 
-export function FatigueForecastPanel({ forecast = [], loading = false }) {
+export function FatigueForecastPanel({ forecast = [], loading = false, error = null, refetch }) {
   if (loading) {
     return (
       <section className="mb-10">
         <div className="section-label">Fatigue Forecast</div>
         <div className="mt-3 rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">
           Loading…
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="mb-10">
+        <div className="section-label">Fatigue Forecast</div>
+        <div role="alert" className="mt-3 rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">
+          Couldn’t read fatigue forecast.
+          {isRetryableReadError(error) && typeof refetch === 'function' && (
+            <button type="button" onClick={refetch} className="ml-2 underline">
+              Try again
+            </button>
+          )}
         </div>
       </section>
     );
