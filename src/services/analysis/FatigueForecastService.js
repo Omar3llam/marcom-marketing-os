@@ -26,8 +26,8 @@ import {
   selectCanonicalFatigueSnapshots, latestCanonicalByEntity,
 } from '../fatigue-forecaster/canonicalFatigueEvidence.js';
 import { TEMPORAL } from '../../config/temporal.js';
+import { FATIGUE_FREQ as CEILING } from '../verdict-engine/benchmarkProvider.js';
 
-const CEILING       = Number(process.env.FATIGUE_CEILING || 3.5);       // matches signalRules FREQUENCY_HIGH
 // Bounds MetricSnapshot.date — the SYNC timestamp — on rows that are ALREADY
 // canonical CUMULATIVE_30D observations. Two different periods, and only the
 // second is the measurement: this bound decides how many 30-day observations to

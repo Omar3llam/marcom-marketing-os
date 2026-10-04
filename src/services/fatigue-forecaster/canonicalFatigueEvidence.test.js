@@ -43,6 +43,10 @@ import { sweepFatigue } from './FatigueSweepService.js';
 import { computeFatigueForecast } from '../analysis/FatigueForecastService.js';
 import { gatherLeadingSignals } from '../scenario-engine/ScenarioService.js';
 import { FATIGUE_FREQ } from '../verdict-engine/benchmarkProvider.js';
+import { diagnoseSignals } from '../diagnosis-engine/DiagnosisEngine.js';
+import { SIGNAL_TYPE } from '../diagnosis-engine/diagnosisTypes.js';
+import { evaluateVerdict } from '../verdict-engine/verdictEngine.js';
+import { VERDICT } from '../verdict-engine/verdictTypes.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const src = (rel) => readFileSync(path.resolve(HERE, rel), 'utf8');
@@ -318,6 +322,30 @@ describe('I · EntityGraphService.latestSnapshots stays operational', () => {
 
 // ── J · the threshold is untouched ──────────────────────────────────────────
 describe('J · FATIGUE_FREQ is not recalibrated', () => {
+  for (const rel of ['../analysis/FatigueForecastService.js', './FatigueSweepService.js']) {
+    it(`${rel} consumes the canonical authority and retires the environment override`, () => {
+      expect(src(rel)).toMatch(/import\s*\{\s*FATIGUE_FREQ(?:\s+as\s+CEILING)?\s*\}\s*from\s*['"]\.\.\/verdict-engine\/benchmarkProvider\.js['"]/);
+      expect(src(rel)).not.toContain('process.env.FATIGUE_CEILING');
+    });
+  }
+
+  it('diagnosis, both verdict tracks, forecast and sweep agree exactly at FATIGUE_FREQ', async () => {
+    const metrics = { ctr: 0.8, cpc: 1, cpm: 8, frequency: FATIGUE_FREQ, spend: 500, conversions: 30 };
+    expect(diagnoseSignals(metrics).signals[0].signalType).toBe(SIGNAL_TYPE.CREATIVE_FATIGUE);
+    for (const revenue of [{ roas: 2.5 }, { roas: null, revenueMeasured: false }]) {
+      expect(evaluateVerdict({ level: 'ADSET', metrics: { ...metrics, ...revenue } }).verdict).toBe(VERDICT.REFRESH);
+    }
+    prisma.metricSnapshot.findMany.mockResolvedValue(canon('c1', 'CAMPAIGN', [FATIGUE_FREQ - 0.2, FATIGUE_FREQ]));
+    const [row] = await computeFatigueForecast('ws1', [{ entityId: 'c1', name: 'A', channel: 'meta' }]);
+    expect(row.status).toBe('SATURATED');
+    expect(row.daysUntilSaturation).toBe(0);
+    expect(row.exhaustionPct).toBe(100);
+    expect((await sweepFatigue('ws1')).written).toBe(1);
+    const [prediction] = prisma.fatiguePrediction.createMany.mock.calls[0][0].data;
+    expect(prediction.ceiling).toBe(FATIGUE_FREQ);
+    expect(prediction.projectedBreachDate).toEqual(new Date(day(2)));
+  });
+
   it('is still exactly 3.5', () => {
     expect(FATIGUE_FREQ).toBe(3.5);
   });
