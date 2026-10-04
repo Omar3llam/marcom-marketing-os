@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { channelGapText, gapPresentation } from './gapPresentation.js';
 
 describe('gap presentation — existing ratio contract', () => {
+  it('does not manufacture a percentage for null ratio and signed zero-denominator money', () => {
+    expect(gapPresentation(null, -120000)).toEqual({
+      direction: 'UNAVAILABLE', pctText: '—', magnitudeMinor: null,
+    });
+    expect(channelGapText(null)).toBe('—');
+  });
   it.each([
     [0.25, 120000, 'ABOVE', '25%', 120000],
     [-0.25, -120000, 'BELOW', '25%', 120000],

@@ -62,6 +62,17 @@ describe('BlendedTruthView — signed ratio gap truth', () => {
     expect(screen.queryByText(/Over-reported|0%/i)).not.toBeInTheDocument();
   });
 
+  it('withholds an undefined zero-denominator percentage despite a proven signed money gap', () => {
+    show({ platformRevenueMinor: 0, blendedRevenueMinor: 120000, gapPct: null, gapMinor: -120000 },
+      'STRATEGIST', data.channels.map((channel) => ({
+        ...channel, platformRevenueMinor: 0, blendedRevenueMinor: 120000, gapPct: null, gapMinor: -120000,
+      })));
+    expect(screen.getByText(/^Monetary comparison unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText(/0% below|—% below|100% below|infinite|matches blended revenue/i)).not.toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    for (const row of rows) expect(within(row).getAllByRole('cell')[3].textContent).toBe('—');
+  });
+
   it.each([
     { gapPct: null }, { gapMinor: null }, { currency: null },
     { monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED' },

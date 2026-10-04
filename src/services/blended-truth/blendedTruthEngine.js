@@ -49,6 +49,11 @@ function roas(revenueMinor, spendMinor) {
   return spendMinor > 0 ? revenueMinor / spendMinor : 0;
 }
 
+function gapRatio(platformRevenueMinor, gapMinor) {
+  if (platformRevenueMinor > 0) return gapMinor / platformRevenueMinor;
+  return platformRevenueMinor === 0 && gapMinor === 0 ? 0 : null;
+}
+
 const valid = (state) => state?.monetaryStatus === MONETARY_STATUS.VALID;
 
 function aggregateUnit(channels, field, evidenceKey) {
@@ -107,7 +112,7 @@ export function reconcile({ channels } = {}) {
     // (positive ⇒ platform inflated). For unverified channels gap is 0
     // by construction (blended == platform) — the LOW flag carries the warning.
     const gapMinor = platformRevenueMinor - blendedRevenueMinor;
-    const gapPct   = platformRevenueMinor > 0 ? gapMinor / platformRevenueMinor : 0;
+    const gapPct   = gapRatio(platformRevenueMinor, gapMinor);
 
     return {
       channelId:           c.channelId,
@@ -146,7 +151,7 @@ export function reconcile({ channels } = {}) {
     { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, reconciledCount: 0, unverifiedCount: 0 },
   );
   portfolio.gapMinor     = portfolio.platformRevenueMinor - portfolio.blendedRevenueMinor;
-  portfolio.gapPct       = portfolio.platformRevenueMinor > 0 ? portfolio.gapMinor / portfolio.platformRevenueMinor : 0;
+  portfolio.gapPct       = gapRatio(portfolio.platformRevenueMinor, portfolio.gapMinor);
   portfolio.platformRoas = roas(portfolio.platformRevenueMinor, portfolio.spendMinor);
   portfolio.blendedRoas  = roas(portfolio.blendedRevenueMinor, portfolio.spendMinor);
 
