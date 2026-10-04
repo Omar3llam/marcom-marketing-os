@@ -36,7 +36,7 @@ const adSets = [
 // panel no longer ranks these rows itself.
 const evidence = {
   dimension: 'ADSET', metric: 'ctr', ranked: adSets,
-  summary: { bottom: adSets[0], top: adSets[1], outliers: [adSets[0]] },
+  summary: { bottom: { ...adSets[0], _gap: -0.80 }, top: adSets[1], outliers: [adSets[0]] },
   dataConfidence: 0.8,
 };
 
@@ -47,24 +47,24 @@ beforeEach(() => {
 });
 
 describe('ExecutionContext', () => {
-  const setup = () => render(<ExecutionContext campaign={campaign()} evidence={evidence} verdict="KILL" />);
+  const setup = () => render(<ExecutionContext campaign={campaign()} parent={{ ctr: 0.02 }} evidence={evidence} verdict="KILL" />);
 
   it('asks for the record with the campaign entity id', () => {
     setup();
     expect(useDecisionLearning).toHaveBeenCalledWith(ENTITY);
   });
 
-  it('renders the record under the recommended action', () => {
+  it('renders the record under the inspection context', () => {
     setup();
     expect(screen.getByText('9 of 12')).toBeInTheDocument();
-    expect(screen.getByText(/Recommended action/i)).toBeInTheDocument();
+    expect(screen.getByText('Inspection context').parentElement).toContainElement(screen.getByText('9 of 12'));
   });
 
   it('renders no record section when there is no track record', () => {
     useDecisionLearning.mockReturnValue(null);
     setup();
     expect(screen.queryByText(/similar decisions improved/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Recommended action/i)).toBeInTheDocument(); // the rest survives
+    expect(screen.getByText('Inspection context')).toBeInTheDocument(); // the rest survives
   });
 });
 

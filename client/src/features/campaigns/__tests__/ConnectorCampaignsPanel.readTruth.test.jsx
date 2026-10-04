@@ -55,6 +55,18 @@ describe('Y10 real drill-down hooks and table contract truth', () => {
 });
 
 describe('Y11 real expansion permission and recovery ownership', () => {
+  it('malformed evidence remains a contract failure and can recover on re-expansion', async () => {
+    replies.set(EVIDENCE, () => Promise.resolve({ insufficientData: false, evidence: null }));
+    await openAds();
+    expect(await screen.findByText('Couldn’t read the evidence response.')).toBeInTheDocument();
+    expect(screen.queryByText('No ad is measurably behind the others')).not.toBeInTheDocument();
+    expect(screen.queryByText('Creative intelligence')).not.toBeInTheDocument();
+    replies.set(EVIDENCE, () => Promise.resolve(refusal));
+    toggleAds(); toggleAds();
+    expect(await screen.findByText('No ad is measurably behind the others')).toBeInTheDocument();
+    expect(screen.queryByText('Couldn’t read the evidence response.')).not.toBeInTheDocument();
+    expect(requests(EVIDENCE)).toBe(2);
+  });
   it.each(['raw', 'mapped'])('%s ads refusal is neutral and never recommends retry', async (shape) => {
     replies.set(ADS, () => Promise.reject(deny(shape))); await openAds();
     expect(await screen.findByText('Ads aren’t available for this seat.')).toBeInTheDocument();

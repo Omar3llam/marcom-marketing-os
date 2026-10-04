@@ -35,7 +35,7 @@ vi.mock('@/features/campaigns/useDecisionAction.js', () => ({
 
 const BOTTOM = {
   entityId: 'a2', name: 'Broad 25-45', channel: 'META',
-  ctr: 0.0032, spendMinor: 325_500, currency: 'USD',
+  ctr: 0.0032, spendMinor: 325_500, currency: 'USD', _gap: -0.80,
 };
 
 /** A ranking the engine actually produced — the only state that renders the panel. */
@@ -62,6 +62,22 @@ const props = (over = {}) => ({
 });
 
 const setup = (over) => render(<DecisionCard {...props(over)} />, { wrapper: MemoryRouter });
+
+describe('P7-04B Overview comparison parent', () => {
+  it('passes the evidence response baseline through the real shared ExecutionContext', () => {
+    const entry = withEvidence()['c-1:ctr'];
+    const bottom = { ...BOTTOM, ctr: 0.012, _gap: -0.40 };
+    ev.byId.current = withEvidence({ entity: { ctr: 0.02 },
+      evidence: { ...entry.evidence, summary: { bottom } } });
+    setup({ ctr: 0.01 });
+    expect(screen.queryByText('2.00%')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
+    expect(ev.load).toHaveBeenCalledWith('c-1');
+    expect(screen.getByText('2.00%')).toBeInTheDocument();
+    expect(screen.getByText('-40%')).toBeInTheDocument();
+    expect(screen.queryByText('1.00%')).not.toBeInTheDocument();
+  });
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

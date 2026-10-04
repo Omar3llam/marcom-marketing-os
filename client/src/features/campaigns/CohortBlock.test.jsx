@@ -18,6 +18,20 @@ const vm = (over = {}) => ({
   rank: 'BOTTOM', group: 'conversion', cohortSize: 8, ctrPct: 0.7, avgCtrPct: 1.5, ...over,
 });
 
+describe('P7-04B standing truth', () => {
+  it.each([['BOTTOM', 'Bottom'], ['TOP', 'Top']])('names %s in a three-campaign cohort without a quartile', (rank, label) => {
+    const { container } = render(<CohortBlock viewModel={vm({ rank, cohortSize: 3 })} />);
+    expect(screen.getByText('In a cohort of 3 campaigns in the conversion group')).toBeInTheDocument();
+    expect(screen.getByText(`Standing · ${label}`)).toBeInTheDocument();
+    expect(container).not.toHaveTextContent(/quartile|ranked against|percentile/i);
+  });
+  it('an unknown standing never becomes Top', () => {
+    const { container } = render(<CohortBlock viewModel={vm({ rank: 'UNKNOWN' })} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(/Top|Bottom/)).not.toBeInTheDocument();
+  });
+});
+
 describe('what it renders', () => {
   // The one fact the prose rationale never carried: "Lowest CTR in the
   // conversion group" reads identically whether the group held 3 campaigns or
@@ -25,10 +39,10 @@ describe('what it renders', () => {
   it('how many campaigns this was ranked against, and which group', () => {
     render(<CohortBlock viewModel={vm()} />);
     expect(screen.getByText('Cohort ranking')).toBeInTheDocument();
-    expect(screen.getByText('Ranked against 8 campaigns in the conversion group')).toBeInTheDocument();
+    expect(screen.getByText('In a cohort of 8 campaigns in the conversion group')).toBeInTheDocument();
   });
 
-  it.each([['BOTTOM', 'Bottom quartile'], ['TOP', 'Top quartile']])('names the %s slice', (rank, text) => {
+  it.each([['BOTTOM', 'Standing · Bottom'], ['TOP', 'Standing · Top']])('names the %s slice', (rank, text) => {
     render(<CohortBlock viewModel={vm({ rank })} />);
     expect(screen.getByText(text)).toBeInTheDocument();
   });
@@ -40,7 +54,7 @@ describe('what it renders', () => {
 
   it('says campaign, not campaigns, for a cohort of one', () => {
     render(<CohortBlock viewModel={vm({ cohortSize: 1 })} />);
-    expect(screen.getByText('Ranked against 1 campaign in the conversion group')).toBeInTheDocument();
+    expect(screen.getByText('In a cohort of 1 campaign in the conversion group')).toBeInTheDocument();
   });
 });
 
@@ -62,15 +76,15 @@ describe('it does not repeat the evidence above it', () => {
   it('still accepts them on the view model without rendering them', () => {
     const { container } = render(<CohortBlock viewModel={vm({ ctrPct: 99.9, avgCtrPct: 88.8 })} />);
     expect(container.textContent).not.toMatch(/99|88/);
-    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+    expect(screen.getByText(/In a cohort of 8 campaigns/)).toBeInTheDocument();
   });
 
   // The cohort facts are the whole point of the block; losing them to a missing
   // figure nobody prints would be the wrong trade.
   it('renders in full when those figures are absent entirely', () => {
     render(<CohortBlock viewModel={{ rank: 'TOP', group: 'awareness', cohortSize: 5 }} />);
-    expect(screen.getByText('Ranked against 5 campaigns in the awareness group')).toBeInTheDocument();
-    expect(screen.getByText('Top quartile')).toBeInTheDocument();
+    expect(screen.getByText('In a cohort of 5 campaigns in the awareness group')).toBeInTheDocument();
+    expect(screen.getByText('Standing · Top')).toBeInTheDocument();
   });
 });
 
@@ -84,14 +98,14 @@ describe('what it refuses to render', () => {
 
   it('drops the group clause rather than printing "in the  group"', () => {
     const { container } = render(<CohortBlock viewModel={vm({ group: null })} />);
-    expect(screen.getByText('Ranked against 8 campaigns')).toBeInTheDocument();
+    expect(screen.getByText('In a cohort of 8 campaigns')).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/in the\s+group/);
   });
 
   it('drops the quartile line rather than printing an empty one', () => {
     const { container } = render(<CohortBlock viewModel={vm({ rank: null })} />);
     expect(container.textContent).not.toMatch(/quartile/);
-    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 });
 

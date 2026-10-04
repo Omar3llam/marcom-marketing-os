@@ -19,16 +19,22 @@ import { api } from '@/lib/api.js';
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 
 const RANKING = {
-  entity: { entityId: 'c1', ctr: 0.02 },
+  entity: { entityId: 'c1', ctr: 0.02, roas: 2 },
   objective: 'OUTCOME_SALES',
-  evidence: { dimension: 'ADSET', metric: 'ctr', ranked: [], summary: {}, dataConfidence: 0.7 },
+  evidence: { dimension: 'ADSET', metric: 'ctr',
+    ranked: [{ entityId: 'as1', ctr: 0.01, _gap: -0.5 }, { entityId: 'as2', ctr: 0.02, _gap: 0 }],
+    summary: { bottom: { entityId: 'as1', ctr: 0.01, roas: 1, _gap: -0.5 } }, dataConfidence: 0.7 },
   insufficientData: false,
   reasonKey: null,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.get.mockResolvedValue({ data: RANKING });
+  api.get.mockImplementation((_url, { params }) => Promise.resolve({ data: {
+    ...RANKING, entity: { ...RANKING.entity, roas: 2 },
+    evidence: { ...RANKING.evidence, metric: params.metric,
+      summary: { bottom: { ...RANKING.evidence.summary.bottom, roas: 1 } } },
+  } }));
 });
 
 describe('useEvidence — a real ranking', () => {
@@ -118,14 +124,12 @@ describe('useEvidence — a refusal is not an error', () => {
     expect(api.get).toHaveBeenCalledTimes(1);
   });
 
-  it('treats a body with no evidence as a refusal, never as a ranking', async () => {
+  it('treats a body with no evidence as contract failure, never as refusal', async () => {
     api.get.mockResolvedValue({ data: {} });
     const { result } = renderHook(() => useEvidence());
     await act(async () => { await result.current.load('c1'); });
-    const entry = result.current.byId['c1:ctr'];
-    expect(entry.insufficientData).toBe(true);
-    expect(entry.evidence).toBeNull();
-    expect(entry.entity).toBeNull();
+    expect(result.current.byId['c1:ctr']).toBeUndefined();
+    expect(result.current.failures['c1:ctr'].kind).toBe('CONTRACT_INVALID');
   });
 
   it('a missing insufficientData flag cannot read as "there is data"', async () => {
@@ -133,7 +137,8 @@ describe('useEvidence — a refusal is not an error', () => {
     api.get.mockResolvedValue({ data: { entity: { entityId: 'c1' }, reasonKey: 'NO_MEANINGFUL_GAP' } });
     const { result } = renderHook(() => useEvidence());
     await act(async () => { await result.current.load('c1'); });
-    expect(result.current.byId['c1:ctr'].insufficientData).toBe(true);
+    expect(result.current.byId['c1:ctr']).toBeUndefined();
+    expect(result.current.failures['c1:ctr'].kind).toBe('CONTRACT_INVALID');
   });
 });
 

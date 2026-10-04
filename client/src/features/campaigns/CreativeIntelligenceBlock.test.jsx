@@ -10,7 +10,7 @@
 // a missing creative age must render "Unknown" — because a 0 and a "new" are
 // both readings a marketer would act on, and neither was measured.
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -32,9 +32,27 @@ const vm = (over = {}) => ({
   videoSignals: { videoView: 4000, video25: 1800, video50: 900, video95: 300 },
   ranking: {
     rank: 'BOTTOM', comparedCount: 4, metric: 'ctr', metricLabel: 'CTR',
-    gapPercent: -34, label: 'CTR 34% below the ad set of 4 reporting ads',
+    gapPercent: -34, label: 'CTR 34% below the ad set within 4 reporting ads',
   },
+  comparison: { metricLabel: 'CTR', childValue: '0.91%', parentValue: '2.00%', gap: '-34%', relation: '34% below ad set' },
   ...over,
+});
+
+describe('P7-04B comparison hierarchy', () => {
+  it('privileges the ranking metric and keeps unrelated reported metrics under Context', () => {
+    render(<CreativeIntelligenceBlock viewModel={vm()} />);
+    const primary = screen.getByRole('region', { name: 'Selected comparison' });
+    expect(within(primary).getByText('CTR')).toBeInTheDocument();
+    expect(within(primary).getByText('0.91%')).toBeInTheDocument();
+    expect(within(primary).getByText('2.00%')).toBeInTheDocument();
+    expect(within(primary).getByText('-34%')).toBeInTheDocument();
+    expect(within(primary).getByText('34% below ad set')).toBeInTheDocument();
+    expect(within(primary).queryByText('ROAS')).not.toBeInTheDocument();
+    const context = screen.getByRole('region', { name: 'Context' });
+    expect(within(context).getByText('ROAS')).toBeInTheDocument();
+    expect(within(context).getByText('Frequency')).toBeInTheDocument();
+    expect(within(context).queryByText('CTR')).not.toBeInTheDocument();
+  });
 });
 
 describe('what it renders', () => {
@@ -52,7 +70,7 @@ describe('what it renders', () => {
 
   it('the server’s finding, verbatim', () => {
     render(<CreativeIntelligenceBlock viewModel={vm()} />);
-    expect(screen.getByText('CTR 34% below the ad set of 4 reporting ads')).toBeInTheDocument();
+    expect(screen.getByText('CTR 34% below the ad set within 4 reporting ads')).toBeInTheDocument();
   });
 
   it('the real CTR, ROAS and frequency', () => {
@@ -93,6 +111,7 @@ describe('what it refuses to render', () => {
   it.each(['ctr', 'roas', 'frequency'])('a missing %s renders a dash, never a zero', (field) => {
     render(<CreativeIntelligenceBlock viewModel={vm({
       metrics: { ...vm().metrics, [field]: null },
+      comparison: field === 'ctr' ? { ...vm().comparison, childValue: null } : vm().comparison,
     })} />);
     expect(screen.getAllByLabelText('No data').length).toBeGreaterThan(0);
   });
@@ -100,6 +119,7 @@ describe('what it refuses to render', () => {
   it('never prints 0.00% for an unreported CTR', () => {
     const { container } = render(<CreativeIntelligenceBlock viewModel={vm({
       metrics: { ...vm().metrics, ctr: null },
+      comparison: { ...vm().comparison, childValue: null },
     })} />);
     expect(container.textContent).not.toMatch(/0\.00%/);
   });

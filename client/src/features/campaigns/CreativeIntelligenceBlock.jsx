@@ -28,7 +28,7 @@ const Label = ({ children }) => (
 const Figure = ({ label, value }) => (
   <div>
     <Label>{label}</Label>
-    <p className="font-mono text-sm tabular-nums text-lumi-text">{value ?? <Dash />}</p>
+    <p className="font-mono text-xs tabular-nums text-lumi-muted">{value ?? <Dash />}</p>
   </div>
 );
 
@@ -55,7 +55,7 @@ const grouped = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',
  */
 export function CreativeIntelligenceBlock({ viewModel = null }) {
   if (!viewModel?.ad) return null;
-  const { ad, metrics, videoSignals, ranking } = viewModel;
+  const { ad, metrics, videoSignals, ranking, comparison } = viewModel;
   const video = videoSignals ? Object.entries(videoSignals) : [];
 
   return (
@@ -84,12 +84,29 @@ export function CreativeIntelligenceBlock({ viewModel = null }) {
         <p className="mb-3 text-xs leading-relaxed text-lumi-text">{ranking.label}</p>
       )}
 
-      {/* The figures the finding rests on. */}
-      <div className="mb-3 grid grid-cols-3 gap-3">
-        <Figure label="CTR"       value={metrics.ctr != null ? `${(metrics.ctr * 100).toFixed(2)}%` : null} />
-        <Figure label="ROAS"      value={metrics.roas != null ? `${metrics.roas.toFixed(2)}x` : null} />
-        <Figure label="Frequency" value={metrics.frequency != null ? metrics.frequency.toFixed(2) : null} />
-      </div>
+      {comparison && (
+        <section aria-label="Selected comparison" className="mb-3">
+          <Label>Selected comparison</Label>
+          <p className="mb-2 font-display text-sm font-semibold text-lumi-text">{comparison.metricLabel}</p>
+          <dl className="grid grid-cols-2 gap-3">
+            <div><dt className="font-mono text-[10px] text-lumi-muted">Ad</dt>
+              <dd className="font-mono text-sm tabular-nums text-lumi-text">{comparison.childValue ?? <Dash />}</dd></div>
+            <div><dt className="font-mono text-[10px] text-lumi-muted">Ad set</dt>
+              <dd className="font-mono text-sm tabular-nums text-lumi-text">{comparison.parentValue ?? <Dash />}</dd></div>
+          </dl>
+          <p className="mt-2 flex flex-wrap gap-x-3 font-mono text-xs text-lumi-text">
+            <span>{comparison.gap ?? <Dash />}</span><span>{comparison.relation}</span>
+          </p>
+        </section>
+      )}
+      <section aria-label="Context" className="mb-3 border-t border-lumi-border pt-3">
+        <Label>Context</Label>
+        <div className="mt-1 grid grid-cols-2 gap-3">
+          {ranking?.metric !== 'ctr' && <Figure label="CTR" value={metrics.ctr != null ? `${(metrics.ctr * 100).toFixed(2)}%` : null} />}
+          {ranking?.metric !== 'roas' && <Figure label="ROAS" value={metrics.roas != null ? `${metrics.roas.toFixed(2)}x` : null} />}
+          {ranking?.metric !== 'frequency' && <Figure label="Frequency" value={metrics.frequency != null ? metrics.frequency.toFixed(2) : null} />}
+        </div>
+      </section>
 
       {/* Only the signals that were actually reported. An image ad has no video
           section at all — rendering four zeros would say nobody watched it. */}

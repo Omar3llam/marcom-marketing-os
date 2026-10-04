@@ -16,14 +16,20 @@ vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 const RANKING = {
   entity: { entityId: 'as-1', ctr: 0.0164 },
   objective: 'OUTCOME_SALES',
-  evidence: { dimension: 'AD', metric: 'ctr', ranked: [], summary: {}, dataConfidence: 0.7 },
+  evidence: { dimension: 'AD', metric: 'ctr',
+    ranked: [{ entityId: 'ad1', ctr: 0.01, _gap: -0.4 }, { entityId: 'ad2', ctr: 0.02, _gap: 0.2 }],
+    summary: { bottom: { entityId: 'ad1', ctr: 0.01, _gap: -0.4 } }, dataConfidence: 0.7 },
   insufficientData: false,
   reasonKey: null,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.get.mockResolvedValue({ data: RANKING });
+  api.get.mockImplementation((_url, { params }) => Promise.resolve({ data: {
+    ...RANKING, entity: { ...RANKING.entity, frequency: 2 },
+    evidence: { ...RANKING.evidence, metric: params.metric,
+      summary: { bottom: { ...RANKING.evidence.summary.bottom, frequency: 4 } } },
+  } }));
 });
 
 // ── One implementation, two levels ──────────────────────────

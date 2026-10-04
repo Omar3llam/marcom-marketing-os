@@ -295,7 +295,7 @@ describe('a cohort KILL says what cohort', () => {
   it('renders without a click, above the disclosure', () => {
     const { container } = panel({ relativeRank: 'BOTTOM', relativeContext: COHORT, hypotheses: HYPOTHESES });
     expect(screen.getByText('Cohort ranking')).toBeInTheDocument();
-    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+    expect(screen.getByText(/In a cohort of 8 campaigns/)).toBeInTheDocument();
     const t = container.textContent;
     expect(t.indexOf('Cohort ranking')).toBeLessThan(t.indexOf('Reasoning'));
   });
@@ -353,7 +353,7 @@ describe('a cohort KILL says what cohort', () => {
   // perfectly renderable card over two fields nobody reads.
   it('renders on cohort size alone, without the figures it no longer shows', () => {
     panel({ relativeRank: 'BOTTOM', relativeContext: { rank: 'BOTTOM', group: 'conversion', cohortSize: 8 } });
-    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+    expect(screen.getByText(/In a cohort of 8 campaigns/)).toBeInTheDocument();
   });
 });
 

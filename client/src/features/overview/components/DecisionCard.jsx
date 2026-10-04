@@ -85,9 +85,8 @@ export default function DecisionCard({
     setExpanded((e) => !e);
   };
 
-  // ExecutionContext reads a campaign row, not an agenda item. Only the four
-  // fields it actually uses are passed; each is null-when-absent, and it renders
-  // nothing at all without a real campaign CTR to measure against.
+  // Campaign identity and action context stay separate from the evidence
+  // response's parent baseline below.
   const campaign = { entityId, ctr, spendMinor, currency };
 
   return (
@@ -169,6 +168,7 @@ export default function DecisionCard({
             <ExecutionContext
               campaign={campaign}
               evidence={ev.evidence}
+              parent={ev.entity}
               verdict={verdict}
               onExecute={() => execute(entityId)}
               onDismiss={() => dismiss(entityId)}

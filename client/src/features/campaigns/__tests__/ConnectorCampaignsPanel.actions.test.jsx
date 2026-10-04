@@ -45,7 +45,7 @@ import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
 
 const bottom = (over = {}) => ({
   entityId: 'as-2', name: 'Broad 25-45', channel: 'META',
-  ctr: 0.0032, spendMinor: 325_500, currency: 'USD', ...over,
+  ctr: 0.0032, spendMinor: 325_500, currency: 'USD', _gap: -0.80, ...over,
 });
 
 const ranking = (id) => ({
@@ -77,6 +77,20 @@ beforeEach(() => {
   vi.clearAllMocks();
   ev.byId.current = {};
   action.states.current = {};
+});
+
+describe('P7-04B Campaigns comparison parent', () => {
+  it('passes the evidence-response baseline through the real ExecutionContext on demand', () => {
+    const entry = ranking('c1');
+    ev.byId.current = { 'c1:ctr': { ...entry, entity: { ctr: 0.02 },
+      evidence: { ...entry.evidence, summary: { bottom: bottom({ ctr: 0.012, _gap: -0.40 }) } } } };
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign({ ctr: 0.01 })]} verdicts={{ c1: 'KILL' }} />);
+    expect(ev.load).not.toHaveBeenCalled();
+    explain('Ramadan Cold'); openAdSets('Ramadan Cold');
+    expect(ev.load).toHaveBeenCalledWith('c1');
+    expect(screen.getByText('2.00%')).toBeInTheDocument();
+    expect(screen.getByText('-40%')).toBeInTheDocument();
+  });
 });
 
 describe('the answer is offered on the decision itself', () => {

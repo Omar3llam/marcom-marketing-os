@@ -38,6 +38,18 @@ const renderRows = (props) => render(
   <table><tbody><AdRows cols={5} {...props} /></tbody></table>,
 );
 
+describe('P7-04B ad comparison parent', () => {
+  it('keeps the evidence parent, summary selection and published gap together', () => {
+    const entry = ranking({ entity: { ctr: 0.02 } });
+    entry.evidence.ranked = [ad({ name: 'Decoy' }), ad()];
+    renderRows({ state: { children: [ad()] }, evidence: entry });
+    expect(screen.getByText('Hook B · 1x1')).toBeInTheDocument();
+    expect(screen.getByText('2.00%')).toBeInTheDocument();
+    expect(screen.getByText('-34%')).toBeInTheDocument();
+    expect(screen.queryByText('Decoy')).not.toBeInTheDocument();
+  });
+});
+
 describe('the four states of an ad expansion', () => {
   it('says it is loading while the fetch is in flight', () => {
     renderRows({ loading: true });

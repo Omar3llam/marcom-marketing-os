@@ -24,11 +24,11 @@ const campaign = { entityId: 'c-1', name: 'Q3 Prospecting', ctr: 0.0164, spendMi
 
 const worst = {
   entityId: 'as-2', name: 'Broad 25-45', channel: 'META',
-  ctr: 0.0032, spendMinor: 325_500, currency: 'USD',
+  ctr: 0.0032, spendMinor: 325_500, currency: 'USD', _gap: -0.80,
 };
 const best = {
   entityId: 'as-1', name: 'Lookalike 1%', channel: 'META',
-  ctr: 0.0180, spendMinor: 200_00, currency: 'USD',
+  ctr: 0.0180, spendMinor: 200_00, currency: 'USD', _gap: 0.10,
 };
 
 /**
@@ -44,8 +44,63 @@ const evidenceFor = (bottom = worst, rankedCount = 3) => ({
 });
 
 const setup = (over = {}) => render(
-  <ExecutionContext campaign={campaign} evidence={evidenceFor()} verdict="KILL" {...over} />,
+  <ExecutionContext campaign={campaign} parent={campaign} evidence={evidenceFor()} verdict="KILL" {...over} />,
 );
+
+describe('P7-04B comparison authority', () => {
+  it.each(['thumbstop', 'constructor'])('withholds an unknown metric %s', (metric) => {
+    const { container } = setup({ evidence: { ...evidenceFor(), metric } });
+    expect(container).toBeEmptyDOMElement();
+  });
+  it('formats the server gap even when raw values imply another comparison', () => {
+    setup({ parent: { ctr: 0.02 }, evidence: evidenceFor({ ...worst, ctr: 0.0066, _gap: -0.34 }) });
+    expect(screen.getByText('-34%')).toBeInTheDocument();
+    expect(screen.getByText('34% below campaign')).toBeInTheDocument();
+    expect(screen.queryByText('-60%')).not.toBeInTheDocument();
+  });
+  it('shows the same-response parent rather than the campaign row baseline', () => {
+    setup({ campaign: { ...campaign, ctr: 0.01 }, parent: { ctr: 0.02 },
+      evidence: evidenceFor({ ...worst, ctr: 0.012, _gap: -0.40 }) });
+    expect(screen.getByText('2.00%')).toBeInTheDocument();
+    expect(screen.getByText('-40%')).toBeInTheDocument();
+    expect(screen.queryByText('1.00%')).not.toBeInTheDocument();
+  });
+  it('does not publish a locally calculated spend share', () => {
+    setup();
+    expect(screen.queryAllByText(/% of campaign/)).toHaveLength(0);
+  });
+  it.each([
+    { frequency: 4.2, impressions: 500000 },
+    { frequency: 1.8, impressions: 500000 },
+    { frequency: 4.2, impressions: 500000, spendMinor: 4999 },
+  ])('does not create diagnostic classifications from raw fields: %j', (delivery) => {
+    setup({ evidence: evidenceFor({ ...worst, ...delivery }) });
+    expect(screen.queryByText(/Creative fatigue|Insufficient data|No fatigue signal detected/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Ad set signal')).not.toBeInTheDocument();
+  });
+  it('styles comparison evidence neutrally', () => {
+    const { container } = setup();
+    expect(container.querySelector('.text-signal-kill, .text-signal-scale')).toBeNull();
+  });
+  it('counts the subject within the reporting cohort', () => {
+    setup({ evidence: evidenceFor(worst, 4) });
+    expect(screen.getByText('Compared within 4 reporting ad sets')).toBeInTheDocument();
+    expect(screen.queryByText(/Compared against/)).not.toBeInTheDocument();
+  });
+  it.each([
+    ['ctr', -0.34, '34% below campaign', '0.32%', '1.64%'],
+    ['roas', -0.34, '34% below campaign', '1.40x', '2.00x'],
+    ['frequency', 0.42, '42% above campaign', '3.90', '2.00'],
+    ['frequency', 0, 'matches campaign', '3.90', '2.00'],
+  ])('renders %s units and the signed server relation neutrally', (metric, gap, copy, childValue, parentValue) => {
+    const { container } = setup({ parent: { ctr: 0.0164, roas: 2, frequency: 2 },
+      evidence: { ...evidenceFor({ ...worst, roas: 1.4, frequency: 3.9, _gap: gap }), metric } });
+    expect(screen.getByText(childValue)).toBeInTheDocument();
+    expect(screen.getByText(parentValue)).toBeInTheDocument();
+    expect(screen.getByText(copy)).toBeInTheDocument();
+    expect(container.querySelector('.text-signal-kill, .text-signal-scale')).toBeNull();
+  });
+});
 
 describe('ExecutionContext — when it renders nothing', () => {
   it.each([['HOLD'], ['SCALE'], ['WATCH'], ['REFRESH'], [null], [undefined]])(
@@ -113,14 +168,14 @@ describe('ExecutionContext — the evidence', () => {
   it('lists why this one was selected', () => {
     setup();
     expect(screen.getByText('Selected because')).toBeInTheDocument();
-    expect(screen.getByText(/Lowest CTR in campaign \(-80%/)).toBeInTheDocument();
+    expect(screen.getByText('80% below campaign')).toBeInTheDocument();
   });
 
   // Quoted from the SERVER's ranked cohort. Picked from 3 is a weaker claim than
   // picked from 30, and the count must describe the comparison that actually ran.
   it('quotes how many ad sets the server compared', () => {
     setup({ evidence: evidenceFor(worst, 5) });
-    expect(screen.getByText('Compared against 5 ad sets reporting CTR')).toBeInTheDocument();
+    expect(screen.getByText('Compared within 5 reporting ad sets')).toBeInTheDocument();
   });
 
   it('shows the ad set CTR and its gap against the campaign rate', () => {
@@ -129,9 +184,9 @@ describe('ExecutionContext — the evidence', () => {
     expect(screen.getByText('-80%')).toBeInTheDocument();
   });
 
-  it('shows the spend and its share of the campaign', () => {
+  it('shows reported spend without a comparison share', () => {
     setup();
-    expect(screen.getByText('50% of campaign')).toBeInTheDocument();
+    expect(screen.queryAllByText(/% of campaign/)).toHaveLength(0);
     expect(screen.getByText('$3,255.00')).toBeInTheDocument();
   });
 
@@ -174,70 +229,25 @@ describe('ExecutionContext — the evidence', () => {
   });
 });
 
-// The base fixture carries no impressions, so buildHypothesis short-circuits at
-// H0 — these tests opt in by giving the bottom row real delivery.
-//
-// Labelled "Ad set signal" on screen, not "Working hypothesis": the engine
-// renders its OWN hypotheses on the campaign detail panel one click away, and
-// the two share no field and answer different questions — this reads a single
-// ad-set row, that names the mechanism a verdict rests on.
-describe('ExecutionContext — the ad set signal', () => {
-  const withDelivery = (over) => evidenceFor({ ...worst, impressions: 500_000, ...over });
-
-  it('is absent when the data cannot support one', () => {
-    setup(); // no impressions on the ranked row
-    expect(screen.queryByText('Ad set signal')).not.toBeInTheDocument();
-  });
-
-  it('separates what was observed from what it might mean', () => {
-    setup({ evidence: withDelivery({ frequency: 4.2 }) });
-    expect(screen.getByText('Ad set signal')).toBeInTheDocument();
-    expect(screen.getByText('Observed')).toBeInTheDocument();
-    expect(screen.getByText('Interpretation')).toBeInTheDocument();
-  });
-
-  it('names creative fatigue when frequency is past the ceiling and CTR is low', () => {
-    setup({ evidence: withDelivery({ frequency: 4.2 }) });
-    expect(screen.getByText('Creative fatigue')).toBeInTheDocument();
-    expect(screen.getByText(/Frequency is 4\.2, above Lumi's fatigue threshold \(3\.5\)/)).toBeInTheDocument();
-    expect(screen.getByText('Refresh the creative before pausing the ad set.')).toBeInTheDocument();
-  });
-
-  it('falls back to audience or creative when there is no fatigue signal', () => {
-    setup({ evidence: withDelivery({ frequency: 1.8 }) });
-    expect(screen.getByText('No fatigue signal detected')).toBeInTheDocument();
-    expect(screen.getByText(/more commonly associated with audience fit/)).toBeInTheDocument();
-    expect(screen.getByText('Review the creative and audience targeting before pausing.')).toBeInTheDocument();
-  });
-
-  it('says the delivery is too thin rather than diagnosing it', () => {
-    setup({ evidence: withDelivery({ frequency: 4.2, spendMinor: 4_999 }) });
-    expect(screen.getByText('Insufficient data')).toBeInTheDocument();
-    expect(screen.queryByText('Creative fatigue')).not.toBeInTheDocument();
-    expect(screen.getByText('Wait for more delivery before acting.')).toBeInTheDocument();
-  });
-});
-
 describe('ExecutionContext — the ask', () => {
   it('asks the marketer to inspect, never to pause outright', () => {
     setup();
-    expect(screen.getByText(/Inspect/)).toBeInTheDocument();
+    expect(screen.getByText(/^Inspect /)).toBeInTheDocument();
     expect(screen.queryByText(/^Pause /)).not.toBeInTheDocument();
     expect(screen.queryByText(/pause it now|pause immediately/i)).not.toBeInTheDocument();
   });
 
   // Pausing is offered as something the marketer decides once they have looked
   // — the data cannot see a learning phase or a deliberate test.
-  it('offers pausing as a conditional the marketer resolves', () => {
+  it('adds no pause recommendation from the comparison', () => {
     setup();
-    expect(screen.getByText(/If no test or learning phase explains the gap, consider pausing it\./))
-      .toBeInTheDocument();
+    expect(screen.queryByText(/consider pausing/i)).not.toBeInTheDocument();
   });
 
   it('quotes the gap magnitude in the action sentence', () => {
     setup();
-    expect(screen.getByText('80%')).toBeInTheDocument();
-    expect(screen.getByText(/below the campaign rate/)).toBeInTheDocument();
+    expect(screen.getByText('-80%')).toBeInTheDocument();
+    expect(screen.getByText('80% below campaign')).toBeInTheDocument();
   });
 });
 

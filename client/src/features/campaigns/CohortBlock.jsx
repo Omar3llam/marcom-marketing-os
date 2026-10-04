@@ -28,7 +28,7 @@
  *   empty card would imply one went missing.
  */
 export function CohortBlock({ viewModel }) {
-  if (!viewModel) return null;
+  if (!viewModel || !['TOP', 'BOTTOM'].includes(viewModel.rank)) return null;
 
   const { rank, group, cohortSize } = viewModel;
 
@@ -42,7 +42,7 @@ export function CohortBlock({ viewModel }) {
             group" reads the same whether the group held three campaigns or
             thirty, and those are very different claims. */}
         <p className="text-sm text-lumi-text">
-          Ranked against {cohortSize} campaign{cohortSize === 1 ? '' : 's'}
+          In a cohort of {cohortSize} campaign{cohortSize === 1 ? '' : 's'}
           {group ? ` in the ${group} group` : ''}
         </p>
 
@@ -57,7 +57,7 @@ export function CohortBlock({ viewModel }) {
             the place they belong. */}
         {rank && (
           <p className="text-xs leading-relaxed text-lumi-subtle">
-            {rank === 'BOTTOM' ? 'Bottom' : 'Top'} quartile
+            Standing · {rank === 'BOTTOM' ? 'Bottom' : 'Top'}
           </p>
         )}
       </div>
