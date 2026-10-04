@@ -49,7 +49,6 @@ vi.mock('@/components/ui/NotificationBell.jsx', () => ({ default: () => null }))
 vi.mock('@/features/inbox/InboxPanel.jsx', () => ({ default: () => null }));
 vi.mock('@/components/ui/RecentDecisions.jsx', () => ({ default: () => null }));
 vi.mock('@/components/ui/CommandPalette.jsx', () => ({ default: () => null }));
-vi.mock('./RadarStrip.jsx', () => ({ default: () => null }));
 vi.mock('@/components/brand/LumiStar.jsx', () => ({ default: () => null }));
 
 import Sidebar from './Sidebar.jsx';
