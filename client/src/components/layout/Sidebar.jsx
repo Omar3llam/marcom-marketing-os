@@ -225,7 +225,7 @@ export default function Sidebar({
   const { role: collabRole, status: roleStatus, loading: roleLoading, error: roleError } = useCollabRole();
   const { canAccess, loading: planLoading, status: planStatus } = usePlan();
   const { workspace, hasWorkspace, loading: workspaceLoading, error: workspaceError, status: workspaceStatus, canRetry: workspaceCanRetry, refetch: retryWorkspace } = useWorkspace();
-  const { data: connectionsData, loading: connectionsLoading } = useConnections();
+  const { data: connectionsData, loading: connectionsLoading, error: connectionsError } = useConnections();
 
   // Role- AND plan-gated navigation. An item hides if the seat's role can't see
   // it OR the workspace's plan doesn't reach it — locked items are hidden
@@ -266,8 +266,12 @@ export default function Sidebar({
   // first channel connects (self-hiding — existing users never see it). Operators
   // only; a read-only CLIENT can't connect. Reads the same real Integration rows
   // the Connectors destination uses, so it disappears the moment a connection lands.
-  const hasConnector = (connectionsData?.connections ?? []).some((c) => c.connected);
-  const showConnectCTA = roleAllowed(collabRole, ['STRATEGIST', 'BUYER']) && !connectionsLoading && !hasConnector;
+  const connectionReadKnown = !connectionsLoading && !connectionsError && connectionsData != null;
+  const hasResolvedWorkspace = connectionReadKnown
+    && typeof connectionsData.workspaceId === 'string' && connectionsData.workspaceId.length > 0;
+  const canSuggestConnect = hasResolvedWorkspace
+    && !connectionsData.connections.some((c) => c.connected === true);
+  const showConnectCTA = roleAllowed(collabRole, ['STRATEGIST', 'BUYER']) && canSuggestConnect;
 
   // FE-05 — one row renderer, used by BOTH groups. Extracted rather than
   // duplicated so a demoted surface can never drift into looking different

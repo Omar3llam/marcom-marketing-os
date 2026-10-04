@@ -44,15 +44,17 @@ import { OVERVIEW_STATUS } from './overviewState.js';
 
 export default function OverviewView() {
   const {
-    workspace, plan, dismiss, canRetry, retryFailedReads,
+    workspace, collabRole, plan, dismiss, canRetry, retryFailedReads,
     hasAnyData, hasScorableData, overviewStatus, coreAvailable, coreUsable,
     accountState, insight, bands, kpis, healthTone, healthLabel, killCount,
     needsRevenue, staleRevenue,
     proofSurface, connectorCampaigns,
     connectionsData, connectionsLoading, connectionsError,
+    connectionReadKnown, hasResolvedWorkspace, hasConnectedChannel, canSuggestConnect,
   } = useOverviewModel();
 
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const canOfferConnectorSetup = ['STRATEGIST', 'BUYER'].includes(collabRole) && canSuggestConnect;
 
   // ── The interrupt: at most one, always directly under the hero ──
   // Under, not above: the hero is the page's answer, and a nudge that pre-empted
@@ -74,8 +76,7 @@ export default function OverviewView() {
         onDismiss={() => dismiss(INTERRUPT.REVENUE)}
       />
     ),
-    // The genuinely un-synced account. Not a nudge beside content — it IS the
-    // content, so it takes the full column.
+    // Confirmed connector absence in a resolved workspace, with no campaigns.
     [INTERRUPT.CONNECT]: (
       <div className="flex flex-col items-center justify-center min-h-[480px] p-10 bg-surface-card border border-dashed border-surface-border-strong rounded-xl text-center">
         <div className="w-16 h-16 rounded-xl bg-lumi-accent/10 text-lumi-accent flex items-center justify-center mb-4">
@@ -114,10 +115,11 @@ export default function OverviewView() {
         /* connector-derived, so the hero and the Wasted-spend card share a unit */
         currency={kpis.currency}
         workspace={workspace}
-        /* LEARNING must tell "never synced" from "synced, nothing scorable" */
+        /* Campaign/scoring facts remain independent from connector presence. */
         hasAnyData={hasAnyData}
-        /* …and BOTH of those from "has legacy rows the engine cannot read" */
         hasScorableData={hasScorableData}
+        hasConnectedChannel={hasConnectedChannel}
+        canSuggestConnect={canOfferConnectorSetup}
         /* Lumi's briefing — folded in from the deleted standalone card */
         insight={insight}
         partial={overviewStatus === OVERVIEW_STATUS.PARTIAL}
@@ -191,7 +193,13 @@ export default function OverviewView() {
       </div>
     ),
 
-    [SLOT.CHANNELS]: <ConnectionHealthStrip compact state={{ data: connectionsData, loading: connectionsLoading, error: connectionsError }} />,
+    // Keep the P7-05B strip unchanged. Its connect shortcut is meaningful only
+    // after workspace/setup authority is established by this reaching consumer.
+    [SLOT.CHANNELS]: connectionsLoading || connectionsError || (hasResolvedWorkspace && (hasConnectedChannel || canOfferConnectorSetup))
+      ? <ConnectionHealthStrip compact state={{ data: connectionsData, loading: connectionsLoading, error: connectionsError }} />
+      : <p className="text-xs text-lumi-muted">{connectionReadKnown
+        ? hasResolvedWorkspace ? 'No connected channels.' : 'A workspace is required before channels can be connected.'
+        : 'Channel setup unavailable.'}</p>,
     [SLOT.CALIBRATION]: <CalibrationSection surface={proofSurface} compact />,
   };
 

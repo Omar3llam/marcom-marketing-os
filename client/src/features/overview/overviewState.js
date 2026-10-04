@@ -147,6 +147,8 @@ const isRealAmount = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0
  * @param {boolean} input.hasAnyData     either substrate carries campaigns
  * @param {boolean} input.hasScorableData  the CONNECTOR substrate specifically —
  *                                       the only one the scoring engine reads
+ * @param {boolean} input.hasConnectedChannel confirmed credential presence, not sync activity
+ * @param {boolean} input.canSuggestConnect confirmed connector absence with setup permission
  * @returns {string[]} 0-2 lines, headline first
  */
 export function buildHeroNarrative({
@@ -160,6 +162,8 @@ export function buildHeroNarrative({
   workspaceName = null,
   hasAnyData = false,
   hasScorableData = false,
+  hasConnectedChannel = false,
+  canSuggestConnect = false,
 } = {}) {
   switch (state) {
     case ACCOUNT_STATE.ACTION_REQUIRED: {
@@ -197,21 +201,15 @@ export function buildHeroNarrative({
     case ACCOUNT_STATE.LEARNING:
       return [
         `Building confidence in ${workspaceName || 'this workspace'}.`,
-        // LEARNING covers TWO different situations and they need opposite advice.
-        // Telling someone who has already synced Meta to "connect a channel"
-        // sends them to re-do a step they finished; their real blocker is that
-        // nothing has enough signal to score yet.
-        //
-        // The branch is on hasScorableData, NOT hasAnyData — a premise fix. The
-        // scoring engine reads the CONNECTOR graph only (/entities/health runs
-        // over getConnectorCampaigns), so a workspace holding legacy
-        // CampaignState rows and no connector campaigns will never be scored no
-        // matter how long it waits. Branching on "either substrate" told that
-        // workspace to sit tight for a verdict that cannot arrive; its real
-        // blocker is the same one an empty account has.
+        // Campaign facts govern scoring copy; explicit setup authority governs
+        // connect advice. A credential never proves a sync is currently running.
         hasScorableData
           ? 'Your campaigns are syncing. Verdicts appear once enough signal has accumulated.'
-          : 'Connect a channel to get your first verdict.',
+          : canSuggestConnect === true
+            ? 'Connect a channel to get your first verdict.'
+            : hasConnectedChannel === true
+              ? "A channel is connected, but Lumi doesn't have campaign data to score yet."
+              : "Lumi doesn't have campaign data to score yet.",
       ];
 
     case ACCOUNT_STATE.SCORING_HIDDEN:
@@ -288,7 +286,8 @@ export const STATE_CONFIG = Object.freeze({
 // SCORING_HIDDEN, and each of those narratives already names its own cause:
 //
 //   · this seat cannot read the scoring substrate  → SCORING_HIDDEN
-//   · no connector channel exists to score         → LEARNING, !hasScorableData
+//   · no scorable campaign data                    → LEARNING, !hasScorableData
+//     (connector/setup cause is carried separately, never inferred here)
 //   · connector data exists, the engine scored none → LEARNING, hasScorableData
 //
 // The page used to print one sentence — "No scored campaigns right now." — for

@@ -49,10 +49,10 @@ it('failed read stays a failed read, even if previous data exists', () => {
   expect(screen.queryByText('connect')).not.toBeInTheDocument();
   expect(screen.queryByText('Meta Ads')).not.toBeInTheDocument();
 });
-it('confirmed workspace absence preserves existing destination behavior', () => {
+it('confirmed workspace absence refuses provider setup without misreporting failure', () => {
   useConnections.mockReturnValue({ data: { workspaceId: null, connections: [] }, loading: false, error: null, refetch });
   mount();
-  expect(screen.getAllByText('connect')).toHaveLength(2);
-  expect(screen.getAllByText('soon')).toHaveLength(3);
+  expect(screen.getByText('A workspace is required before channels can be connected.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'connect' })).not.toBeInTheDocument();
   expect(screen.queryByText(/Couldn't load/)).not.toBeInTheDocument();
 });

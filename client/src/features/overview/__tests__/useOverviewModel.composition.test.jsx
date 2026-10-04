@@ -47,6 +47,24 @@ beforeEach(() => {
 });
 
 describe('Overview source composition', () => {
+  it.each([
+    ['unknown', { data: null, loading: false, error: null }, false, false, false, false],
+    ['workspace null', { data: { workspaceId: null, connections: [] }, loading: false, error: null }, true, false, false, false],
+    ['workspace missing', { data: { connections: [] }, loading: false, error: null }, true, false, false, false],
+    ['confirmed empty', { data: { workspaceId: 'ws', connections: [] }, loading: false, error: null }, true, true, false, true],
+    ['inactive row', { data: { workspaceId: 'ws', connections: [{ connected: false }] }, loading: false, error: null }, true, true, false, true],
+    ['connected stale failing', { data: { workspaceId: 'ws', connections: [{ connected: true, readiness: 'STALE', availability: 'FAILING' }] }, loading: false, error: null }, true, true, true, false],
+    ['failed', { data: null, loading: false, error: failed }, false, false, false, false],
+    ['loading', { data: null, loading: true, error: null }, false, false, false, false],
+  ])('P7-05C %s setup facts do not change campaign bands/state/KPIs', (_, read, connectionReadKnown, hasResolvedWorkspace, hasConnectedChannel, canSuggestConnect) => {
+    const before = model();
+    useConnections.mockReturnValue(read);
+    const after = model();
+    expect(after).toMatchObject({ connectionReadKnown, hasResolvedWorkspace, hasConnectedChannel, canSuggestConnect,
+      hasAnyData: true, hasScorableData: true, accountState: ACCOUNT_STATE.ACTION_REQUIRED });
+    expect(after.bands).toEqual(before.bands);
+    expect(after.kpis).toEqual(before.kpis);
+  });
   it('optional briefing failure is PARTIAL with valid account evidence and retry through Home once', () => {
     const retry = vi.fn();
     const before = model();

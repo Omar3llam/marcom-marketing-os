@@ -26,7 +26,7 @@ export const INTERRUPT = Object.freeze({
 const RULES = [
   {
     id: INTERRUPT.FIRST_RUN,
-    when: (c) => c.firstRunFlag && !c.hasAnyData,
+    when: (c) => c.firstRunFlag && !c.hasAnyData && !c.unreadable && c.canSuggestConnect === true,
   },
   {
     id: INTERRUPT.REVENUE,
@@ -52,7 +52,7 @@ const RULES = [
     // that just said we could not read the account. The hero states the
     // failure; nothing beside it should give onboarding advice about an
     // account nobody has read.
-    when: (c) => !c.hasAnyData && !c.unreadable,
+    when: (c) => !c.hasAnyData && !c.unreadable && c.canSuggestConnect === true,
   },
 ];
 
@@ -68,7 +68,8 @@ const RULES = [
  * @param {boolean} ctx.firstRunFlag     onboarding's sessionStorage marker
  * @param {boolean} ctx.hasAnyData       either substrate carries campaigns
  * @param {boolean} ctx.hasConnectorData connector graph specifically
- * @param {boolean} ctx.hasEverSynced    any channel reports a lastSyncedAt
+ * @param {boolean} ctx.hasEverSynced    any channel reports a resolved lastSuccessfulSync
+ * @param {boolean} ctx.canSuggestConnect explicit setup authority, including caller role permission
  * @param {boolean} ctx.hasRevenueData   any connector campaign reports revenue
  * @param {boolean} ctx.isStrategist
  * @param {Set<string>} [ctx.dismissed]  ids already dismissed this session

@@ -61,7 +61,7 @@ import { useCollabRole } from '@/hooks/useCollabRole.js';
 const readCleanlyAndEmpty = () => {
   useWorkspace.mockReturnValue({ workspace: { name: 'Acme', currency: 'USD' } });
   useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null });
-  useConnections.mockReturnValue({ data: { connections: [] } });
+  useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [] }, loading: false, error: null });
   useAccountHealth.mockReturnValue({ health: null, loading: false, error: null });
   useHome.mockReturnValue({ home: null, isStale: false });
   useConnectorVerdicts.mockReturnValue({ verdicts: [] });
@@ -73,6 +73,43 @@ const readCleanlyAndEmpty = () => {
 beforeEach(() => { vi.clearAllMocks(); readCleanlyAndEmpty(); });
 
 describe('FE-03 · a failure Attention cannot be wrong about', () => {
+  it.each(['campaigns', 'health'])('P7-05C unreadable %s blocks FIRST_RUN despite confirmed setup absence', (source) => {
+    useDismissals.mockReturnValue({ firstRunFlag: true, dismissed: new Set(), dismiss: vi.fn() });
+    if (source === 'campaigns') useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: new Error('500') });
+    else useAccountHealth.mockReturnValue({ health: null, loading: false, error: new Error('500') });
+    const { result } = renderHook(useOverviewModel);
+    expect(result.current.canSuggestConnect).toBe(true);
+    expect(result.current.accountState).toBe(ACCOUNT_STATE.UNREADABLE);
+    expect(result.current.plan.interrupt).toBeNull();
+  });
+  it.each([false, true])('P7-05C connected/no campaigns never receives a connect interrupt, firstRun=%s', (firstRunFlag) => {
+    useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [{ connected: true, readiness: 'NEVER_SYNCED', availability: 'FAILING' }] }, loading: false, error: null });
+    useDismissals.mockReturnValue({ firstRunFlag, dismissed: new Set(), dismiss: vi.fn() });
+    const { result } = renderHook(useOverviewModel);
+    expect(result.current.plan.interrupt).toBeNull();
+    expect(result.current).toMatchObject({ hasAnyData: false, hasScorableData: false, hasConnectedChannel: true, canSuggestConnect: false });
+  });
+  it.each([
+    ['unknown', { data: null, loading: false, error: null }],
+    ['workspace-null', { data: { workspaceId: null, connections: [] }, loading: false, error: null }],
+    ['failed', { data: null, loading: false, error: new Error('500') }],
+    ['loading', { data: null, loading: true, error: null }],
+  ])('P7-05C %s read cannot authorize setup', (_, read) => {
+    useConnections.mockReturnValue(read);
+    useDismissals.mockReturnValue({ firstRunFlag: true, dismissed: new Set(), dismiss: vi.fn() });
+    const { result } = renderHook(useOverviewModel);
+    expect(result.current.plan.interrupt).toBeNull();
+    expect(result.current.canSuggestConnect).toBe(false);
+  });
+  it.each([
+    [null, '2026-10-04T12:00:00Z', null],
+    ['2026-10-04T12:00:00Z', null, 'revenue'],
+  ])('P7-05C revenue interrupt uses resolved success %s, not legacy %s', (lastSuccessfulSync, lastSyncedAt, expected) => {
+    useConnections.mockReturnValue({ data: { workspaceId: 'ws', connections: [{ connected: true, lastSuccessfulSync, lastSyncedAt }] }, loading: false, error: null });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [{ entityId: 'c1', revenueMinor: 0 }], loading: false, error: null });
+    const { result } = renderHook(useOverviewModel);
+    expect(result.current.plan.interrupt).toBe(expected);
+  });
   it('does not call itself unreadable when both substrates answered', () => {
     const { result } = renderHook(() => useOverviewModel());
     expect(result.current.accountState).not.toBe(ACCOUNT_STATE.UNREADABLE);

@@ -58,7 +58,13 @@ describe.each([
     expect(container.querySelector('.animate-pulse, [aria-busy="true"]')).toBeTruthy();
     expect(screen.queryByText(/Not connected|^connect$|Connect →/)).not.toBeInTheDocument();
     await act(async () => resolve({ data: { workspaceId: null, connections: [] } }));
-    await waitFor(() => expect(screen.getAllByText(/Not connected|^connect$/)).toHaveLength(2));
+    if (_ === 'Channels') {
+      await screen.findByText('A workspace is required before channels can be connected.');
+      expect(screen.queryByRole('button', { name: 'connect' })).not.toBeInTheDocument();
+    } else {
+      // P7-05C guards the strip at its sole production caller, OverviewView.
+      await waitFor(() => expect(screen.getAllByText('Not connected')).toHaveLength(2));
+    }
     expect(screen.queryByText(/Couldn't load/)).not.toBeInTheDocument();
   });
 });
