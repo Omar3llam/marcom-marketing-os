@@ -50,6 +50,7 @@ export const CapabilitySchema = z.object({
   // and NOT_APPLICABLE (not exercised by the sync loop) are different absences
   // and neither is NO_DATA, which is a measurement.
   lastRun: z.string(),
+  lastRunKnowledge: AxisSchema,
 });
 
 // An ad account the connected token proves access to — powers the account picker.
@@ -64,6 +65,8 @@ export const ConnectionSchema = z.object({
   connected: z.boolean(),
   stale: z.boolean(),
   lastSyncedAt: z.string().nullish(),
+  // P7-05A resolved this clock server-side; readers must not resolve it again.
+  lastSuccessfulSync: z.string().nullish(),
   accountId: z.string().nullish(),
   availableAccounts: z.array(AdAccountSchema).nullish(),
   health: ConnectorHealthSchema.nullish(),
@@ -74,6 +77,9 @@ export const ConnectionSchema = z.object({
   availability: AxisSchema,
   completeness: AxisSchema,
   readiness:    AxisSchema,
+  availabilityKnowledge: AxisSchema,
+  completenessKnowledge: AxisSchema,
+  readinessKnowledge: AxisSchema,
   capabilities: z.array(CapabilitySchema).nullish(),
 });
 

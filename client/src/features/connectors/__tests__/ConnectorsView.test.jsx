@@ -95,7 +95,7 @@ describe('C-04 · what the page says', () => {
     const { container } = render(
       <ConnectionsView connections={[conn({ readiness: 'NEVER_SYNCED', stale: true })]} projectId="p1" />,
     );
-    expect(container.textContent).toContain('never synced');
+    expect(container.textContent).toContain('Never synced');
     expect(container.textContent).not.toContain('stale — reconnect');
   });
 
@@ -103,7 +103,8 @@ describe('C-04 · what the page says', () => {
     const { container } = render(
       <ConnectionsView connections={[conn({ readiness: 'STALE', stale: true })]} projectId="p1" />,
     );
-    expect(container.textContent).toContain('stale — reconnect');
+    expect(container.textContent).toContain('Stale');
+    expect(container.textContent).not.toMatch(/reconnect/i);
     expect(container.textContent).not.toContain('never synced');
   });
 
@@ -137,11 +138,12 @@ describe('C-04 · what the page says', () => {
     expect(container.textContent).toContain('rate limited');
   });
 
-  // A server that predates the projection must render exactly as it did.
-  it('falls back to the old boolean when no readiness is published', () => {
+  // A legacy payload validates, but its boolean is not readiness authority.
+  it('keeps freshness unavailable when no readiness is published', () => {
     const { container } = render(
       <ConnectionsView connections={[conn({ readiness: undefined, stale: true })]} projectId="p1" />,
     );
-    expect(container.textContent).toContain('stale — reconnect');
+    expect(container.textContent).toContain('Freshness unavailable');
+    expect(container.textContent).not.toMatch(/Stale|reconnect/);
   });
 });

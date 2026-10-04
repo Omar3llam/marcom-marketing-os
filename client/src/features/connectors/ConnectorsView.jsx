@@ -21,7 +21,7 @@
 // ============================================================
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Scale, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Scale, Plus, Plug } from 'lucide-react';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
@@ -33,17 +33,10 @@ import { PageHeader } from '@/design-system/patterns';
 // client directly (arch-check CHECK 2B).
 import { startConnect } from './startConnect.js';
 import { isConnectable, switchAdAccount } from './services.js';
+import { connectorFactLabels } from './connectorPresentation.js';
 
 const KNOWN = ['META', 'GOOGLE', 'TIKTOK', 'LINKEDIN', 'SNAP'];
 const LABEL = { META: 'Meta Ads', GOOGLE: 'Google Ads', TIKTOK: 'TikTok', LINKEDIN: 'LinkedIn', SNAP: 'Snap' };
-
-function ago(iso) {
-  if (!iso) return 'never';
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (mins < 60) return `${mins}m ago`;
-  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
-  return `${Math.round(mins / 1440)}d ago`;
-}
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
 export function ConnectionsView({ connections = [], projectId, onSwitchAccount, switching }) {
@@ -53,25 +46,14 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
       {KNOWN.map((platform) => {
         const c = byPlatform.get(platform);
         const connected = !!c?.connected;
-        // C-04 — `readiness` is the three-state answer; `stale` is the boolean
-        // that could not tell "we had data and it aged" from "this has never
-        // once worked". Fall back to the boolean so a server that predates the
-        // projection keeps behaving exactly as it did.
-        const readiness = c?.readiness ?? (c?.stale ? 'STALE' : null);
-        const stale = readiness === 'STALE';
-        const neverSynced = readiness === 'NEVER_SYNCED';
-        // Data DID land and is knowingly short. Not an error, and not silence —
-        // the one axis the account owner was never shown.
-        const incomplete = c?.completeness === 'INCOMPLETE';
         // A picker only when the token grants more than one ad account — the
         // single-account user sees no change. Lets the user correct connect-time's
         // auto-pick (first active account ≠ always the one with delivery).
         const accounts = connected ? (c.availableAccounts ?? []) : [];
         return (
-          <div key={platform} className="flex items-center gap-3 px-4 py-3 border-b border-lumi-border/60 last:border-0">
+          <div key={platform} className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-lumi-border/60 last:border-0">
             <span className="flex-shrink-0">
-              {connected && !stale && <CheckCircle2 className="w-4 h-4 text-signal-scale" strokeWidth={1.5} />}
-              {connected && stale && <AlertTriangle className="w-4 h-4 text-signal-kill" strokeWidth={1.5} />}
+              {connected && <Plug className="w-4 h-4 text-lumi-subtle" strokeWidth={1.5} />}
               {!connected && <Plus className="w-4 h-4 text-lumi-subtle" strokeWidth={1.5} />}
             </span>
             <span className="flex-1 text-sm text-lumi-text font-display font-medium">{LABEL[platform] ?? platform}</span>
@@ -89,18 +71,10 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
               </select>
             )}
             {connected ? (
-              <span className="font-mono text-xs text-lumi-subtle">
-                {switching === platform ? 'switching…' : `last sync ${ago(c.lastSyncedAt)}`}
-                {/* Three outcomes, three sentences. "Never synced" is not
-                    staleness: nothing aged, because nothing ever arrived. */}
-                {switching !== platform && neverSynced ? ' · never synced' : ''}
-                {switching !== platform && stale ? ' · stale — reconnect' : ''}
-                {/* Stated BESIDE lastError, never instead of it. A sync can
-                    have failed today and landed short data yesterday; both are
-                    true and neither explains the other. */}
-                {switching !== platform && incomplete
-                  ? ` · incomplete — ${c.health?.lastWarning ?? 'some data was not read'}` : ''}
-                {switching !== platform && c.health?.lastError ? ` · ${c.health.lastError}` : ''}
+              <span className="w-full min-w-0 font-mono text-xs text-lumi-subtle">
+                {switching === platform ? 'switching…' : connectorFactLabels(c, { details: true }).map((label) => (
+                  <span key={label} className="block break-words">{label}</span>
+                ))}
               </span>
             ) : isConnectable(platform) ? (
               <button onClick={() => startConnect(platform, projectId)} className="font-mono text-xs text-lumi-accent hover:underline">connect</button>
@@ -121,14 +95,14 @@ export default function ConnectorsView() {
   const [switching, setSwitching] = useState(null);
 
   // Switch the active ad account (server validates it against the token's accounts),
-  // then refetch so the new account's freshness shows. The PATCH re-syncs server-
-  // side, so by the time it resolves the new account's campaigns have landed.
+  // then refetch connection truth. The PATCH awaits best-effort sync; its success
+  // proves the account switched, not that campaigns landed or data is current.
   const handleSwitchAccount = async (platform, accountId) => {
     if (!accountId || switching) return;
     setSwitching(platform);
     try {
       await switchAdAccount(platform, accountId);
-      toast.success('Ad account switched — re-syncing its campaigns…');
+      toast.success('Ad account switched.');
       refetch();
     } catch (err) {
       toast.error(err?.message || "Couldn't switch ad account");

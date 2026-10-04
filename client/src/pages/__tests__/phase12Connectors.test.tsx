@@ -51,11 +51,13 @@ describe('Blended Truth — staleness honesty banner (Phase 12)', () => {
 describe('Connections view', () => {
   it('shows connected/stale/not-connected per channel', () => {
     render(<ConnectionsView connections={[
-      { platform: 'META', isActive: true, connected: true, stale: false, lastSyncedAt: new Date().toISOString(), accountId: 'act_1', health: null },
-      { platform: 'GOOGLE', isActive: true, connected: true, stale: true, lastSyncedAt: new Date(Date.now() - 3 * 86400000).toISOString(), accountId: 'cust_1', health: { lastError: 'token expired' } },
+      { platform: 'META', isActive: true, connected: true, stale: false, readiness: 'CURRENT', availability: 'OK', completeness: 'COMPLETE', lastSuccessfulSync: new Date().toISOString(), accountId: 'act_1', health: null },
+      { platform: 'GOOGLE', isActive: true, connected: true, stale: true, readiness: 'STALE', availability: 'FAILING', completeness: 'COMPLETE', lastSuccessfulSync: new Date(Date.now() - 3 * 86400000).toISOString(), accountId: 'cust_1', health: { lastError: 'token expired' } },
     ]} />);
     expect(screen.getByText('Meta Ads')).toBeInTheDocument();
-    expect(screen.getByText(/stale — reconnect/i)).toBeInTheDocument();
+    expect(screen.getByText(/Stale · Last successful sync 3d ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Latest sync attempt failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/reconnect/i)).not.toBeInTheDocument();
     expect(screen.getByText(/token expired/i)).toBeInTheDocument();
     // OAuth-unsupported channels (TikTok/LinkedIn/Snap) show "soon", not "connect".
     expect(screen.getAllByText('soon').length).toBeGreaterThan(0);

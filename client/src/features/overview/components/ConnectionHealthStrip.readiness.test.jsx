@@ -72,33 +72,32 @@ describe('FE-04 · a never-synced channel is never called stale', () => {
   // strip stopped saying it at all.
   it('an aged connection is still called stale — the word is not gone', () => {
     ok([{ platform: 'META', connected: true, stale: true, readiness: 'STALE',
-          lastSyncedAt: new Date(Date.now() - 3 * 86_400_000).toISOString() }]);
+          lastSuccessfulSync: new Date(Date.now() - 3 * 86_400_000).toISOString() }]);
     const { container } = rail();
-    expect(container.textContent).toMatch(/Stale · 3d ago/);
+    expect(container.textContent).toMatch(/Stale · Last successful sync 3d ago/);
     expect(container.textContent).not.toMatch(/never synced/i);
   });
 
-  it('a current connection is untouched', () => {
+  it('a current connection uses the published success clock', () => {
     ok([{ platform: 'META', connected: true, stale: false, readiness: 'CURRENT',
-          lastSyncedAt: new Date(Date.now() - 30 * 60_000).toISOString() }]);
-    expect(rail().container.textContent).toMatch(/Synced 30m ago/);
+          lastSuccessfulSync: new Date(Date.now() - 30 * 60_000).toISOString() }]);
+    expect(rail().container.textContent).toMatch(/Current · Last successful sync 30m ago/);
   });
 
-  // A server that predates C-04 publishes no `readiness` at all. The two fields
-  // it DOES publish still carry the distinction — nothing can have aged if
-  // nothing ever landed — so the fallback derives it locally rather than
-  // reaching back into the contract.
-  it('falls back honestly when the server publishes no readiness', () => {
+  // Schema compatibility never authorizes client classification of old payloads.
+  it('missing readiness remains unavailable even with a null legacy clock', () => {
     ok([{ platform: 'META', connected: true, stale: true, lastSyncedAt: null }]);
     const { container } = rail();
-    expect(container.textContent).toMatch(/never synced/i);
-    expect(container.textContent).not.toMatch(/Stale\s*·\s*never/i);
+    expect(container.textContent).toMatch(/Freshness unavailable/i);
+    expect(container.textContent).not.toMatch(/never synced|Stale/i);
   });
 
-  it('…and still reports a genuinely aged one as stale without readiness', () => {
+  it('missing readiness remains unavailable even with an aged legacy clock', () => {
     ok([{ platform: 'META', connected: true, stale: true,
           lastSyncedAt: new Date(Date.now() - 3 * 86_400_000).toISOString() }]);
-    expect(rail().container.textContent).toMatch(/Stale · 3d ago/);
+    const { container } = rail();
+    expect(container.textContent).toMatch(/Freshness unavailable/i);
+    expect(container.textContent).not.toMatch(/Stale|3d ago/);
   });
 
   // A channel with no credential row at all is a THIRD thing, and was already
