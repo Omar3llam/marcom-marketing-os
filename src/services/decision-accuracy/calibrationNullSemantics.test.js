@@ -22,6 +22,7 @@
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
+import * as accuracyEngine from './decisionAccuracyEngine.js';
 import { accuracySurface, DEFAULT_CONFIG, COVERAGE_VERDICT, LIFT_STATUS } from './accuracyTypes.js';
 
 const DAY = 86_400_000;
@@ -181,5 +182,54 @@ describe('the gated path is unchanged', () => {
     expect(s.calibrationErrorPct).toBeNull();
     expect(s.improvementPct).toBeNull();
     expect(s.status).toBeNull();
+  });
+});
+
+describe('P7-06A — nullable period fit-publication boundary', () => {
+  // Current non-empty cohorts produce numbers. Exercise the production trend
+  // seam with a preserved null, not a claim that ordinary cohorts emit null.
+  it('retains null evidence and excludes it from the same subset that owns a flat regression', () => {
+    const velocity = accuracyEngine.calculateVelocityTrend([
+      { label: '2025-11', calibrationError: null, sampleSize: 30 },
+      { label: '2025-12', calibrationError: 0.1, sampleSize: 30 },
+      { label: '2026-01', calibrationError: 0.1, sampleSize: 30 },
+    ]);
+    expect(velocity).toEqual({
+      periods: [
+        { label: '2025-11', calibrationError: null, sampleSize: 30, includedInTrend: false },
+        { label: '2025-12', calibrationError: 0.1, sampleSize: 30, includedInTrend: true },
+        { label: '2026-01', calibrationError: 0.1, sampleSize: 30, includedInTrend: true },
+      ],
+      trend: LIFT_STATUS.FLAT, slope: 0,
+    });
+  });
+
+  it('does not count an unmeasurable period as the second fit observation', () => {
+    const velocity = accuracyEngine.calculateVelocityTrend([
+      { label: '2025-11', calibrationError: null, sampleSize: 100 },
+      { label: '2025-12', calibrationError: 0.9, sampleSize: 2 },
+      { label: '2026-01', calibrationError: 0.1, sampleSize: 30 },
+    ]);
+    expect(velocity.periods.map((p) => p.includedInTrend)).toEqual([false, false, true]);
+    expect(velocity.periods[0].calibrationError).toBeNull();
+    expect(velocity.trend).toBe(LIFT_STATUS.INSUFFICIENT_DATA);
+    expect(velocity.slope).toBeNull();
+  });
+});
+
+describe('P7-06A — zero-baseline surface never fabricates relative improvement', () => {
+  it.each([
+    [0, 'holding steady', LIFT_STATUS.FLAT],
+    [0.4, 'degrading', LIFT_STATUS.DEGRADING],
+  ])('zero → %s emits %s and no relative percentage', (recent, verb, status) => {
+    const decisions = Array.from({ length: 100 }, (_, i) => scorable(i, {
+      confidence: i < 50 ? 1 : 1 - recent,
+    }));
+    const result = calculateDecisionAccuracy({ decisions, now: new Date(T0 + 110 * DAY) });
+    const surface = accuracySurface(result);
+    expect(surface).toMatchObject({ gated: false, status, calibrationErrorPct: recent * 100, improvementPct: null });
+    expect(result.accountLift.calibrationImprovementPct).toBeNull();
+    expect(surface.headline).toContain(`— ${verb}`);
+    if (recent > 0) expect(surface.headline).not.toContain('holding steady');
   });
 });
