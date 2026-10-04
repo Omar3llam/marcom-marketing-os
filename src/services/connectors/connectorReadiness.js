@@ -38,7 +38,7 @@
 // NOT_RECORDED. PURE — no I/O, no clock of its own (callers pass `now`).
 // ============================================================
 import { CHANNEL } from './connectorTypes.js';
-import { CONNECTOR_STALE_HOURS } from './connectorTypes.js';
+import { CONNECTOR_STALE_HOURS, isStale } from './connectorTypes.js';
 import { DAILY_STATE } from './connectorConfig.js';
 import { resolve } from './connectorRegistry.js';
 import { EXECUTABLE_CHANNELS } from '../execution/decisionExecutability.js';
@@ -208,9 +208,38 @@ export function completenessOf(health) {
  * verdict window, and a UI that greys out verdicts on it would be lying.
  */
 export function readinessOf(health, now = new Date(), staleHours = CONNECTOR_STALE_HOURS) {
-  if (!succeeded(health)) return READINESS_STATE.NEVER_SYNCED;
-  const ageMs = now.getTime() - new Date(health.lastSuccessfulSync).getTime();
-  return ageMs > staleHours * 60 * 60 * 1000 ? READINESS_STATE.STALE : READINESS_STATE.CURRENT;
+  return freshnessOf({ health }, now, staleHours).readiness;
+}
+
+/**
+ * PURE: resolve the success evidence once for the Connections projection.
+ * Health has authority over the legacy success-only column, regardless of age.
+ * An unusable source may fall back to usable legacy evidence, but when evidence
+ * exists and neither source is usable, freshness is unavailable, not "never".
+ * No clock-skew tolerance is established: future instants cannot prove age.
+ * Availability, completeness and capabilities still consume original health.
+ */
+export function freshnessOf(row, now = new Date(), staleHours = CONNECTOR_STALE_HOURS) {
+  const sources = [row?.health?.lastSuccessfulSync, row?.lastSyncedAt];
+  const usable = (timestamp) => {
+    if (typeof timestamp !== 'string' || !timestamp.trim()) return false;
+    const instant = new Date(timestamp).getTime();
+    return Number.isFinite(instant) && instant <= now.getTime();
+  };
+  const lastSuccessfulSync = sources.find(usable) ?? null;
+  const hasEvidence = sources.some((timestamp) => timestamp != null);
+  // Retain the legacy boolean's no-fresh-data behavior without using it to
+  // turn unusable evidence into a known readiness classification.
+  const stale = isStale(lastSuccessfulSync, now, staleHours);
+  const readiness = lastSuccessfulSync !== null
+    ? (stale ? READINESS_STATE.STALE : READINESS_STATE.CURRENT)
+    : (hasEvidence ? null : READINESS_STATE.NEVER_SYNCED);
+  return {
+    lastSuccessfulSync,
+    readiness,
+    readinessKnowledge: READINESS_KNOWLEDGE.knowledgeOf(readiness),
+    stale,
+  };
 }
 
 /** Does this connector implement a daily provider? The IDENTICAL predicate
