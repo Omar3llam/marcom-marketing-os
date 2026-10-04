@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import source from './CampaignsView.jsx?raw';
+import { formatCurrency } from '@/lib/money';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/lib/api.js', () => ({ api }));
@@ -21,13 +22,25 @@ const absent = (status, reason) => ({ status, reason, currency: null, totalSpend
   killSpendMinor: null, holdSpendMinor: null, scaleSpendMinor: null, killPct: null, holdPct: null, scalePct: null });
 const response = (budgetDistribution) => ({ verdicts: [{ id: 'a', verdict: 'KILL', spendMinor: 999999 }], gatedOut: [], status: 'OK', budgetDistribution });
 const view = () => render(<CampaignsView />, { wrapper: MemoryRouter });
-const chart = () => screen.getByText('Current Budget Distribution').closest('section');
+const chart = () => screen.getByText('Scored campaign spend distribution').closest('section');
+const noEvidence = () => {
+  expect(within(chart()).queryByRole('img')).not.toBeInTheDocument();
+  expect(within(chart()).queryByText(/\d+%/)).not.toBeInTheDocument();
+  expect(chart().querySelector('[style*="width"]')).toBeNull();
+  expect(chart()).not.toHaveTextContent(/EGP|USD|ج\.م|\$|Total scored spend/);
+};
 beforeEach(() => vi.clearAllMocks());
 
 describe('SC-17A wire → schema → real hook → CampaignsView → real chart', () => {
   it('renders backend shares even when verdict-row spend contradicts them', async () => {
     api.get.mockResolvedValue({ data: response(available) }); view();
-    await waitFor(() => expect(screen.getByRole('img', { name: /kill 24.99%, hold 50.02%, scale 24.99%/ })).toBeInTheDocument());
+    await waitFor(() => expect(within(chart()).getByText('50.02%')).toBeInTheDocument());
+    expect(within(chart()).getAllByText('24.99%')).toHaveLength(2);
+    expect(chart()).toHaveTextContent('EGP');
+    expect(chart().textContent).toContain(formatCurrency(1000, 'EGP'));
+    expect(chart().textContent).toContain(formatCurrency(500, 'EGP'));
+    expect(chart()).not.toHaveTextContent('USD');
+    expect(chart().textContent).not.toContain(formatCurrency(999999, 'EGP'));
   });
   it.each([
     [absent('UNAVAILABLE', 'MIXED_CURRENCY'), /currencies cannot be combined/i],
@@ -36,19 +49,20 @@ describe('SC-17A wire → schema → real hook → CampaignsView → real chart'
   ])('published absence reaches the chart without fabricated shares: %j', async (budgetDistribution, copy) => {
     api.get.mockResolvedValue({ data: response(budgetDistribution) }); view();
     expect(await screen.findByText(copy)).toBeInTheDocument();
-    expect(within(chart()).queryByRole('img')).not.toBeInTheDocument();
-    expect(within(chart()).queryByText(/\d+%/)).not.toBeInTheDocument();
+    noEvidence();
   });
   it('pending verdict read renders loading, not successful empty', () => {
     api.get.mockImplementation(() => new Promise(() => {})); view();
-    expect(within(chart()).getByRole('status')).toHaveTextContent(/loading budget distribution/i);
+    expect(within(chart()).getByRole('status')).toHaveTextContent(/loading scored campaign spend distribution/i);
+    noEvidence();
     expect(within(chart()).queryByText(/no scored/i)).not.toBeInTheDocument();
   });
-  it.each(['network', 'malformed'])('%s failure reaches the chart as an error', async (kind) => {
+  it.each(['network', 'malformed', 'unknown-status'])('%s failure reaches the chart as an error', async (kind) => {
     if (kind === 'network') api.get.mockRejectedValue(new Error('network'));
-    else api.get.mockResolvedValue({ data: response({ ...available, holdPct: 'wrong' }) });
+    else api.get.mockResolvedValue({ data: response({ ...available, ...(kind === 'malformed' ? { holdPct: 'wrong' } : { status: 'UNKNOWN' }) }) });
     view();
-    await waitFor(() => expect(within(chart()).getByRole('alert')).toHaveTextContent(/couldn.t load budget distribution/i));
+    await waitFor(() => expect(within(chart()).getByRole('alert')).toHaveTextContent(/couldn.t load scored campaign spend distribution/i));
+    noEvidence();
     expect(within(chart()).queryByText(/no scored/i)).not.toBeInTheDocument();
   });
   it('ratchets removal of the client monetary chart roll-up', () => {
