@@ -48,6 +48,7 @@ const AD_NOUNS      = Object.freeze({ cohort: 'ad',     baseline: 'ad set' });
 const nounsFor = (dimension) => (dimension === 'ad' ? AD_NOUNS : AD_SET_NOUNS);
 
 export const EVIDENCE_REFUSAL_LABELS = Object.freeze({
+  COMPARISON_ENVELOPE_UNAVAILABLE: () => 'These measurements do not share enough comparable evidence to rank reliably.',
   INSUFFICIENT_REPORTING_ADSETS: () => 'Not enough reporting ad sets to compare',
   INSUFFICIENT_REPORTING_ADS:    () => 'Not enough reporting ads to compare',
   BASELINE_UNAVAILABLE:          (n) => `No ${n.baseline} performance data to compare against yet`,
@@ -60,6 +61,20 @@ export const EVIDENCE_REFUSAL_LABELS = Object.freeze({
  * @param {string|null} reasonKey — the server's key, verbatim
  * @param {'adset'|'ad'} [dimension='adset'] — which level asked
  */
+// Formatting only: preserve exact non-midnight instants; date-only midnight
+// bounds remain explicit UTC. Source and counts are published server facts.
+export const evidenceBasisLabel = (envelope) => {
+  if (!envelope) return null;
+  const displayBound = (value) => value.replace(/T00:00:00\.000Z$/, '');
+  return `Evidence · ${displayBound(envelope.windowStart)} → ${displayBound(envelope.windowEnd)} UTC · ${envelope.source}${envelope.currency ? ` · ${envelope.currency}` : ''}`;
+};
+
+export const evidencePopulationLabel = (envelope, noun) => {
+  if (!envelope) return null;
+  const excluded = envelope.excludedByEnvelopeCount;
+  return `Compared within ${envelope.comparableCount} reporting ${noun} with comparable evidence${excluded > 0 ? ` · ${excluded} excluded from this comparison` : ''}`;
+};
+
 export const refusalLabel = (reasonKey, dimension = 'adset') => {
   const nouns = nounsFor(dimension);
   const build = EVIDENCE_REFUSAL_LABELS[reasonKey];

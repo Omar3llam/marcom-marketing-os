@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { CreativeIntelligenceBlock } from './CreativeIntelligenceBlock.jsx';
+import { buildCreativeIntelligenceViewModel } from './creativeIntelligenceViewModel.js';
 
 const codeOf = () => readFileSync(
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'CreativeIntelligenceBlock.jsx'), 'utf8',
@@ -39,6 +40,28 @@ const vm = (over = {}) => ({
 });
 
 describe('P7-04B comparison hierarchy', () => {
+  it.each([['ctr', 0.02, 0.008, -0.6, 'RATIO', '0.80%', '2.00%'],
+    ['frequency', 2, 4, 1, 'FREQUENCY', '4.00', '2.00'],
+    ['roas', 2, 0.5, -0.75, 'MULTIPLE', '0.50x', '2.00x']])(
+    'P7-07A AD %s envelope reaches the model and renderer without local eligibility', (metric, parentValue, childValue, gap, valueUnit, childText, parentText) => {
+      const comparisonEnvelope = { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric, valueUnit,
+        gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+        windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+        currency: metric === 'roas' ? 'EGP' : null, currencyProvenance: metric === 'roas' ? 'PLATFORM_REPORTED' : null,
+        rankableCount: 3, comparableCount: 2, excludedByEnvelopeCount: 1 };
+      const bottom = { entityId: 'a', name: 'Selected ad', [metric]: childValue, _gap: gap };
+      const model = buildCreativeIntelligenceViewModel({ parent: { [metric]: parentValue }, comparisonEnvelope,
+        evidence: { dimension: 'AD', metric, ranked: [bottom, { entityId: 'b' }], summary: { bottom } } });
+      expect(model.comparisonEnvelope).toBe(comparisonEnvelope);
+      render(<CreativeIntelligenceBlock viewModel={model} />);
+      const region = screen.getByRole('region', { name: 'Selected comparison' });
+      expect(within(region).getByText(childText)).toBeInTheDocument();
+      expect(within(region).getByText(parentText)).toBeInTheDocument();
+      expect(within(region).getByText(/2026-08-01.*2026-08-30.*META/)).toBeInTheDocument();
+      expect(within(region).getByText(/2 reporting ads with comparable evidence.*1 excluded/)).toBeInTheDocument();
+      if (metric === 'frequency') expect(within(region).getByText('100% above ad set')).toBeInTheDocument();
+      if (metric === 'roas') expect(within(region).getByText(/META · EGP/)).toBeInTheDocument();
+    });
   it('privileges the ranking metric and keeps unrelated reported metrics under Context', () => {
     render(<CreativeIntelligenceBlock viewModel={vm()} />);
     const primary = screen.getByRole('region', { name: 'Selected comparison' });

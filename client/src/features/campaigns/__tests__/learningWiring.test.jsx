@@ -18,6 +18,11 @@ vi.mock('../decisionSignals.js', () => ({ recordExplain: vi.fn(), recordIntent: 
 import { ExecutionContext } from '../ExecutionContext.jsx';
 import { CampaignDetailPanel } from '../CampaignDetailPanel.jsx';
 
+const comparisonEnvelope = { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0 };
+
 const ENTITY = 'c1c1c1c1-0000-4000-8000-000000000001';
 const TALLY = { total: 12, improved: 9, unchanged: 2, worsened: 1, unscored: 0 };
 
@@ -47,7 +52,7 @@ beforeEach(() => {
 });
 
 describe('ExecutionContext', () => {
-  const setup = () => render(<ExecutionContext campaign={campaign()} parent={{ ctr: 0.02 }} evidence={evidence} verdict="KILL" />);
+  const setup = () => render(<ExecutionContext campaign={campaign()} parent={{ ctr: 0.02 }} evidence={evidence} comparisonEnvelope={comparisonEnvelope} verdict="KILL" />);
 
   it('asks for the record with the campaign entity id', () => {
     setup();

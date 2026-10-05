@@ -41,6 +41,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api.js';
 import { drillDownFailure } from './drillDownFailure.js';
+import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
 
 /** PURE: the cache key. Exported so a consumer reads the same entry it asked for. */
 export const evidenceKey = (parentId, metric = 'ctr') => `${parentId}:${metric}`;
@@ -61,12 +62,37 @@ const object = (value) => value !== null && typeof value === 'object' && !Array.
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 const CONTRACT_ERROR = 'Evidence response failed contract validation';
 
+// Admission validates the published contract, never parent/child eligibility.
+// There are deliberately no per-side source, period or currency comparisons.
+function validEnvelope(envelope, metric) {
+  if (!object(envelope)) return false;
+  const units = { ctr: 'RATIO', roas: 'MULTIPLE', frequency: 'FREQUENCY' };
+  const count = (value) => Number.isSafeInteger(value) && value >= 0;
+  const bound = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+    && new Date(value).toISOString() === value;
+  return envelope.status === 'AVAILABLE' && envelope.kind === 'RELATIVE_BASELINE'
+    && envelope.metric === metric && envelope.valueUnit === units[metric]
+    && envelope.gapUnit === 'RELATIVE_RATIO' && envelope.gapDenominator === 'PARENT_VALUE'
+    && ['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN', 'GA4', 'SHOPIFY', 'MANUAL'].includes(envelope.source)
+    && ['ROLLING_WINDOW', 'DAILY', 'CUMULATIVE_30D'].includes(envelope.measurementWindow)
+    && bound(envelope.windowStart) && bound(envelope.windowEnd)
+    && Date.parse(envelope.windowStart) <= Date.parse(envelope.windowEnd)
+    && count(envelope.rankableCount) && count(envelope.comparableCount) && envelope.comparableCount >= 2
+    && count(envelope.excludedByEnvelopeCount)
+    && envelope.rankableCount === envelope.comparableCount + envelope.excludedByEnvelopeCount
+    && (metric === 'roas'
+      ? isKnownCurrency(envelope.currency)
+        && ['PLATFORM_REPORTED'].includes(envelope.currencyProvenance)
+      : envelope.currency === null && envelope.currencyProvenance === null);
+}
+
 // Validate this route's success/refusal envelope only. Never reconstruct a
 // comparison or validate its arithmetic against the published values.
 function validResponse(data, metric) {
   if (!object(data)) return false;
   if (data.insufficientData === true) {
-    return data.evidence === null && typeof data.reasonKey === 'string' && data.reasonKey.trim().length > 0;
+    return data.evidence === null && typeof data.reasonKey === 'string' && data.reasonKey.trim().length > 0
+      && (data.reasonKey !== 'COMPARISON_ENVELOPE_UNAVAILABLE' || data.comparisonEnvelope === null);
   }
   const evidence = data.evidence;
   const bottom = evidence?.summary?.bottom;
@@ -75,7 +101,7 @@ function validResponse(data, metric) {
     && object(data.entity) && finite(data.entity[metric])
     && object(evidence) && evidence.metric === metric
     && Array.isArray(evidence.ranked) && object(evidence.summary) && object(bottom)
-    && finite(bottom[metric]) && finite(bottom._gap);
+    && finite(bottom[metric]) && finite(bottom._gap) && validEnvelope(data.comparisonEnvelope, metric);
 }
 
 /**
@@ -110,6 +136,7 @@ export function useEvidence({ dimension = 'adset' } = {}) {
           entity:    res.data?.entity ?? null,
           objective: res.data?.objective ?? null,
           evidence:  res.data?.evidence ?? null,
+          comparisonEnvelope: res.data.comparisonEnvelope ?? null,
           insufficientData: res.data.insufficientData,
           reasonKey: res.data?.reasonKey ?? null,
         },

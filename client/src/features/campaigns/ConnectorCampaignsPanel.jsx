@@ -607,6 +607,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     campaign={c}
                     evidence={ev.evidence}
                     parent={ev.entity}
+                    comparisonEnvelope={ev.comparisonEnvelope}
                     verdict={verdict}
                   />
                 )}

@@ -24,7 +24,7 @@
 // engine or from the operator.
 // ============================================================
 
-import { evidenceMetricLabel, formatEvidenceValue, formatEvidenceGap } from './executionContext.js';
+import { evidenceMetricLabel, formatEvidenceValue, formatEvidenceGap, evidenceBasisLabel, evidencePopulationLabel } from './executionContext.js';
 
 /** The video signals the ad-level ingestion lands, in funnel order. */
 const VIDEO_KEYS = Object.freeze(['videoView', 'video25', 'video50', 'video95']);
@@ -84,9 +84,9 @@ function videoSignalsOf(actionMetrics) {
  * @returns {object|null} null whenever the payload cannot support the surface —
  *   which the renderer turns into nothing at all, never into an empty card.
  */
-export function buildCreativeIntelligenceViewModel({ evidence, parent } = {}) {
+export function buildCreativeIntelligenceViewModel({ evidence, parent, comparisonEnvelope } = {}) {
   const worst = evidence?.summary?.bottom ?? null;
-  if (!worst) return null;
+  if (!worst || !comparisonEnvelope) return null;
 
   const metric = typeof evidence.metric === 'string' ? evidence.metric : null;
   const metricLabel = evidenceMetricLabel(metric);
@@ -95,13 +95,14 @@ export function buildCreativeIntelligenceViewModel({ evidence, parent } = {}) {
   // The set the server actually ranked, after its own rankability filter. Not
   // the number of ads in the ad set: rows too thin to compare were excluded, and
   // counting them would overstate how many this one came last out of.
-  const comparedCount = Array.isArray(evidence.ranked) ? evidence.ranked.length : 0;
+  const comparedCount = comparisonEnvelope.comparableCount;
 
   // The server's own gap, as a percentage of the ad-set baseline. Rounding a
   // stored ratio is formatting; the comparison itself was made on the server.
   const gapPercent = num(worst._gap) == null ? null : Math.round(worst._gap * 100);
 
   return {
+    comparisonEnvelope,
     ad: {
       id:                  worst.entityId ?? null,
       name:                worst.name ?? null,
@@ -125,6 +126,8 @@ export function buildCreativeIntelligenceViewModel({ evidence, parent } = {}) {
     },
     videoSignals: videoSignalsOf(worst.actionMetrics),
     comparison: {
+      basisLabel: evidenceBasisLabel(comparisonEnvelope),
+      populationLabel: evidencePopulationLabel(comparisonEnvelope, 'ads'),
       metricLabel,
       childValue: formatEvidenceValue(metric, worst[metric]),
       parentValue: formatEvidenceValue(metric, parent?.[metric]),
@@ -153,7 +156,7 @@ export function buildCreativeIntelligenceViewModel({ evidence, parent } = {}) {
  */
 function rankingLabel({ metricLabel, gapPercent, comparedCount, gap }) {
   if (!metricLabel) return null;
-  const cohort = comparedCount >= 2 ? ` within ${comparedCount} reporting ads` : '';
+  const cohort = comparedCount >= 2 ? ` within ${comparedCount} reporting ads with comparable evidence` : '';
   // Direction-neutral, because the ranking is not: `summary.bottom` is the WORST
   // row, and for a ceiling metric like frequency the worst row is the HIGHEST
   // one. "Lowest frequency" would name the healthiest ad in the set.

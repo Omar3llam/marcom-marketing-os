@@ -12,7 +12,7 @@
 // from — including the case the whole R5 shape exists for, where there are two.
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { effectiveByEntity, toCampaignRow } from './entityGraphEngine.js';
+import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityGraphEngine.js';
 
 const C1 = 'c1';
 const AUG10 = new Date('2026-08-10T09:00:00Z');
@@ -31,6 +31,14 @@ const campaign = { id: C1, name: 'Eid', channel: 'META' };
 const rowsOf = (snap) => toCampaignRow(campaign, snap).evidenceRows;
 
 describe('R5 — metricsOf keeps the row its numbers came from', () => {
+  it.each([toCampaignRow, toAdSetRow, toAdRow])('P7-07A preserves primary source and period independently of overlay provenance', (project) => {
+    const base = platform({ measurementWindow: 'ROLLING_WINDOW', windowStart: '2026-08-01', windowEnd: '2026-08-30' });
+    const merged = effectiveByEntity([base, actual()]).get(C1);
+    const row = project(campaign, merged);
+    expect(row).toMatchObject({ source: 'META', measurementWindow: 'ROLLING_WINDOW', windowStart: '2026-08-01', windowEnd: '2026-08-30' });
+    expect(row.evidenceRows.map((r) => r.source)).toEqual(['META', 'GA4']);
+    expect(project(campaign, null).source).toBeNull();
+  });
   it('names the source, which this projection used to drop', () => {
     // The loss point, stated as an assertion. Before R5 nothing downstream of
     // here could say a verdict was decided on META rather than GOOGLE.

@@ -15,6 +15,11 @@ import { MemoryRouter } from 'react-router-dom';
 // feed ExecutionContext's ad-set rows; now that the ranking is the server's, the
 // panel reads the evidence payload alone and the card no longer narrates a
 // second request whose result it never shows.
+const comparisonEnvelope = { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0 };
+
 const ev = vi.hoisted(() => ({
   load: vi.fn(), byId: { current: {} }, loading: { current: {} }, errors: { current: {} }, failures: { current: {} },
 }));
@@ -48,7 +53,7 @@ const withEvidence = (over = {}) => ({
       summary: { bottom: BOTTOM, top: { ...BOTTOM, entityId: 'a1' }, outliers: [BOTTOM] },
       dataConfidence: 0.7,
     },
-    insufficientData: false, reasonKey: null, ...over,
+    comparisonEnvelope, insufficientData: false, reasonKey: null, ...over,
   },
 });
 

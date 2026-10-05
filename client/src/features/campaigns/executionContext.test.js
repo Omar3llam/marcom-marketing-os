@@ -61,6 +61,7 @@ describe('EVIDENCE_REFUSAL_LABELS — the server speaks keys, the client speaks 
   const ALL_KEYS = [
     'INSUFFICIENT_REPORTING_ADSETS', 'INSUFFICIENT_REPORTING_ADS',
     'BASELINE_UNAVAILABLE', 'NO_MEANINGFUL_GAP', 'INVALID_METRIC',
+    'COMPARISON_ENVELOPE_UNAVAILABLE',
   ];
 
   it('covers every reasonKey the endpoint can emit', () => {

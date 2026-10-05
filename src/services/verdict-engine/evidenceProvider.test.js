@@ -18,16 +18,105 @@ import {
 // same value, but asserting against the re-export tested the copy rather than
 // the original, and would have gone on passing if the two ever drifted.
 import { FATIGUE_FREQ } from './benchmarkProvider.js';
+import { effectiveByEntity, toCampaignRow } from '../entity-graph/entityGraphEngine.js';
+import { readFileSync } from 'node:fs';
+
+const comparisonRow = (id, over = {}) => ({
+  entityId: id, source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED',
+  evidenceRows: [{ entityId: id, source: 'META', observedAt: '2026-09-01T00:00:00.000Z' }],
+  ctr: 0.02, frequency: 2, roas: 2, impressions: 10000, spendMinor: 10000, ...over,
+});
+
+describe('P7-07A comparison authority cannot be bypassed by analyzeEvidence', () => {
+  it('keeps the sole production caller on the guarded provider and shared envelope authority', () => {
+    const route = readFileSync(new URL('../../routes/lumi/entities.js', import.meta.url), 'utf8');
+    expect(route).toContain('entityComparisonPopulation(entity, rankable, metric)');
+    expect(route.match(/const evidence = analyzeEvidence\(/g)).toHaveLength(1);
+    expect(route).not.toMatch(/windowStart\s*===|windowEnd\s*===|currencyProvenance\s*===/);
+  });
+  const run = (over = {}) => analyzeEvidence({ dimension: 'AD', metric: 'ctr', now: 0,
+    baseline: comparisonRow('p'), entities: [comparisonRow('bad', { ctr: 0.008 }), comparisonRow('good')], ...over });
+  it.each([
+    { windowStart: '2026-07-01T00:00:00.000Z', windowEnd: '2026-07-30T00:00:00.000Z' },
+    { windowStart: null }, { windowEnd: null }, { windowStart: 'bad date' }, { windowStart: false },
+    { windowStart: '2026-02-30' },
+    { windowStart: '2026-09-01' }, { measurementWindow: 'LEGACY_UNKNOWN' },
+    { measurementWindow: 'CUMULATIVE_30D' }, { source: 'GOOGLE' }, { source: null },
+  ])('refuses an otherwise rankable but incomparable population %j', (fields) => {
+    expect(run({ entities: [comparisonRow('a', { ctr: 0.008, ...fields }), comparisonRow('b', fields)] })).toBeNull();
+  });
+  it('publishes units, exact common period and counts for compatible CTR', () => {
+    const result = run();
+    expect(result.summary.bottom._gap).toBeCloseTo(-0.6);
+    expect(result.comparisonEnvelope).toEqual({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr',
+      valueUnit: 'RATIO', gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META',
+      measurementWindow: 'ROLLING_WINDOW', windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+      currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0 });
+  });
+  it('filters before ranking, selection, outliers and threshold evaluation', () => {
+    const result = run({ entities: [comparisonRow('bad', { ctr: 0.008 }), comparisonRow('good'),
+      comparisonRow('excluded', { ctr: 0, windowStart: '2026-07-01' })] });
+    expect(result.ranked.map((r) => r.entityId)).toEqual(['bad', 'good']);
+    expect(result.summary.bottom.entityId).toBe('bad');
+    expect(result.summary.top.entityId).toBe('good');
+    expect(result.summary.outliers.map((r) => r.entityId)).toEqual(['bad']);
+    expect(result.comparisonEnvelope).toMatchObject({ rankableCount: 3, comparableCount: 2, excludedByEnvelopeCount: 1 });
+  });
+  it('keeps adverse frequency direction and the published positive gap', () => {
+    const result = run({ metric: 'frequency', entities: [comparisonRow('high', { frequency: 4 }), comparisonRow('low')] });
+    expect(result.summary.bottom.entityId).toBe('high');
+    expect(result.summary.bottom._gap).toBe(1);
+    expect(result.comparisonEnvelope.valueUnit).toBe('FREQUENCY');
+  });
+  it('allows authoritative primary-platform ROAS', () => {
+    const result = run({ metric: 'roas', entities: [comparisonRow('bad', { roas: 0.5 }), comparisonRow('good')] });
+    expect(result.summary.bottom._gap).toBe(-0.75);
+    expect(result.comparisonEnvelope).toMatchObject({ valueUnit: 'MULTIPLE', currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED' });
+  });
+  it('needs no currency for CTR or frequency, and preserves canonical Date bounds', () => {
+    const period = { currency: null, currencyProvenance: 'LEGACY_UNKNOWN',
+      windowStart: new Date('2026-08-01T00:00:00Z'), windowEnd: new Date('2026-08-30T00:00:00Z') };
+    for (const metric of ['ctr', 'frequency']) {
+      const result = run({ metric, baseline: comparisonRow('p', period), entities: [
+        comparisonRow('a', { ...period, ctr: 0.008, frequency: 4 }), comparisonRow('b', period)] });
+      expect(result.comparisonEnvelope.currency).toBeNull();
+      expect(result.comparisonEnvelope.windowStart).toBe('2026-08-01T00:00:00.000Z');
+    }
+  });
+  it.each([{ currency: 'USD' }, { currency: null }, { currencyProvenance: 'WORKSPACE_INFERRED' },
+    { evidenceRows: [] }, { evidenceRows: [{ source: 'GA4' }] }])('refuses unproved ROAS basis %j', (fields) => {
+    expect(run({ metric: 'roas', entities: [comparisonRow('a', { roas: 0.5, ...fields }), comparisonRow('b', fields)] })).toBeNull();
+  });
+  it('refuses a real finite actual-revenue overlay without changing that operational row', () => {
+    const projected = (id, revenueMinor) => toCampaignRow({ id, channel: 'META' }, effectiveByEntity([
+      { ...comparisonRow(id), date: '2026-09-01', revenueMinor: 20000 },
+      { entityId: id, source: 'GA4', date: '2026-09-02', revenueMinor,
+        currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED' },
+    ]).get(id));
+    const parent = projected('p', 20000), children = [projected('a', 5000), projected('b', 30000)];
+    expect(children[0].roas).toBe(0.5);
+    expect(children[0].currencyProvenance).toBe('PLATFORM_REPORTED');
+    expect(run({ baseline: parent, entities: children, metric: 'roas' })).toBeNull();
+    expect(children[0].roas).toBe(0.5);
+  });
+});
 
 const NOW = Date.parse('2026-08-01T00:00:00.000Z');
 
 // ctr arrives as a RATIO from the snapshot, exactly as toAdRow emits it.
 const ad = (id, over = {}) => ({
-  entityId: id, name: `Ad ${id}`, channel: 'META', status: 'ACTIVE',
+  entityId: id, name: `Ad ${id}`, channel: 'META', status: 'ACTIVE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED',
+  evidenceRows: [{ entityId: id, source: 'META' }],
   ctr: 0.02, roas: 2.0, frequency: 1.5, impressions: 10_000, clicks: 200,
   spendMinor: 10_000, actionMetrics: null, platformCreatedTime: null, ...over,
 });
-const baseline = { ctr: 0.02, roas: 2.0, frequency: 1.5, spendMinor: 100_000 };
+const baseline = { entityId: 'p', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', evidenceRows: [{ entityId: 'p', source: 'META' }], ctr: 0.02, roas: 2.0, frequency: 1.5, spendMinor: 100_000 };
 
 // ── The trap ────────────────────────────────────────────────────────────────
 describe('toPct — CTR 1.64% is stored as 0.0164 and must be multiplied, not divided', () => {
@@ -154,15 +243,14 @@ describe('METRIC_THRESHOLDS', () => {
     expect(METRIC_THRESHOLDS.frequency).toEqual({ minGap: 0.30, direction: 'lower' });
   });
 
-  it('an unknown metric falls to DEFAULT_THRESHOLD rather than throwing', () => {
+  it('an unknown metric has no comparison unit contract and refuses without changing DEFAULT_THRESHOLD', () => {
     expect(DEFAULT_THRESHOLD).toEqual({ minGap: -0.20, direction: 'higher' });
     const out = analyzeEvidence({
       dimension: 'AD', metric: 'someFutureMetric', objective: 'OUTCOME_SALES', now: NOW,
       baseline: { ...baseline, someFutureMetric: 1.0 },
       entities: [ad('a', { someFutureMetric: 0.5 }), ad('b', { someFutureMetric: 1.0 })],
     });
-    expect(out).not.toBeNull();          // DEFAULT's -0.20 catches the -50% row
-    expect(out.summary.bottom.entityId).toBe('a');
+    expect(out).toBeNull();
   });
 
   it('the ranking floor is its own constant, well below the verdict gate of 1000', () => {
@@ -321,7 +409,7 @@ describe('analyzeEvidence — ranking', () => {
 
   it('returns the full documented shape', () => {
     expect(Object.keys(run()).sort())
-      .toEqual(['dataConfidence', 'dimension', 'evidence', 'metric', 'ranked', 'summary']);
+      .toEqual(['comparisonEnvelope', 'dataConfidence', 'dimension', 'evidence', 'metric', 'ranked', 'summary']);
   });
 
   it('ranks worst-first and names top and bottom', () => {
