@@ -119,6 +119,7 @@ export const DAILY_OBSERVATION_SELECT = Object.freeze({
   reach: true,
   frequency: true,
   currency: true,
+  currencyProvenance: true,
 });
 
 /** How many days either side of the boundary a caller gets if it does not say. */
@@ -420,6 +421,7 @@ function observationOf(day, row) {
     reach: row.reach,
     frequency: row.frequency,
     currency: row.currency,
+    currencyProvenance: row.currencyProvenance,
   };
 }
 

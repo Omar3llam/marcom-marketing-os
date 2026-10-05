@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod';
+import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
 
 export const CoverageVerdictSchema = z.enum(['RELIABLE', 'THIN', 'INSUFFICIENT_DATA']);
 export const LiftStatusSchema = z.enum(['IMPROVING', 'FLAT', 'DEGRADING', 'INSUFFICIENT_DATA']);
@@ -138,20 +139,34 @@ export const EvidenceCoverageSchema = z.object({
   complete: z.boolean(),
 });
 
+const EvidenceCurrencySchema = z.string().refine(isKnownCurrency, 'Unsupported evidence currency').nullable();
+const EvidenceCurrencyProvenanceSchema = z.literal('PLATFORM_REPORTED').nullable();
+const hasPublishedNumber = (value: { spendMinor: number | null; revenueMinor: number | null; roas: number | null }) =>
+  [value.spendMinor, value.revenueMinor, value.roas].some(number => number !== null);
+
 export const EvidenceWindowSchema = z.object({
   days: z.array(z.string()),
   // Nullable throughout: an unobserved window has no total, and 0 would read as
   // "it spent nothing" rather than "we have no rows".
-  spendMinor: z.number().nullable(),
-  revenueMinor: z.number().nullable(),
-  roas: z.number().nullable(),
-  currency: z.string().nullable(),
+  spendMinor: z.number().finite().nullable(),
+  revenueMinor: z.number().finite().nullable(),
+  roas: z.number().finite().nullable(),
+  currency: EvidenceCurrencySchema,
+  currencyProvenance: EvidenceCurrencyProvenanceSchema,
   coverage: EvidenceCoverageSchema,
   refs: z.array(z.object({
     id: z.string(),
     day: z.string(),
     observedAt: z.string().nullable(),
   })),
+}).superRefine((window, ctx) => {
+  if ((hasPublishedNumber(window) && (window.currency === null || window.currencyProvenance === null))
+    || (window.currency === null) !== (window.currencyProvenance === null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Published window money requires its own authoritative denomination' });
+  }
+  if (window.roas !== null && (window.spendMinor === null || window.spendMinor <= 0 || window.revenueMinor === null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Published ROAS requires available monetary parts and positive spend' });
+  }
 });
 
 export const OutcomeEvidenceResponseSchema = z.object({
@@ -174,14 +189,35 @@ export const OutcomeEvidenceResponseSchema = z.object({
   baseline: EvidenceWindowSchema.nullable(),
   observation: EvidenceWindowSchema.nullable(),
   delta: z.object({
-    spendMinor: z.number().nullable(),
-    revenueMinor: z.number().nullable(),
-    roas: z.number().nullable(),
+    spendMinor: z.number().finite().nullable(),
+    revenueMinor: z.number().finite().nullable(),
+    roas: z.number().finite().nullable(),
+    currency: EvidenceCurrencySchema,
+    currencyProvenance: EvidenceCurrencyProvenanceSchema,
   }),
   // Present only on AMBIGUOUS: the exact days that did not reduce to one
   // reading. The window holding them reports null totals, because a sum over an
   // arbitrarily-chosen tied row is not reproducible between two reads.
   ambiguousDays: z.array(z.string()).optional(),
+}).superRefine((evidence, ctx) => {
+  const { baseline, observation, delta, status } = evidence;
+  const numbers = hasPublishedNumber(delta);
+  if (numbers && (delta.currency === null || delta.currencyProvenance === null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delta'], message: 'Published delta requires its own authoritative denomination' });
+  }
+  if (!numbers && (delta.currency !== null || delta.currencyProvenance !== null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delta'], message: 'Absent delta has no denomination' });
+  }
+  if (status !== 'MEASURABLE' && numbers) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delta'], message: 'Refused or incomplete evidence cannot publish a delta' });
+  }
+  // Validate agreement of server-published units; never reconstruct totals,
+  // ratios, differences, coverage or comparison eligibility from daily rows.
+  if (status === 'MEASURABLE' && (!baseline?.currency || !observation?.currency
+    || baseline.currencyProvenance !== 'PLATFORM_REPORTED' || observation.currencyProvenance !== 'PLATFORM_REPORTED'
+    || baseline.currency !== observation.currency || (numbers && delta.currency !== baseline.currency))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Measurable evidence must publish one authoritative comparison denomination' });
+  }
 });
 
 export type OutcomeEvidenceStatus = z.infer<typeof OutcomeEvidenceStatusSchema>;

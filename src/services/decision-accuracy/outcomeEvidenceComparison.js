@@ -46,6 +46,7 @@ import { resolve as resolveConnector } from '../connectors/connectorRegistry.js'
 import { interventionAt, PROVENANCE_SELECT } from '../execution/decisionProvenance.js';
 import { comparisonWindows, COMPARISON_WINDOW_DAYS } from './comparisonWindow.js';
 import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
+import { isAuthoritativeCurrency, CURRENCY_PROVENANCE } from '../../lib/currencyProvenance.js';
 
 /**
  * What the evidence read could establish. Seven states, and the four that mean
@@ -120,6 +121,17 @@ export const EVIDENCE_ERROR = Object.freeze({
  */
 export const SUMMED_METRICS = Object.freeze(['spendMinor', 'revenueMinor']);
 
+const finite = (value) => typeof value === 'number' && Number.isFinite(value);
+// Only numeric monetary contributors can establish a denomination. An unknown
+// contributor invalidates the whole basis; it is never filtered out of a sum.
+function monetaryBasis(rows) {
+  const contributors = rows.filter(row => SUMMED_METRICS.some(key => finite(row[key])));
+  if (!contributors.length || !contributors.every(isAuthoritativeCurrency)) return null;
+  const currency = contributors[0].currency;
+  return contributors.every(row => row.currency === currency)
+    ? { currency, currencyProvenance: CURRENCY_PROVENANCE.PLATFORM_REPORTED } : null;
+}
+
 const evidenceError = (code, message) => Object.assign(new Error(message), { code });
 
 /**
@@ -184,21 +196,19 @@ export function aggregateWindow(requiredDays, byDay) {
   const missing = requiredDays.filter((d) => !byDay.has(d));
   const rows = observedDays.map((d) => byDay.get(d));
 
+  const basis = monetaryBasis(rows);
+
   const totals = {};
   for (const key of SUMMED_METRICS) {
     let sum = 0;
-    let usable = rows.length > 0;
-    for (const r of rows) {
+    let usable = basis != null;
+    for (const r of usable ? rows : []) {
       const v = r[key];
       if (typeof v !== 'number' || !Number.isFinite(v)) { usable = false; break; }
       sum += v;
     }
     totals[key] = usable ? sum : null;
   }
-
-  // ONE currency or none. Two currencies across a window is not a window total,
-  // and picking the first would silently add piastres to cents.
-  const currencies = new Set(rows.map((r) => r.currency).filter((c) => c != null));
 
   return {
     days: requiredDays,
@@ -210,7 +220,8 @@ export function aggregateWindow(requiredDays, byDay) {
     roas: (totals.spendMinor != null && totals.revenueMinor != null && totals.spendMinor > 0)
       ? totals.revenueMinor / totals.spendMinor
       : null,
-    currency: currencies.size === 1 ? [...currencies][0] : null,
+    currency: basis?.currency ?? null,
+    currencyProvenance: basis?.currencyProvenance ?? null,
     coverage: {
       required: requiredDays.length,
       observed: observedDays.length,
@@ -229,11 +240,12 @@ function refusal(status, reason, base) {
     reason,
     baseline: null,
     observation: null,
-    delta: { spendMinor: null, revenueMinor: null, roas: null },
+    delta: { ...NULL_DELTA },
   };
 }
 
-const NULL_DELTA = Object.freeze({ spendMinor: null, revenueMinor: null, roas: null });
+const NULL_DELTA = Object.freeze({ spendMinor: null, revenueMinor: null, roas: null,
+  currency: null, currencyProvenance: null });
 
 /**
  * A window with its coverage and provenance intact and every total removed.
@@ -245,6 +257,7 @@ const withoutTotals = (w) => ({
   ...Object.fromEntries(SUMMED_METRICS.map((k) => [k, null])),
   roas: null,
   currency: null,
+  currencyProvenance: null,
 });
 
 /**
@@ -403,7 +416,14 @@ export async function readOutcomeEvidence(workspaceId, decisionId) {
     };
   }
 
-  const delta = {};
+  // Coverage remains the primary blocker above. Complete monetary comparisons
+  // additionally require the two independently established window bases.
+  if (!isAuthoritativeCurrency(baseline) || !isAuthoritativeCurrency(observation)
+    || baseline.currency !== observation.currency) {
+    return { ...refusal(EVIDENCE_STATUS.NOT_MEASURABLE, 'MONETARY_BASIS_UNAVAILABLE', withSource), baseline, observation };
+  }
+
+  const delta = { ...NULL_DELTA };
   for (const key of SUMMED_METRICS) {
     delta[key] = (baseline[key] != null && observation[key] != null)
       ? observation[key] - baseline[key]
@@ -415,6 +435,10 @@ export async function readOutcomeEvidence(workspaceId, decisionId) {
   delta.roas = (baseline.roas != null && observation.roas != null)
     ? observation.roas - baseline.roas
     : null;
+  if ([delta.spendMinor, delta.revenueMinor, delta.roas].some(finite)) {
+    delta.currency = baseline.currency;
+    delta.currencyProvenance = baseline.currencyProvenance;
+  }
 
   logger.debug(
     { workspaceId, decisionId, source, baseline: baseline.coverage, observation: observation.coverage },

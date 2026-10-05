@@ -1,5 +1,11 @@
 // ============================================================
 // MARCOM / Lumi — OutcomeEvidence (B5-01X' · what Lumi observed)
+// GRAMMAR OBJECT Supporting OUTCOME EVIDENCE / MEASUREMENT.
+// CONTRACT OutcomeEvidenceResponseSchema; each amount owns its denomination.
+// STATES MEASURABLE, NOT_OBSERVED, AMBIGUOUS, NOT_MEASURABLE,
+// INSUFFICIENT_COVERAGE, UNSUPPORTED, UNAVAILABLE; request loading/error.
+// WHY LUMI Separates observed before/after evidence from the operator's
+// judgement, including the limits of what Lumi can truthfully compare.
 // ------------------------------------------------------------
 // Sits ABOVE the operator's existing outcome fields and fills none of them. It
 // reports Lumi's own daily observations either side of the intervention and
@@ -18,9 +24,10 @@
 import { Eye } from 'lucide-react';
 import { useOutcomeEvidence } from '@/hooks/useOutcomeEvidence.js';
 import { formatCurrency } from '@/lib/money.ts';
+import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
 
 const box = 'mt-3 rounded-xl border border-lumi-border/60 bg-lumi-surface p-3';
-const note = 'text-xs text-lumi-muted';
+const note = 'text-sm text-lumi-muted';
 
 /** A window's date range, stated plainly. ISO dates, so nothing is ambiguous. */
 const range = (w) => (w?.days?.length ? `${w.days[0]} → ${w.days[w.days.length - 1]}` : '—');
@@ -30,7 +37,7 @@ function Shell({ children, title }) {
     <div className={box}>
       <div className="mb-2 flex items-center gap-2">
         <Eye className="h-3.5 w-3.5 text-lumi-accent" strokeWidth={1.5} />
-        <span className="text-xs font-medium text-lumi-text">{title}</span>
+        <span className="text-sm font-medium text-lumi-text">{title}</span>
       </div>
       {children}
     </div>
@@ -38,34 +45,50 @@ function Shell({ children, title }) {
 }
 
 /** The three-column comparison. `delta` is omitted entirely when incomplete. */
-function Comparison({ evidence, currency, showDelta }) {
+function Comparison({ evidence, showDelta }) {
   const { baseline, observation, delta } = evidence;
-  const cur = baseline?.currency ?? observation?.currency ?? currency;
-  const money = (v) => formatCurrency(v, cur);
-  const ratio = (v) => (typeof v === 'number' ? v.toFixed(2) : '—');
-  const signedRatio = (v) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toFixed(2)}` : '—');
+  const denomination = (side) => isKnownCurrency(side?.currency) && side?.currencyProvenance === 'PLATFORM_REPORTED';
+  const known = (value) => typeof value === 'number' && Number.isFinite(value);
+  // A formatter's default denomination must never label observed evidence.
+  // Each cell reads its own published unit, including incomplete windows.
+  const money = (side, key) => denomination(side) && known(side[key]) ? formatCurrency(side[key], side.currency) : '—';
+  const ratio = (side, signed = false) => denomination(side) && known(side.roas)
+    ? `${signed && side.roas > 0 ? '+' : ''}${side.roas.toFixed(2)}` : '—';
 
   const rows = [
-    ['Spend', money(baseline?.spendMinor), money(observation?.spendMinor), money(delta?.spendMinor)],
-    ['Revenue', money(baseline?.revenueMinor), money(observation?.revenueMinor), money(delta?.revenueMinor)],
-    ['ROAS', ratio(baseline?.roas), ratio(observation?.roas), signedRatio(delta?.roas)],
+    ['Spend', money(baseline, 'spendMinor'), money(observation, 'spendMinor'), money(delta, 'spendMinor')],
+    ['Revenue', money(baseline, 'revenueMinor'), money(observation, 'revenueMinor'), money(delta, 'revenueMinor')],
+    ['ROAS', ratio(baseline), ratio(observation), ratio(delta, true)],
   ];
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs tabular-nums">
+    <>
+      <section aria-label="Observed performance records" className="sm:hidden">
+        {rows.map(([label, before, after, change]) => (
+          <article key={label} aria-label={`${label} evidence`} className="mt-3 border-t border-lumi-border/40 pt-2 text-sm">
+            <h4 className="font-medium text-lumi-text">{label}</h4>
+            <dl className="mt-2 space-y-2">
+              <div><dt className="text-lumi-muted">Before · {range(baseline)}</dt><dd className="tabular-nums text-lumi-text">{before}</dd></div>
+              <div><dt className="text-lumi-muted">After · {range(observation)}</dt><dd className="tabular-nums text-lumi-text">{after}</dd></div>
+              {showDelta && <div><dt className="text-lumi-muted">Observed change</dt><dd className="tabular-nums text-lumi-text">{change}</dd></div>}
+            </dl>
+          </article>
+        ))}
+      </section>
+      <table className="hidden w-full text-sm tabular-nums sm:table">
+        <caption className="sr-only">Observed performance comparison</caption>
         <thead>
-          <tr className="text-lumi-subtle">
-            <th className="py-1 text-left font-normal"> </th>
-            <th className="py-1 text-right font-normal">Before<br />{range(baseline)}</th>
-            <th className="py-1 text-right font-normal">After<br />{range(observation)}</th>
-            {showDelta && <th className="py-1 text-right font-normal">Observed change</th>}
+          <tr className="text-lumi-muted">
+            <th scope="col" className="py-1 text-left font-normal">Metric</th>
+            <th scope="col" className="py-1 text-right font-normal">Before<br />{range(baseline)}</th>
+            <th scope="col" className="py-1 text-right font-normal">After<br />{range(observation)}</th>
+            {showDelta && <th scope="col" className="py-1 text-right font-normal">Observed change</th>}
           </tr>
         </thead>
         <tbody>
           {rows.map(([label, before, after, change]) => (
             <tr key={label} className="border-t border-lumi-border/40">
-              <td className="py-1 text-left text-lumi-subtle">{label}</td>
+              <th scope="row" className="py-1 text-left font-normal text-lumi-muted">{label}</th>
               <td className="py-1 text-right text-lumi-text">{before}</td>
               <td className="py-1 text-right text-lumi-text">{after}</td>
               {showDelta && <td className="py-1 text-right text-lumi-text">{change}</td>}
@@ -73,7 +96,7 @@ function Comparison({ evidence, currency, showDelta }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </>
   );
 }
 
@@ -98,7 +121,7 @@ const UNSUPPORTED_COPY = {
     'Lumi can’t tell which channel this entity belongs to, so it can’t choose an evidence source to read.',
 };
 
-export default function OutcomeEvidence({ decisionId, currency }) {
+export default function OutcomeEvidence({ decisionId }) {
   const { evidence, loading, error } = useOutcomeEvidence(decisionId);
 
   if (loading) return <div className={box}><p className={note}>Reading what Lumi observed…</p></div>;
@@ -123,7 +146,7 @@ export default function OutcomeEvidence({ decisionId, currency }) {
   if (status === 'MEASURABLE') {
     return (
       <Shell title="What Lumi observed">
-        <Comparison evidence={evidence} currency={currency} showDelta />
+        <Comparison evidence={evidence} showDelta />
         {windowNote}
         <p className={`${note} mt-1`}>
           This is a measured change over those two windows — not a finding that the decision caused it.
@@ -140,7 +163,7 @@ export default function OutcomeEvidence({ decisionId, currency }) {
         <p className={`${note} mt-2`}>
           Lumi won’t show a change derived from a partial window. What it did observe is below.
         </p>
-        <Comparison evidence={evidence} currency={currency} showDelta={false} />
+        <Comparison evidence={evidence} showDelta={false} />
       </Shell>
     );
   }
@@ -211,8 +234,10 @@ export default function OutcomeEvidence({ decisionId, currency }) {
     return (
       <Shell title="These observations can’t be compared">
         <p className={note}>
-          Lumi holds observations either side of the intervention but they don’t describe one comparable subject
-          {reason ? ` (${reason.toLowerCase().replace(/_/g, ' ')})` : ''}.
+          {reason === 'MONETARY_BASIS_UNAVAILABLE'
+            ? 'Lumi observed both windows, but their monetary values do not share one authoritative denomination, so it won’t calculate a before/after monetary comparison.'
+            : <>Lumi holds observations either side of the intervention but they don’t describe one comparable subject
+              {reason ? ` (${reason.toLowerCase().replace(/_/g, ' ')})` : ''}.</>}
         </p>
       </Shell>
     );

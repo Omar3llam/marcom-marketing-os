@@ -9,13 +9,17 @@
 // and fills none of it.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 let evidenceState = { evidence: null, loading: false, error: null };
 
 vi.mock('@/hooks/useOutcomeEvidence.js', () => ({
   useOutcomeEvidence: () => evidenceState,
 }));
+vi.mock('@/lib/money.ts', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, formatCurrency: vi.fn(actual.formatCurrency) };
+});
 vi.mock('@/hooks/useCollabRole.js', () => ({
   useCollabRole: () => ({ role: 'STRATEGIST' }),
   WORKSPACE_ROLE: { STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' },
@@ -26,6 +30,7 @@ vi.mock('@/hooks/useRecordOutcome.js', () => ({
 
 import OutcomeEvidence from './OutcomeEvidence.jsx';
 import { OutcomeEvidenceResponseSchema } from '@/contracts/schemas';
+import { formatCurrency } from '@/lib/money.ts';
 
 const BASELINE_DAYS = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09'];
 const OBSERVATION_DAYS = ['2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14', '2026-08-15', '2026-08-16', '2026-08-17'];
@@ -36,6 +41,7 @@ const window_ = (days, over = {}) => ({
   revenueMinor: 175_000,
   roas: 0.5,
   currency: 'USD',
+  currencyProvenance: 'PLATFORM_REPORTED',
   coverage: { required: 7, observed: days.length, missing: [], complete: true },
   refs: [],
   ...over,
@@ -53,7 +59,7 @@ const evidenceOf = (over = {}) => ({
   },
   baseline: window_(BASELINE_DAYS),
   observation: window_(OBSERVATION_DAYS, { spendMinor: 70_000, revenueMinor: 84_000, roas: 1.2 }),
-  delta: { spendMinor: -280_000, revenueMinor: -91_000, roas: 0.7 },
+  delta: { spendMinor: -280_000, revenueMinor: -91_000, roas: 0.7, currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED' },
   ...over,
 });
 
@@ -62,16 +68,67 @@ const show = (over) => {
   render(<OutcomeEvidence decisionId="dec-1" currency="USD" />);
 };
 
-beforeEach(() => { evidenceState = { evidence: null, loading: false, error: null }; });
+beforeEach(() => { evidenceState = { evidence: null, loading: false, error: null }; vi.clearAllMocks(); });
+
+describe('P7-07C evidence-only money and labelled readouts', () => {
+  it('never labels an unproved amount with the outer USD currency', () => {
+    show({ baseline: window_(BASELINE_DAYS, { currency: null, currencyProvenance: null }),
+      observation: window_(OBSERVATION_DAYS, { currency: null, currencyProvenance: null }),
+      delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } });
+    expect(document.body.textContent).not.toMatch(/\$|3,500|1,750|0\.50/);
+    expect(formatCurrency).not.toHaveBeenCalled();
+  });
+  it('every money formatter call has its own explicit published currency', () => {
+    show({ status: 'INSUFFICIENT_COVERAGE', observation: window_(OBSERVATION_DAYS, { currency: 'EGP' }),
+      delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } });
+    expect(formatCurrency.mock.calls).toEqual([[350000, 'USD'], [350000, 'EGP'], [175000, 'USD'], [175000, 'EGP']]);
+  });
+  it('each incomplete safe side uses its own currency without a delta', () => {
+    show({ status: 'INSUFFICIENT_COVERAGE', observation: window_(OBSERVATION_DAYS, { currency: 'EGP' }),
+      delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } });
+    const records = screen.getByRole('region', { name: 'Observed performance records' });
+    const spend = within(records).getByRole('article', { name: 'Spend evidence' });
+    expect(spend.textContent).toMatch(/\$/);
+    expect(spend.textContent).toMatch(/EGP|ج\.م/);
+    expect(spend.textContent).not.toMatch(/Observed change/);
+  });
+  it('monetary refusal explains the basis without displaying a before/after comparison', () => {
+    show({ status: 'NOT_MEASURABLE', reason: 'MONETARY_BASIS_UNAVAILABLE' });
+    expect(screen.getByText(/authoritative denomination/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/3,500|Observed change|reconnect|conversion|FX/i);
+  });
+  it('desktop has a named table with row/column headers and associated windows', () => {
+    show();
+    const table = screen.getByRole('table', { name: 'Observed performance comparison' });
+    for (const label of ['Spend', 'Revenue', 'ROAS']) expect(within(table).getByRole('rowheader', { name: label })).toHaveAttribute('scope', 'row');
+    expect(within(table).getByRole('columnheader', { name: /Before.*2026-08-03.*2026-08-09/ })).toHaveAttribute('scope', 'col');
+    expect(within(table).getByRole('columnheader', { name: /After.*2026-08-11.*2026-08-17/ })).toHaveAttribute('scope', 'col');
+    expect(within(table).getByRole('columnheader', { name: 'Observed change' })).toHaveAttribute('scope', 'col');
+  });
+  it('mobile labelled records preserve the desktop presentation values/windows', () => {
+    show();
+    const table = screen.getByRole('table', { name: 'Observed performance comparison' });
+    const records = screen.getByRole('region', { name: 'Observed performance records' });
+    for (const label of ['Spend', 'Revenue', 'ROAS']) {
+      const record = within(records).getByRole('article', { name: `${label} evidence` });
+      const desktop = within(table).getByRole('rowheader', { name: label }).parentElement;
+      const mobileValues = [...record.querySelectorAll('dd')].map(node => node.textContent);
+      expect(mobileValues).toEqual([...desktop.querySelectorAll('td')].map(node => node.textContent));
+      expect(record.textContent).toMatch(/Before.*2026-08-03.*2026-08-09/);
+      expect(record.textContent).toMatch(/After.*2026-08-11.*2026-08-17/);
+    }
+  });
+});
 
 describe('MEASURABLE', () => {
   it('shows both windows and the observed change', () => {
     show();
     expect(screen.getByText(/What Lumi observed/)).toBeInTheDocument();
-    expect(screen.getByText(/Observed change/)).toBeInTheDocument();
-    expect(screen.getByText(/2026-08-03 → 2026-08-09/)).toBeInTheDocument();
-    expect(screen.getByText(/2026-08-11 → 2026-08-17/)).toBeInTheDocument();
-    expect(screen.getByText(/2,800/)).toBeInTheDocument();   // the spend change
+    expect(screen.getAllByText(/Observed change/)).toHaveLength(4);
+    expect(screen.getAllByText(/2026-08-03 → 2026-08-09/)).toHaveLength(4);
+    expect(screen.getAllByText(/2026-08-11 → 2026-08-17/)).toHaveLength(4);
+    expect(screen.getAllByText(/2,800/)).toHaveLength(2);   // desktop and mobile spend change
   });
 
   it('names the excluded intervention day', () => {
@@ -95,7 +152,7 @@ describe('INSUFFICIENT_COVERAGE', () => {
       revenueMinor: 48_000,
       coverage: { required: 7, observed: 4, missing: ['2026-08-15', '2026-08-16', '2026-08-17'], complete: false },
     }),
-    delta: { spendMinor: null, revenueMinor: null, roas: null },
+    delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null },
   });
 
   it('states the coverage and names the missing dates', () => {
@@ -138,7 +195,7 @@ describe('the states that are NOT about the account', () => {
   });
 
   it('AMBIGUOUS refuses to pick a reading', () => {
-    show({ status: 'AMBIGUOUS', reason: 'AMBIGUOUS_OBSERVATION', delta: { spendMinor: null, revenueMinor: null, roas: null } });
+    show({ status: 'AMBIGUOUS', reason: 'AMBIGUOUS_OBSERVATION', delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } });
     expect(screen.getByText(/won’t pick one/i)).toBeInTheDocument();
   });
 });
@@ -155,7 +212,7 @@ describe('NOT_OBSERVED', () => {
         spendMinor: null, revenueMinor: null, roas: null, currency: null,
         coverage: { required: 7, observed: 0, missing: OBSERVATION_DAYS, complete: false },
       }),
-      delta: { spendMinor: null, revenueMinor: null, roas: null },
+      delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null },
     });
     const text = document.body.textContent;
     expect(text).toMatch(/No usable evidence was observed/i);
@@ -191,7 +248,7 @@ const PRODUCTION_UNAVAILABLE = Object.freeze({
     interventionDayExcluded: true,
   },
   baseline: null, observation: null,
-  delta: { spendMinor: null, revenueMinor: null, roas: null },
+  delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null },
 });
 
 const renderPayload = (payload) => {
@@ -244,7 +301,7 @@ describe('B5-01Y · backend UNAVAILABLE reaches the operator as UNAVAILABLE', ()
     const seen = new Map();
     const cases = [
       ['MEASURABLE', evidenceOf()],
-      ['INSUFFICIENT_COVERAGE', evidenceOf({ status: 'INSUFFICIENT_COVERAGE', delta: { spendMinor: null, revenueMinor: null, roas: null } })],
+      ['INSUFFICIENT_COVERAGE', evidenceOf({ status: 'INSUFFICIENT_COVERAGE', delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } })],
       ['NOT_OBSERVED', evidenceOf({ status: 'NOT_OBSERVED' })],
       ['AMBIGUOUS', evidenceOf({ status: 'AMBIGUOUS' })],
       ['UNSUPPORTED', evidenceOf({ status: 'UNSUPPORTED', reason: 'CHANNEL_HAS_NO_DAILY_CAPABILITY', baseline: null, observation: null })],

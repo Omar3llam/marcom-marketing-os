@@ -65,7 +65,8 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
   });
 
   /** One DAILY row for one declared day, exactly as Phase E lands them. */
-  const mkDaily = (entityId, day, { spendMinor, revenueMinor, source = 'META', observedAt, entityLevel = 'CAMPAIGN' } = {}) => {
+  const mkDaily = (entityId, day, { spendMinor, revenueMinor, source = 'META', observedAt, entityLevel = 'CAMPAIGN',
+    currency = 'USD', currencyProvenance = 'PLATFORM_REPORTED' } = {}) => {
     const dayStart = new Date(`${day}T00:00:00.000Z`);
     return prisma.metricSnapshot.create({
       data: {
@@ -78,7 +79,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
         impressions: 20_000, clicks: 400, conversions: 5, ctr: 0.02,
         // The per-row ratio, which T3 proves is never what a window total uses.
         roas: spendMinor > 0 ? revenueMinor / spendMinor : null,
-        currency: 'USD',
+        currency, currencyProvenance,
       },
     });
   };
@@ -153,6 +154,43 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
   });
 
   // ── T1 ───────────────────────────────────────────────────────
+  describe('P7-07C persisted monetary lineage and refusal', () => {
+    it.each(['EGP', 'USD'])('preserves persisted %s authority through the actual daily reader', async currency => {
+      const entityId = await mkCampaign();
+      const decision = await mkDecision(entityId);
+      await seedWindow(entityId, W.baseline.days, () => ({ spendMinor: 100, revenueMinor: 200, currency }));
+      await seedWindow(entityId, W.observation.days, () => ({ spendMinor: 50, revenueMinor: 0, currency }));
+      const result = await readOutcomeEvidence(ws, decision.id);
+      expect(result).toMatchObject({ status: 'MEASURABLE', baseline: { spendMinor: 700, revenueMinor: 1400, currency, currencyProvenance: 'PLATFORM_REPORTED' },
+        observation: { spendMinor: 350, revenueMinor: 0, roas: 0, currency, currencyProvenance: 'PLATFORM_REPORTED' },
+        delta: { spendMinor: -350, revenueMinor: -1400, roas: -2, currency, currencyProvenance: 'PLATFORM_REPORTED' } });
+    });
+    // Persisted currency is NOT NULL. Unsupported codes/legacy origin cover
+    // stored uncertainty; null contributors are exercised by pure/read seams.
+    it.each([{ currency: 'EUR' }, { currency: 'ZZZ' }, { currencyProvenance: 'LEGACY_UNKNOWN' }, { currencyProvenance: 'WORKSPACE_INFERRED' }])(
+      'refuses complete unsafe persisted evidence %j without discarding coverage', async unsafe => {
+        const entityId = await mkCampaign();
+        const decision = await mkDecision(entityId);
+        await seedWindow(entityId, W.baseline.days, () => ({ spendMinor: 100, revenueMinor: 200 }));
+        await seedWindow(entityId, W.observation.days, day => ({ spendMinor: 50, revenueMinor: 100, ...(day === W.observation.days[0] ? unsafe : {}) }));
+        const result = await readOutcomeEvidence(ws, decision.id);
+        expect(result).toMatchObject({ status: 'NOT_MEASURABLE', reason: 'MONETARY_BASIS_UNAVAILABLE',
+          observation: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null },
+          delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } });
+        expect(result.observation.coverage).toMatchObject({ observed: 7, complete: true });
+        expect(result.observation.refs).toHaveLength(7);
+      });
+    it('complete independent USD/EUR windows retain their own amounts, but no delta', async () => {
+      const entityId = await mkCampaign();
+      const decision = await mkDecision(entityId);
+      await seedWindow(entityId, W.baseline.days, () => ({ spendMinor: 100, revenueMinor: 200 }));
+      await seedWindow(entityId, W.observation.days, () => ({ spendMinor: 50, revenueMinor: 100, currency: 'EUR' }));
+      expect(await readOutcomeEvidence(ws, decision.id)).toMatchObject({ status: 'NOT_MEASURABLE', reason: 'MONETARY_BASIS_UNAVAILABLE',
+        baseline: { spendMinor: 700, currency: 'USD' }, observation: { spendMinor: 350, currency: 'EUR' },
+        delta: { spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null } });
+    });
+  });
+
   describe('T1 · a full, measurable comparison', () => {
     let entityId; let decision;
     beforeAll(async () => {
@@ -281,7 +319,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
       expect(r.baseline.coverage).toMatchObject({ observed: 7, complete: true });
       expect(r.observation.coverage.observed).toBe(4);
       expect(r.observation.coverage.missing).toEqual(W.observation.days.slice(4));
-      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null });
+      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null });
       // The real partial sums survive — they are rows the operator may want —
       // but nothing derived from them is offered.
       expect(r.observation.spendMinor).toBe(4 * 10_000);
@@ -300,7 +338,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
       expect(r.baseline.coverage.observed).toBe(5);
       expect(r.baseline.coverage.missing).toEqual(W.baseline.days.slice(0, 2));
       expect(r.observation.coverage.complete).toBe(true);
-      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null });
+      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null });
     });
   });
 
@@ -313,7 +351,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
 
       expect(r.status).toBe(EVIDENCE_STATUS.NOT_OBSERVED);
       expect(r.source).toBe('META');
-      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null });
+      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null });
       expect(r.baseline.spendMinor).toBeNull();
       expect(r.observation.spendMinor).toBeNull();
       expect(r.baseline.coverage.missing).toEqual(W.baseline.days);
@@ -333,7 +371,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
       const r = await readOutcomeEvidence(ws, d.id);
       expect(r.status).toBe(EVIDENCE_STATUS.UNSUPPORTED);
       expect(r.reason).toBe(UNSUPPORTED_REASON.LEVEL_NOT_INGESTED);
-      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null });
+      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null });
       expect(r.baseline).toBeNull();
     });
   });
@@ -372,7 +410,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
       expect(r.status).toBe(EVIDENCE_STATUS.UNAVAILABLE);
       expect(r.baseline).toBeNull();
       expect(r.observation).toBeNull();
-      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null });
+      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null });
       // …and it is NOT the state a supported-but-empty account gets.
       expect(r.status).not.toBe(EVIDENCE_STATUS.NOT_OBSERVED);
     });
@@ -397,7 +435,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
 
       const r = await readOutcomeEvidence(ws, d.id);
       expect(r.status).toBe(EVIDENCE_STATUS.AMBIGUOUS);
-      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null });
+      expect(r.delta).toEqual({ spendMinor: null, revenueMinor: null, roas: null, currency: null, currencyProvenance: null });
       expect(r.ambiguousDays).toEqual([clash]);
     });
 

@@ -90,7 +90,7 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
     <>
       {/* Read-only, and above the fields on purpose: what Lumi observed is
           context for the operator's judgement, never a draft of it. */}
-      <OutcomeEvidence decisionId={decision.id} currency={currency} />
+      <OutcomeEvidence decisionId={decision.id} />
       <div className="mt-3 grid grid-cols-2 gap-2.5">
       <label className="text-xs text-lumi-subtle">Spend change ({currency})
         <input type="number" className={field} value={spend} onChange={(e) => setSpend(e.target.value)} placeholder="-4200" />
