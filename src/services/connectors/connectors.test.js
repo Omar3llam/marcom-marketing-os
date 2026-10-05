@@ -115,7 +115,7 @@ describe('snapshotSink pure builders — deterministic + idempotent', () => {
   });
 });
 
-describe('the payoff — a second channel lights up reconciliation (engine unchanged)', () => {
+describe('the payoff — a second channel supplies evidence without inventing reconciliation', () => {
   it('META + GOOGLE account snapshots → a real 2-channel reconciliation, not the single-channel state', () => {
     const metaAcct = detId('ws1', 'META', 'ACCOUNT', 'act_meta');
     const googleAcct = detId('ws1', 'GOOGLE', 'ACCOUNT', 'cust_g');
@@ -128,7 +128,10 @@ describe('the payoff — a second channel lights up reconciliation (engine uncha
     const labels = new Map([[metaAcct, { channel: 'META' }], [googleAcct, { channel: 'GOOGLE' }]]);
     const result = reconcile({ channels: buildChannelInputs(snapshots, labels) });
     expect(result.channels.length).toBe(2); // NOT the <2-channel honest state
-    expect(result.portfolio.reconciledCount).toBeGreaterThanOrEqual(1); // the Meta channel reconciled vs GA4
+    expect(result.channels[0].coverage).toBe('RECONCILED'); // actual-source semantics remain
+    expect(result.portfolio.reconciledCount).toBe(0); // these legacy rows have no currency/window provenance
+    expect(result.portfolio.unavailableCount).toBe(1);
+    expect(result.portfolio.gapMinor).toBeNull();
   });
 });
 
@@ -401,7 +404,10 @@ describe('the GA4 payoff — actual revenue reconciles at CAMPAIGN level', () =>
     ];
     const labels = new Map([[metaCampaign, { channel: 'META' }]]);
     const result = reconcile({ channels: buildChannelInputs(snapshots, labels) });
-    expect(result.portfolio.reconciledCount).toBeGreaterThanOrEqual(1); // platform-vs-actual reconciled on one entity
+    expect(result.channels[0].coverage).toBe('RECONCILED'); // actual still attaches to the same entity
+    expect(result.portfolio.reconciledCount).toBe(0); // attachment alone does not prove a monetary period
+    expect(result.portfolio.unavailableCount).toBe(1);
+    expect(result.portfolio.gapMinor).toBeNull();
   });
 });
 

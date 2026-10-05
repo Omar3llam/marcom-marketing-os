@@ -113,6 +113,10 @@ describe('contract seam — schemas safeParse the fixtures', () => {
   });
   it('blended truth', () => {
     const ok = { channels: [], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0, platformRoas: 0, blendedRoas: 0, reconciledCount: 0, unverifiedCount: 0 } };
+    Object.assign(ok.portfolio, { gapMinor: null, gapPct: null, unavailableCount: 0, totalChannelCount: 0,
+      reconciliation: { status: 'UNVERIFIED', reason: 'ACTUAL_REVENUE_UNAVAILABLE', windowCompatibility: 'UNKNOWN',
+        window: { windowStatus: 'UNKNOWN', windowStart: null, windowEnd: null }, currency: null, platformRevenueMinor: null, actualRevenueMinor: null,
+        gapMinor: null, gapPct: null, gapPctReason: null, gapDenominator: 'PLATFORM_REVENUE', reconciledCount: 0, unverifiedCount: 0, unavailableCount: 0, totalChannelCount: 0 } });
     expect(BlendedTruthSchema.safeParse(ok).success).toBe(true);
   });
 });

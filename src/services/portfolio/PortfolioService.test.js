@@ -100,6 +100,15 @@ describe('PortfolioService.getPortfolio — guards', () => {
 });
 
 describe('PortfolioService.getPortfolio — empty workspace is honest', () => {
+  it('carries reconciliation metadata and repaired population counts without arithmetic', async () => {
+    const reconciliation = { status: 'UNAVAILABLE', reason: 'PORTFOLIO_WINDOW_MISMATCH', gapMinor: null, gapPct: null };
+    getBlendedTruth.mockResolvedValue(bt([], { reconciliation, gapMinor: null, gapPct: null,
+      reconciledCount: 2, unverifiedCount: 1, unavailableCount: 1, totalChannelCount: 4 }));
+    readPeriodSpend.mockResolvedValue(NOTHING_MEASURED); prisma.allocationPlan.findFirst.mockResolvedValue(null);
+    const result = await getPortfolio('ws1', { now: NOW });
+    expect(result.totals).toMatchObject({ reconciliation, gapMinor: null, gapPct: null,
+      reconciledCount: 2, unverifiedCount: 1, unavailableCount: 1, totalChannelCount: 4 });
+  });
   it('Home strict budget read distinguishes a failed lookup from no allocation plan', async () => {
     seat([]);
     const failure = new Error('private allocation read failure');

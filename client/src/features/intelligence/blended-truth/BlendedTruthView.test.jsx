@@ -23,151 +23,99 @@ vi.mock('@/hooks/useAllocation.js', () => ({ useAllocation: () => ({ preview: pr
 vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { currency: 'USD' } }) }));
 vi.mock('../IntelligenceSubNav.jsx', () => ({ default: () => null }));
 
+const exactWindow = { windowStatus: 'EXACT', windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z' };
+const comparison = (over = {}) => ({ status: 'AVAILABLE', reason: null, windowCompatibility: 'COMPATIBLE', window: exactWindow,
+  currency: 'USD', platformRevenueMinor: 480000, actualRevenueMinor: 360000, gapMinor: 120000, gapPct: .25,
+  gapPctReason: null, gapDenominator: 'PLATFORM_REVENUE', ...over });
+const counts = { reconciledCount: 2, unverifiedCount: 0, unavailableCount: 0, totalChannelCount: 2 };
+const refusal = (status = 'UNAVAILABLE', reason = 'MEASUREMENT_WINDOW_MISMATCH') => comparison({ status, reason,
+  windowCompatibility: 'INCOMPATIBLE', window: { windowStatus: 'UNKNOWN', windowStart: null, windowEnd: null },
+  currency: null, platformRevenueMinor: null, actualRevenueMinor: null, gapMinor: null, gapPct: null });
 const data = {
-  channels: [
-    { channelId: 'meta', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2, blendedRevenueEfficiency: { status: 'VALID', value: 2.2 }, gapPct: 0.29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD' },
-    { channelId: 'google', channel: 'GOOGLE', platformRoas: 2.0, blendedRoas: 1.5, blendedRevenueEfficiency: { status: 'VALID', value: 1.5 }, gapPct: 0.25, coverage: 'PARTIAL', confidence: 'MED', currency: 'USD' },
-  ],
-  portfolio: { platformRoas: 2.7, blendedRoas: 1.9, blendedRevenueEfficiency: { status: 'VALID', value: 1.9 }, gapPct: 0.30, gapMinor: 120000, reconciledCount: 1, unverifiedCount: 1 },
+  channels: ['META', 'GOOGLE'].map(channel => ({ channelId: channel, channel, platformRoas: 3.1,
+    blendedRevenueEfficiency: { status: 'VALID', value: 2.2 }, reconciliation: comparison() })),
+  portfolio: { monetaryStatus: 'MONETARY_VALID', currency: 'USD', platformRoas: 2.7,
+    blendedRevenueEfficiency: { status: 'VALID', value: 1.9 }, reconciliation: { ...comparison(), ...counts }, ...counts },
 };
+const show = (reconciliation = comparison(), role = 'STRATEGIST', channels = data.channels) => render(<MemoryRouter>
+  <BlendedTruthView data={{ channels, portfolio: { ...data.portfolio, reconciliation: { ...reconciliation, ...counts } } }} role={role} />
+</MemoryRouter>);
 
-describe('BlendedTruthView — signed ratio gap truth', () => {
-  const portfolioData = (over = {}) => ({
-    ...data,
-    portfolio: { ...data.portfolio, monetaryStatus: 'MONETARY_VALID', currency: 'USD', ...over },
-  });
-  const show = (over = {}, role = 'BUYER', channels = data.channels) => render(
-    <MemoryRouter>
-      <BlendedTruthView data={{ ...portfolioData(over), channels }} role={role} />
-    </MemoryRouter>,
-  );
-
-  it.each([
-    [0.25, 120000, 'above'],
-    [-0.25, -120000, 'below'],
-  ])('renders signed ratio %s with absolute money and direction', (gapPct, gapMinor, direction) => {
-    show({ gapPct, gapMinor });
-    const sentence = screen.getByText(new RegExp(`25% ${direction}`));
-    expect(sentence).toHaveTextContent('$1,200');
-    expect(sentence).toHaveTextContent('of platform-reported revenue');
-    expect(sentence).not.toHaveTextContent('-$');
+describe('BlendedTruthView — explicit reconciliation authority', () => {
+  it.each([[.25, 120000, 'above'], [-.25, -120000, 'below']])('renders signed ratio %s with explicit money', (gapPct, gapMinor, direction) => {
+    show(comparison({ gapPct, gapMinor }), 'BUYER');
+    const sentence = screen.getByText(new RegExp('Revenue gap: 25% ' + direction));
+    expect(sentence).toHaveTextContent('$1,200'); expect(sentence).toHaveTextContent('of platform-reported revenue');
     expect(sentence).not.toHaveClass('text-signal-kill', 'text-signal-scale');
-    expect(screen.queryByText(/Over-reported|over-allocated/i)).not.toBeInTheDocument();
   });
-
-  it('renders zero as a neutral match', () => {
-    show({ gapPct: 0, gapMinor: 0 });
-    const sentence = screen.getByText(/matches blended revenue for this comparison/i);
-    expect(sentence).not.toHaveClass('text-signal-kill', 'text-signal-scale');
-    expect(screen.queryByText(/Over-reported|0%/i)).not.toBeInTheDocument();
+  it('preserves genuine measured equality without conflating absence', () => {
+    show(comparison({ gapPct: 0, gapMinor: 0 }), 'BUYER');
+    expect(screen.getByText(/Revenue gap: Match/)).toHaveTextContent('$0');
+    expect(screen.queryByText(/0%/)).not.toBeInTheDocument();
   });
-
-  it('withholds an undefined zero-denominator percentage despite a proven signed money gap', () => {
-    show({ platformRevenueMinor: 0, blendedRevenueMinor: 120000, gapPct: null, gapMinor: -120000 },
-      'STRATEGIST', data.channels.map((channel) => ({
-        ...channel, platformRevenueMinor: 0, blendedRevenueMinor: 120000, gapPct: null, gapMinor: -120000,
-      })));
-    expect(screen.getByText(/^Monetary comparison unavailable/)).toBeInTheDocument();
-    expect(screen.queryByText(/0% below|—% below|100% below|infinite|matches blended revenue/i)).not.toBeInTheDocument();
-    const rows = screen.getAllByRole('row').slice(1);
-    for (const row of rows) expect(within(row).getAllByRole('cell')[3].textContent).toBe('—');
+  it('keeps signed absolute difference for a zero platform denominator', () => {
+    show(comparison({ platformRevenueMinor: 0, gapMinor: -120000, gapPct: null, gapPctReason: 'ZERO_PLATFORM_DENOMINATOR' }), 'BUYER');
+    expect(screen.getByText(/Revenue gap: below/)).toHaveTextContent('$1,200');
+    expect(screen.getByText(/Percentage unavailable because/)).toBeInTheDocument();
+    expect(screen.queryByText(/0%|100%|Match/)).not.toBeInTheDocument();
   });
-
-  it.each([
-    { gapPct: null }, { gapMinor: null }, { currency: null },
-    { monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED' },
-    { gapPct: Number.NaN }, { gapMinor: Number.POSITIVE_INFINITY },
-  ])('withholds partial or unavailable portfolio evidence: %j', (over) => {
-    show({ gapPct: 0.25, gapMinor: 120000, ...over });
-    expect(screen.getByText(/^Monetary comparison unavailable/)).toBeInTheDocument();
-    expect(screen.queryByText(/25% above|matches blended revenue|\$1,200/)).not.toBeInTheDocument();
+  it.each([['UNVERIFIED', 'ACTUAL_REVENUE_UNAVAILABLE', /No actual revenue/],
+    ['UNAVAILABLE', 'MEASUREMENT_WINDOW_MISMATCH', /different periods/]])('refuses %s despite stale numeric aliases and coverage', (status, reason, text) => {
+    const rec = refusal(status, reason); const channels = [{ ...data.channels[0], coverage: 'RECONCILED', confidence: 'HIGH', gapPct: 0, reconciliation: rec }];
+    show(rec, 'STRATEGIST', channels);
+    const table = screen.getByRole('table', { name: 'Channel revenue evidence comparison' });
+    expect(within(table).getByText(text)).toBeInTheDocument();
+    expect(within(table).getByText(status === 'UNVERIFIED' ? 'Unverified' : 'Unavailable')).toBeInTheDocument();
+    expect(within(table).queryByText(/0%|Match|HIGH/)).not.toBeInTheDocument();
   });
-
-  it.each([
-    [0.256, 120000, '26% above'],
-    [0.004, 100, '0% above'],
-    [-0.004, -100, '0% below'],
-    [0.006, 100, '1% above'],
-  ])('rounds magnitude consistently without rounding direction: %s', (gapPct, gapMinor, text) => {
-    show({ gapPct, gapMinor });
-    expect(screen.getByText(new RegExp(text))).toBeInTheDocument();
+  it('discloses the partial population and period', () => {
+    render(<MemoryRouter><BlendedTruthView data={{ ...data, portfolio: { ...data.portfolio,
+      reconciliation: { ...comparison(), ...counts, totalChannelCount: 3, unverifiedCount: 1 } } }} role="BUYER" /></MemoryRouter>);
+    expect(screen.getByText(/Across 2 of 3/)).toHaveTextContent('partial population');
+    expect(screen.getByText(/Evidence period:/)).toHaveTextContent('2026-08-01 → 2026-08-30');
   });
-
-  it.each([
-    [0.29, '29% above'], [-0.10, '10% below'], [0, '0%'], [null, '—'],
-    [0.256, '26% above'], [-0.004, '0% below'], [Number.NaN, '—'],
-  ])('renders channel gap %s neutrally as %s', (gapPct, text) => {
-    show({}, 'STRATEGIST', [{ ...data.channels[0], gapPct }]);
-    const row = screen.getByRole('link', { name: 'META' }).closest('tr');
-    const cell = within(row).getAllByRole('cell')[3];
-    expect(cell).toHaveTextContent(text);
-    expect(cell.textContent).toBe(text);
-    expect(cell).not.toHaveClass('text-signal-kill', 'text-signal-scale');
+  it.each(['PORTFOLIO_WINDOW_MISMATCH', 'PORTFOLIO_CURRENCY_MISMATCH'])('does not publish an incompatible portfolio gap: %s', reason => {
+    show(refusal('UNAVAILABLE', reason), 'BUYER');
+    expect(screen.getByText(/Portfolio revenue gap unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText(/Revenue gap: 25%/)).not.toBeInTheDocument();
   });
-
-  it('preserves the stale warning and historical comparison', () => {
-    show({ gapPct: -0.25, gapMinor: -120000 }, 'STRATEGIST',
-      data.channels.map((channel) => ({ ...channel, stale: true })));
-    expect(screen.getByText(/data is stale/)).toBeInTheDocument();
-    expect(screen.getByText(/25% below/)).toBeInTheDocument();
+  it('keeps independent efficiency visible when reconciliation is unavailable', () => {
+    show(refusal(), 'BUYER');
+    expect(screen.getByText(/Blended revenue efficiency: 1.9×/)).toBeInTheDocument();
   });
-
-  it('keeps the single-channel state without a portfolio hero', () => {
-    show({ gapPct: 0.25, gapMinor: 120000 }, 'BUYER', [data.channels[0]]);
-    expect(screen.getByText(/reconciles across ≥2 channels/)).toBeInTheDocument();
-    expect(screen.queryByText(/Platform claims vs reality/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/25% above/)).not.toBeInTheDocument();
+  it.each([[.004, 100, '0% above'], [-.004, -100, '0% below'], [.006, 100, '1% above']])('keeps recorded tiny-gap presentation debt: %s', (gapPct, gapMinor, text) => {
+    show(comparison({ gapPct, gapMinor }), 'BUYER'); expect(screen.getByText(new RegExp('Revenue gap: ' + text))).toBeInTheDocument();
   });
-
-  it.each(['BUYER', 'STRATEGIST'])('preserves %s detail visibility', (role) => {
-    show({ gapPct: 0.25, gapMinor: 120000 }, role);
-    expect(screen.getByText(/Revenue gap: 25% above/)).toBeInTheDocument();
-    expect(Boolean(screen.queryByRole('table'))).toBe(role === 'STRATEGIST');
+  it('uses one channel model for labelled records and an accessible desktop table', () => {
+    show(); const table = screen.getByRole('table', { name: 'Channel revenue evidence comparison' });
+    expect(table).toHaveClass('hidden', 'sm:table');
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(5);
+    for (const h of within(table).getAllByRole('columnheader')) expect(h).toHaveAttribute('scope', 'col');
+    for (const row of within(table).getAllByRole('rowheader')) expect(row).toHaveAttribute('scope', 'row');
+    const records = screen.getByRole('region', { name: 'Channel revenue evidence records' }); expect(records).toHaveClass('sm:hidden');
+    for (const name of ['META', 'GOOGLE']) {
+      const record = within(records).getByRole('article', { name: name + ' revenue evidence' });
+      expect(within(record).getByText('Platform ROAS')).toBeInTheDocument(); expect(record).toHaveTextContent('25% above');
+      expect(record).toHaveTextContent('Reconciled'); expect(record).toHaveTextContent('Evidence period:');
+      expect(within(record).getByRole('link')).toHaveAttribute('href', expect.stringContaining('channel=' + name));
+    }
   });
-});
-
-describe('BlendedTruthView — channel cross-link', () => {
-  it('links each channel name to the Campaigns page filtered by that channel', () => {
-    render(
-      <MemoryRouter>
-        <BlendedTruthView data={data} role="STRATEGIST" currency="USD" />
-      </MemoryRouter>,
-    );
-    const link = screen.getByRole('link', { name: 'META' });
-    expect(link).toHaveAttribute('href', expect.stringContaining('channel=META'));
+  it('preserves stale warning without changing reconciliation', () => {
+    show(comparison(), 'STRATEGIST', data.channels.map(c => ({ ...c, stale: true })));
+    expect(screen.getByText(/data is stale/)).toBeInTheDocument(); expect(screen.getByText(/Revenue gap: 25% above/)).toBeInTheDocument();
   });
-});
-
-// ── Identity fallback (P1.2): name → channel enum → channelId (UUID last resort).
-// The href always filters by channel (platform), regardless of the visible label.
-describe('BlendedTruthView — channel identity fallback', () => {
-  const row = (over) => ({
-    channelId: '4e7f8d9b-uuid', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2,
-    gapPct: 0.29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD', ...over,
+  it.each(['BUYER', 'STRATEGIST'])('preserves %s detail visibility', role => {
+    show(comparison(), role); expect(Boolean(screen.queryByRole('table'))).toBe(role === 'STRATEGIST');
+    expect(Boolean(screen.queryByRole('region', { name: 'Channel revenue evidence records' }))).toBe(role === 'STRATEGIST');
   });
-  const renderRow = (over) =>
-    render(
-      <MemoryRouter>
-        <BlendedTruthView data={{ channels: [row(over)], portfolio: null }} role="STRATEGIST" currency="USD" />
-      </MemoryRouter>,
-    );
-
-  it('renders the campaign name when present, still linking by channel', () => {
-    renderRow({ name: 'Summer Promo' });
-    const link = screen.getByRole('link', { name: 'Summer Promo' });
-    expect(link).toHaveAttribute('href', expect.stringContaining('channel=META'));
-    expect(screen.queryByText('4e7f8d9b-uuid')).not.toBeInTheDocument();
+  it('does not manufacture a single-channel portfolio hero', () => {
+    show(comparison(), 'BUYER', [data.channels[0]]); expect(screen.getByText(/reconciles across ≥2 channels/)).toBeInTheDocument();
+    expect(screen.queryByText(/Revenue gap:/)).not.toBeInTheDocument();
   });
-
-  it('falls back to the channel enum when name is null', () => {
-    renderRow({ name: null });
-    expect(screen.getByRole('link', { name: 'META' })).toBeInTheDocument();
-    expect(screen.queryByText('4e7f8d9b-uuid')).not.toBeInTheDocument();
-  });
-
-  it('falls back to the channelId (UUID) only when both name and channel are null', () => {
-    renderRow({ name: null, channel: null });
-    expect(screen.getByRole('link', { name: '4e7f8d9b-uuid' })).toBeInTheDocument();
+  it.each([{ name: 'Summer Promo', channel: 'META', label: 'Summer Promo' }, { name: null, channel: 'META', label: 'META' },
+    { name: null, channel: null, label: 'uuid' }])('preserves identity fallback: $label', over => {
+    show(comparison(), 'STRATEGIST', [{ ...data.channels[0], channelId: 'uuid', ...over }]);
+    for (const link of screen.getAllByRole('link', { name: over.label })) expect(link).toHaveAttribute('href', expect.stringContaining('channel=' + (over.channel ?? 'uuid')));
   });
 });
 
@@ -221,9 +169,9 @@ describe('BlendedTruth (wrapper) — tier gate', () => {
 
   it.each([
     [0.25, 120000], [-0.25, -120000], [0, 0], [null, null],
-  ])('keeps allocation eligibility independent of gap direction: %s', (gapPct, gapMinor) => {
+  ])('keeps allocation eligibility independent of unavailable reconciliation: %s', (gapPct, gapMinor) => {
     useBlendedTruth.mockReturnValue({ data: {
-      ...data, portfolio: { ...data.portfolio, currency: 'USD', monetaryStatus: 'MONETARY_VALID', gapPct, gapMinor },
+      ...data, portfolio: { ...data.portfolio, currency: 'USD', monetaryStatus: 'MONETARY_VALID', gapPct, gapMinor, reconciliation: { ...refusal(), ...counts } },
     }, loading: false, error: null, gated: false });
     renderWrapper();
     fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '500' } });

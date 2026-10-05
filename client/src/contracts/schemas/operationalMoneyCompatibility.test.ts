@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { BlendedTruthSchema } from './blendedTruth.schema';
 import { AllocationPlanPreviewSchema } from './allocationPlan.schema';
 import { NorthStarGoalSchema, PlanProjectionsSchema } from './plan.schema';
+const unverified = { status: 'UNVERIFIED', reason: 'ACTUAL_REVENUE_UNAVAILABLE', windowCompatibility: 'UNKNOWN',
+  window: { windowStatus: 'UNKNOWN', windowStart: null, windowEnd: null }, currency: null,
+  platformRevenueMinor: null, actualRevenueMinor: null, gapMinor: null, gapPct: null, gapPctReason: null, gapDenominator: 'PLATFORM_REVENUE' };
 
 const channel = (currency: string | null, monetaryStatus: string, monetaryReason: string | null) => ({
   channelId: 'meta', channel: 'META', name: 'Prospecting', currency, monetaryStatus, monetaryReason,
@@ -9,8 +12,9 @@ const channel = (currency: string | null, monetaryStatus: string, monetaryReason
   platformRevenueMinor: currency ? 20000 : null,
   actualRevenueMinor: null,
   blendedRevenueMinor: currency ? 20000 : null,
-  gapMinor: currency ? 0 : null,
-  gapPct: currency ? 0 : null,
+  gapMinor: null,
+  gapPct: null,
+  reconciliation: unverified,
   platformRoas: currency ? 2 : null,
   blendedRoas: currency ? 2 : null,
   coverage: 'UNVERIFIED', confidence: 'LOW',
@@ -21,11 +25,12 @@ const portfolio = (currency: string | null, monetaryStatus: string, monetaryReas
   spendMinor: currency ? 10000 : null,
   platformRevenueMinor: currency ? 20000 : null,
   blendedRevenueMinor: currency ? 20000 : null,
-  gapMinor: currency ? 0 : null,
-  gapPct: currency ? 0 : null,
+  gapMinor: null,
+  gapPct: null,
+  reconciliation: { ...unverified, reconciledCount: 0, unverifiedCount: 1, unavailableCount: 0, totalChannelCount: 1 },
   platformRoas: currency ? 2 : null,
   blendedRoas: currency ? 2 : null,
-  reconciledCount: 0, unverifiedCount: 1,
+  reconciledCount: 0, unverifiedCount: 1, unavailableCount: 0, totalChannelCount: 1,
 });
 
 describe('operational monetary frontend schemas', () => {

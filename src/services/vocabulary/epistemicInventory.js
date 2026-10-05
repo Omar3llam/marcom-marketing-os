@@ -53,6 +53,7 @@ import { SPEND_PERIOD_KNOWLEDGE } from '../budget-period/spendPeriod.js';
 import { MONETARY_KNOWLEDGE } from '../../lib/operationalMonetary.js';
 import { REVENUE_WINDOW_KNOWLEDGE } from '../../lib/revenueMeasurementWindow.js';
 import { EFFICIENCY_KNOWLEDGE } from '../../lib/blendedRevenueEfficiency.js';
+import { RECONCILIATION_KNOWLEDGE } from '../../lib/revenueReconciliation.js';
 
 /**
  * The suffixes that define the ratchet's jurisdiction. A shape, not a guess.
@@ -93,6 +94,7 @@ export const JURISDICTION_SUFFIXES = Object.freeze(['_STATUS', '_STATE', '_REASO
  *                    only makes it VISIBLE.
  */
 export const DECLARED = Object.freeze([
+  { at: 'src/lib/revenueReconciliation.js', symbol: 'RECONCILIATION_STATUS', declaration: RECONCILIATION_KNOWLEDGE },
   { at: 'src/lib/operationalMonetary.js', symbol: 'MONETARY_STATUS', declaration: MONETARY_KNOWLEDGE },
   { at: 'src/lib/revenueMeasurementWindow.js', symbol: 'REVENUE_WINDOW_STATUS', declaration: REVENUE_WINDOW_KNOWLEDGE },
   { at: 'src/lib/blendedRevenueEfficiency.js', symbol: 'EFFICIENCY_STATUS', declaration: EFFICIENCY_KNOWLEDGE },
@@ -123,6 +125,8 @@ export const DECLARED = Object.freeze([
  * editing one line here instead of by discovering the omission in production.
  */
 export const EXCLUDED = Object.freeze([
+  { at: 'src/lib/revenueReconciliation.js', symbol: 'RECONCILIATION_REASON',
+    because: 'Reasons qualify the reconciliation status or an unavailable percentage; they do not independently state knowledge.' },
   {
     at: 'src/lib/blendedRevenueEfficiency.js', symbol: 'EFFICIENCY_REASON',
     because: 'A reason vocabulary refining EFFICIENCY_STATUS. Currency, window and denominator failures explain the unavailable state without creating a second knowledge token.',

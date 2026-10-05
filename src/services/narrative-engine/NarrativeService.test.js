@@ -47,6 +47,16 @@ describe('buildNarrativeInputs', () => {
     expect(out.blended.evidenceRef).toBe('acc-meta');
     expect(out.blended.blendedRoas).toBe(3.2);
   });
+  it('includes incomparable channels in coverage and inherits only the authoritative gap', () => {
+    const result = buildNarrativeInputs({ blended: { ...blended, portfolio: { ...blended.portfolio,
+      reconciledCount: 1, unverifiedCount: 1, unavailableCount: 2, gapPct: 999,
+      reconciliation: { status: 'UNAVAILABLE', gapPct: null } } } });
+    expect(result.coverage.blendedConfidence).toBe(.25);
+    expect(result.blended.gapPct).toBeNull();
+    const available = buildNarrativeInputs({ blended: { ...blended, portfolio: { ...blended.portfolio,
+      reconciliation: { status: 'AVAILABLE', gapPct: 0 } } } });
+    expect(available.blended.gapPct).toBe(0);
+  });
 
   it('flags ciExcludesZero from the interval', () => {
     expect(out.incrementality[0].ciExcludesZero).toBe(true);
