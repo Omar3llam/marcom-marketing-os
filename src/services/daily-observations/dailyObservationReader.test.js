@@ -69,6 +69,13 @@ beforeEach(() => {
 });
 
 describe('R9 — the query', () => {
+  it('P7-07C carries persisted currency origin through selection and reduction', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue([row('09', { currencyProvenance: 'PLATFORM_REPORTED' })]);
+    const result = await read();
+    expect(DAILY_OBSERVATION_SELECT.currencyProvenance).toBe(true);
+    expect(result.before[0]).toMatchObject({ currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED',
+      id: 'row-09', day: '2026-08-09', observedAt: new Date('2026-08-17T09:00:00.000Z') });
+  });
   it('names the DAILY population and never infers it from granularity', async () => {
     await read();
     const args = prisma.metricSnapshot.findMany.mock.calls[0][0];

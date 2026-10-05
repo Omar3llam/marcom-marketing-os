@@ -68,6 +68,14 @@ beforeEach(() => {
 });
 
 describe('R6 — the form captures when it was measured', () => {
+  it('P7-07C keeps manual USD labels and exact major-to-minor conversion isolated', () => {
+    openForm();
+    expect(screen.getByLabelText('Spend change (USD)')).toHaveValue(null);
+    expect(screen.getByLabelText('Revenue change (USD)')).toHaveValue(null);
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: /Record what actually happened/ }));
+    expect(submitted()).toMatchObject({ spendDeltaMinor: -420000, revenueDeltaMinor: 1820000, roasDelta: 1.8 });
+  });
   it('asks for it, and will not submit without it', () => {
     openForm();
     fill({ measured: null });
