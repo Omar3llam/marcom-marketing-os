@@ -31,7 +31,7 @@ function withRole(role: string, loading = false) {
 const RELIABLE = {
   coverage: { totalDecisions: 160, scored: 124, unscorable: 6, pendingMaturation: 9, dismissed: 21, notAPrediction: 0, scoredFraction: 0.95, verdict: 'RELIABLE', note: 'x' },
   calibration: { bins: [{ band: '80-90%', predicted: 0.85, observed: 0.79, count: 26, gap: 0.06 }], binEdges: [0, 1], expectedCalibrationError: 0.11, brierScore: 0.14, accuracy: 0.71, direction: 'OVERCONFIDENT', sampleSize: 124 },
-  velocity: { periods: [{ label: '2026-01', calibrationError: 0.28, sampleSize: 34 }, { label: '2026-02', calibrationError: 0.16, sampleSize: 41 }], trend: 'IMPROVING', slope: -0.04 },
+  velocity: { periods: [{ label: '2026-01', calibrationError: 0.28, sampleSize: 34, includedInTrend: true }, { label: '2026-02', calibrationError: 0.16, sampleSize: 41, includedInTrend: true }], trend: 'IMPROVING', slope: -0.04 },
   accountLift: { earlyWindow: { calibrationError: 0.28, accuracy: 0.62, sampleSize: 50, span: { from: 'a', to: 'b' } }, recentWindow: { calibrationError: 0.11, accuracy: 0.78, sampleSize: 50, span: { from: 'a', to: 'b' } }, calibrationImprovementPct: 0.61, status: 'IMPROVING' },
 };
 const RELIABLE_SURFACE = { gated: false, headline: 'Lumi\'s calls on this account: calibration error 11% (was 28% in your first window) — improving', status: 'IMPROVING', calibrationErrorPct: 11, improvementPct: 61, scored: 124, needed: 30 };

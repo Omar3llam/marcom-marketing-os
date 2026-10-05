@@ -51,8 +51,9 @@ export const AccountLiftSchema = z.object({
 
 export const VelocityPeriodSchema = z.object({
   label: z.string(),
-  calibrationError: z.number(),
+  calibrationError: z.number().nullable(),
   sampleSize: z.number().int().nonnegative(),
+  includedInTrend: z.boolean(), // server-selected membership; never inferred from n
 });
 
 export const VelocitySchema = z.object({
