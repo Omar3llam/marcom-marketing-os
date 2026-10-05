@@ -1,7 +1,47 @@
 import { describe, it, expect } from 'vitest';
-import { ACTIONABLE_VERDICTS, shouldRequestEvidence, EVIDENCE_REFUSAL_LABELS, refusalLabel, formatEvidenceGap, formatEvidenceValue } from './executionContext.js';
+import { ACTIONABLE_VERDICTS, shouldRequestEvidence, EVIDENCE_REFUSAL_LABELS, refusalLabel, formatEvidenceGap, formatEvidenceValue, buildRelativeBaselineReadout } from './executionContext.js';
 import { nextActionFor } from './verdictEvidence.js';
 const CAMPAIGN_CTR = 0.0164;
+
+const readoutInput = () => ({ metric: 'ctr', subjectValue: 0.0091, parentValue: 0.02, gap: -0.34,
+  subjectLabel: 'Ad set', parentLabel: 'Campaign', relationParentLabel: 'campaign', populationNoun: 'ad sets',
+  comparisonEnvelope: { source: 'META', windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+    currency: null, comparableCount: 2, excludedByEnvelopeCount: 1 } });
+
+describe('P7-07B complete presentation model', () => {
+  it('maps explicit nouns and server fields without choosing a row or recomputing a gap', () => {
+    const input = readoutInput();
+    const before = structuredClone(input);
+    expect(buildRelativeBaselineReadout(input)).toEqual({ metricLabel: 'CTR', subjectLabel: 'Ad set',
+      subjectValue: '0.91%', parentLabel: 'Campaign', parentValue: '2.00%', gap: '-34%', relation: '34% below campaign',
+      basisLabel: 'Evidence · 2026-08-01 → 2026-08-30 UTC · META',
+      populationLabel: 'Compared within 2 reporting ad sets with comparable evidence · 1 excluded from this comparison' });
+    expect(input).toEqual(before);
+  });
+  it.each([undefined, null])('withholds a missing input %s', (input) => { expect(buildRelativeBaselineReadout(input)).toBeNull(); });
+  it.each(['metric', 'subjectValue', 'parentValue', 'gap', 'comparisonEnvelope', 'subjectLabel', 'parentLabel',
+    'relationParentLabel', 'populationNoun'])('withholds an incomplete %s', (field) => {
+    expect(buildRelativeBaselineReadout({ ...readoutInput(), [field]: null })).toBeNull();
+  });
+  it.each(['subjectLabel', 'parentLabel', 'relationParentLabel', 'populationNoun'])('withholds blank %s', (field) => {
+    expect(buildRelativeBaselineReadout({ ...readoutInput(), [field]: '  ' })).toBeNull();
+  });
+  it.each(['windowStart', 'windowEnd', 'source', 'comparableCount', 'excludedByEnvelopeCount'])(
+    'withholds missing display content %s without inventing copy', (field) => {
+      const input = readoutInput();
+      delete input.comparisonEnvelope[field];
+      expect(buildRelativeBaselineReadout(input)).toBeNull();
+    });
+  it.each([['subjectValue', NaN], ['parentValue', Infinity], ['gap', '0.34'], ['metric', 'thumbstop']])(
+    'withholds unformattable %s', (field, value) => {
+      expect(buildRelativeBaselineReadout({ ...readoutInput(), [field]: value })).toBeNull();
+    });
+  it('does not apply a new population/sample eligibility threshold', () => {
+    const input = readoutInput();
+    input.comparisonEnvelope.comparableCount = 1;
+    expect(buildRelativeBaselineReadout(input).populationLabel).toContain('1 reporting ad sets');
+  });
+});
 
 describe('published comparison formatting', () => {
   it('formats the gap without child or parent arithmetic', () => {

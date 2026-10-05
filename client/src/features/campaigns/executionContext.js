@@ -75,6 +75,35 @@ export const evidencePopulationLabel = (envelope, noun) => {
   return `Compared within ${envelope.comparableCount} reporting ${noun} with comparable evidence${excluded > 0 ? ` · ${excluded} excluded from this comparison` : ''}`;
 };
 
+// Presentation completeness only, after useEvidence admission. Callers own
+// selection; this never compares rows or reconstructs their eligibility.
+export function buildRelativeBaselineReadout(input) {
+  if (!input) return null;
+  const { metric, subjectValue, parentValue, gap, comparisonEnvelope,
+    subjectLabel, parentLabel, relationParentLabel, populationNoun } = input;
+  const text = (value) => typeof value === 'string' && value.trim().length > 0;
+  if (![subjectLabel, parentLabel, relationParentLabel, populationNoun].every(text)) return null;
+  // Ensure the existing copy helpers have their display inputs, not compatible
+  // periods, sources, denominations or a minimum comparable population.
+  if (!comparisonEnvelope
+    || ![comparisonEnvelope.windowStart, comparisonEnvelope.windowEnd, comparisonEnvelope.source].every(text)
+    || !Number.isFinite(comparisonEnvelope.comparableCount)
+    || !Number.isFinite(comparisonEnvelope.excludedByEnvelopeCount)) return null;
+  const formattedGap = formatEvidenceGap(gap, relationParentLabel);
+  const readout = {
+    metricLabel: evidenceMetricLabel(metric),
+    subjectLabel,
+    subjectValue: formatEvidenceValue(metric, subjectValue),
+    parentLabel,
+    parentValue: formatEvidenceValue(metric, parentValue),
+    gap: formattedGap?.signed,
+    relation: formattedGap?.relation,
+    basisLabel: evidenceBasisLabel(comparisonEnvelope),
+    populationLabel: evidencePopulationLabel(comparisonEnvelope, populationNoun),
+  };
+  return Object.values(readout).every(text) ? readout : null;
+}
+
 export const refusalLabel = (reasonKey, dimension = 'adset') => {
   const nouns = nounsFor(dimension);
   const build = EVIDENCE_REFUSAL_LABELS[reasonKey];

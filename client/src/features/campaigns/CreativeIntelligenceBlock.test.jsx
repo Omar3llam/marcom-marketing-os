@@ -35,11 +35,18 @@ const vm = (over = {}) => ({
     rank: 'BOTTOM', comparedCount: 4, metric: 'ctr', metricLabel: 'CTR',
     gapPercent: -34, label: 'CTR 34% below the ad set within 4 reporting ads',
   },
-  comparison: { metricLabel: 'CTR', childValue: '0.91%', parentValue: '2.00%', gap: '-34%', relation: '34% below ad set' },
+  comparison: { metricLabel: 'CTR', subjectLabel: 'Ad', subjectValue: '0.91%', parentLabel: 'Ad set',
+    parentValue: '2.00%', gap: '-34%', relation: '34% below ad set',
+    basisLabel: 'Evidence · 2026-08-01 → 2026-08-30 UTC · META',
+    populationLabel: 'Compared within 4 reporting ads with comparable evidence' },
   ...over,
 });
 
 describe('P7-04B comparison hierarchy', () => {
+  it('P7-07B delegates the inner definition list to the shared readout', () => {
+    expect(codeOf()).toMatch(/<RelativeBaselineEvidence\s+readout=/);
+    expect(codeOf()).not.toMatch(/<dl\b/);
+  });
   it.each([['ctr', 0.02, 0.008, -0.6, 'RATIO', '0.80%', '2.00%'],
     ['frequency', 2, 4, 1, 'FREQUENCY', '4.00', '2.00'],
     ['roas', 2, 0.5, -0.75, 'MULTIPLE', '0.50x', '2.00x']])(
@@ -131,10 +138,9 @@ describe('what it refuses to render', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it.each(['ctr', 'roas', 'frequency'])('a missing %s renders a dash, never a zero', (field) => {
+  it.each(['roas', 'frequency'])('a missing context %s renders a dash, never a zero', (field) => {
     render(<CreativeIntelligenceBlock viewModel={vm({
       metrics: { ...vm().metrics, [field]: null },
-      comparison: field === 'ctr' ? { ...vm().comparison, childValue: null } : vm().comparison,
     })} />);
     expect(screen.getAllByLabelText('No data').length).toBeGreaterThan(0);
   });
@@ -142,9 +148,12 @@ describe('what it refuses to render', () => {
   it('never prints 0.00% for an unreported CTR', () => {
     const { container } = render(<CreativeIntelligenceBlock viewModel={vm({
       metrics: { ...vm().metrics, ctr: null },
-      comparison: { ...vm().comparison, childValue: null },
+      comparison: null,
     })} />);
     expect(container.textContent).not.toMatch(/0\.00%/);
+    expect(screen.queryByRole('region', { name: 'Selected comparison' })).not.toBeInTheDocument();
+    expect(screen.getByText('Hook A · 9x16')).toBeInTheDocument();
+    expect(screen.getByText('CTR 34% below the ad set within 4 reporting ads')).toBeInTheDocument();
   });
 
   // The one wrong answer a fatigue reader would act on.
