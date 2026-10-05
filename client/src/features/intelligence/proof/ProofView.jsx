@@ -1,9 +1,9 @@
 // ============================================================
 // MARCOM / Lumi — Proof / Calibration (Phase 11A · STAR 2)
 // ------------------------------------------------------------
-// Surfaces the Phase-X Proof Engine: does Lumi get sharper as it learns this
-// account? Consumes DecisionAccuracySchema + the gated AccuracySurfaceSchema via
-// GET /api/lumi/accuracy.
+// AccountLift headline and calibration evidence, including discrete decision
+// cohorts with server-selected trend membership. Consumes DecisionAccuracySchema
+// + the gated AccuracySurfaceSchema via GET /api/lumi/accuracy.
 //
 // THE HARD GATE: the improvement claim renders ONLY when coverage.verdict ===
 // RELIABLE. The backend pre-computes this in `surface` (gated/headline); the
@@ -12,7 +12,7 @@
 //
 // Headline = calibration (ECE), accuracy secondary (Proof Engine §2.4). The
 // reliability table is the evidence (a table, not a chart — anti-Looker holds).
-// Role: STRATEGIST = full table + velocity; BUYER = summary; CLIENT = narrative.
+// Role: STRATEGIST = table + cohorts; BUYER = summary; CLIENT = narrative.
 // ============================================================
 import { Link } from 'react-router-dom';
 import { Gauge } from 'lucide-react';
@@ -25,38 +25,16 @@ import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
 
-const pct = (n) => `${Math.round((Number(n) || 0) * 100)}%`;
+const pct = (n) => Number.isFinite(n) ? `${Math.round(n * 100)}%` : '—';
 
-// Backend velocity trend (LIFT_STATUS) → a labelled, colour-coded badge.
-const TREND_META = {
-  IMPROVING:         { label: 'IMPROVING', cls: 'text-signal-scale' },
-  DEGRADING:         { label: 'DEGRADING', cls: 'text-signal-hold' },
-  FLAT:              { label: 'STEADY',     cls: 'text-lumi-muted' },
-  INSUFFICIENT_DATA: { label: 'STILL LEARNING', cls: 'text-lumi-subtle' },
+// Backend cohort classification owns the label. Neutral text carries no
+// campaign-verdict meaning and rounded evidence never reclassifies the trend.
+const TREND_LABELS = {
+  IMPROVING: 'Improving',
+  DEGRADING: 'Degrading',
+  FLAT: 'Steady',
+  INSUFFICIENT_DATA: 'Still learning',
 };
-
-// Compact sparkline of per-period calibration error (lower = better, so a line
-// that trends DOWN is improving). Hand-rolled SVG — the codebase's own idiom
-// (no charting dependency), and the number row below stays the evidence, so the
-// anti-Looker rule holds. Renders nothing below 2 periods (never a fake trend).
-function VelocitySparkline({ periods, colorClass }) {
-  if (!Array.isArray(periods) || periods.length < 2) return null;
-  const values = periods.map((p) => p.calibrationError);
-  const min = Math.min(...values), max = Math.max(...values);
-  const range = max - min || 1;
-  const W = 120, H = 28;
-  const coords = values.map((v, i) => [
-    (i / (values.length - 1)) * W,
-    H - ((v - min) / range) * H,
-  ]);
-  const line = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className={colorClass} role="img" aria-label="Learning velocity trend">
-      <polyline fill="none" stroke="currentColor" strokeWidth="1.5" points={line} />
-      {coords.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="1.75" fill="currentColor" />)}
-    </svg>
-  );
-}
 
 // ── The gated one-liner (reused on Home too) ────────────────────
 export function ProofSummary({ surface }) {
@@ -89,39 +67,40 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
 
   const cal = data.calibration;
   const vel = data.velocity;
-  const trendMeta = TREND_META[vel?.trend] ?? TREND_META.INSUFFICIENT_DATA;
+  const trendLabel = TREND_LABELS[vel?.trend] ?? 'Trend unavailable';
 
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
         <ProofSummary surface={surface} />
-        <div className="mt-3 flex gap-6 text-xs font-mono text-lumi-subtle">
-          <span className="inline-flex items-center gap-1">Calibration error (ECE) <HelpTip variant="popover" content={HELP.CALIBRATION} />: <strong className="text-lumi-text">{pct(cal.expectedCalibrationError)}</strong></span>
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono text-lumi-subtle">
+          <span className="inline-flex flex-wrap items-center gap-1">Calibration error (ECE) <HelpTip variant="popover" content={HELP.CALIBRATION} />: <strong className="text-lumi-text">{pct(cal.expectedCalibrationError)}</strong></span>
           <span>Brier: <strong className="text-lumi-text">{cal.brierScore == null ? '—' : cal.brierScore.toFixed(2)}</strong></span>
           <span>Direction: <strong className="text-lumi-text">{cal.direction}</strong></span>
           <span>Accuracy (secondary): {pct(cal.accuracy)}</span>
         </div>
       </div>
 
-      {/* Learning-velocity periods — the flagship curve as a compact sparkline
-          PLUS the row of numbers (the numbers stay the evidence; anti-Looker holds). */}
+      {/* Cohort evidence stays discrete: every published period and its exact
+          server-selected membership, without a continuous time-series claim. */}
       {isStrategist && vel?.periods?.length > 0 && (
-        <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-4">
-          <div className="section-label mb-2 flex items-center gap-2">
-            Learning velocity
-            <span className={`font-mono text-[10px] uppercase tracking-wide ${trendMeta.cls}`}>{trendMeta.label}</span>
-          </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            <VelocitySparkline periods={vel.periods} colorClass={trendMeta.cls} />
-            <div className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-sm">
-              {vel.periods.map((p) => (
-                <span key={p.label} className="text-lumi-muted">
-                  {p.label}: <strong className="text-lumi-text">{pct(p.calibrationError)}</strong> err
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
+        <section aria-label="Calibration by decision cohort" className="rounded-2xl border border-lumi-border bg-lumi-surface p-4">
+          <h3 className="section-label">Calibration by decision cohort</h3>
+          <p className="mt-2 text-sm text-lumi-muted">Cohort trend: <strong className="text-lumi-text">{trendLabel}</strong></p>
+          <p className="mt-2 text-sm text-lumi-muted">Calibration error for scored decisions grouped by UTC issuance month. Lower is better.</p>
+          <p className="mt-1 text-xs text-lumi-muted">The trend uses only cohorts selected by Lumi&apos;s calibration engine.</p>
+          <ul className="mt-3 space-y-2">
+            {vel.periods.map((p) => (
+              <li key={p.label} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-lumi-border pt-2 text-sm">
+                <span className="font-mono text-lumi-text">{p.label}</span>
+                <span className="text-lumi-muted">Calibration error: <strong className="font-mono text-lumi-text">{pct(p.calibrationError)}</strong></span>
+                <span className="font-mono text-lumi-muted">n={p.sampleSize}</span>
+                <span className="text-lumi-muted">{p.includedInTrend ? 'Used in trend' : 'Not used in trend'}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-lumi-muted">Cohort values can update as outcomes mature.</p>
+        </section>
       )}
 
       {/* Reliability table — predicted vs observed. The evidence, not a chart. */}
