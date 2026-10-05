@@ -9,6 +9,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getPortfolio }       from '../../services/portfolio/PortfolioService.js';
 import { getBlendedTruth }    from '../../services/blended-truth/BlendedTruthService.js';
+import { reconcile } from '../../services/blended-truth/blendedTruthEngine.js';
 import { previewAllocation, commitAllocation } from '../../services/allocation-engine/AllocationService.js';
 import { GOAL_TYPE }          from '../../services/allocation-engine/allocationEngine.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
@@ -84,10 +85,7 @@ portfolioRouter.get('/blended', async (req, res) => {
   if (!wsId) {
     return res.json({
       workspaceId: null, generatedAt: new Date().toISOString(),
-      channels: [], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0,
-        platformRoas: null, blendedRoas: null,
-        blendedRevenueEfficiency: { status: 'UNAVAILABLE', reason: 'SPEND_BASIS_UNAVAILABLE', value: null, currency: null, windowCompatibility: 'UNKNOWN' },
-        reconciledCount: 0, unverifiedCount: 0 },
+      ...reconcile({ channels: [] }),
     });
   }
   try {

@@ -58,6 +58,8 @@ const EVIDENCE_SELECT = {
 
 const row = (over = {}) => ({
   entityId: 'c1', date: new Date('2026-08-10T00:00:00Z'), source: 'META',
+  measurementWindow: 'ROLLING_WINDOW', windowStart: new Date('2026-08-01'), windowEnd: new Date('2026-08-30'),
+  spendWindowStartUtc: new Date('2026-08-01'), spendWindowEndUtc: new Date('2026-08-30'),
   revenueMinor: 0, spendMinor: 0, currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED', ...over,
 });
 
@@ -203,7 +205,7 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
       const { channels, portfolio } = await getBlendedTruth(WS);
       expect(channels[0].actualRevenueMinor).toBeNull();
       expect(channels[0].blendedRevenueMinor).toBe(10_000); // collapses onto the claim
-      expect(channels[0].gapMinor).toBe(0);                 // the gap vanishes
+      expect(channels[0].gapMinor).toBeNull();              // absence is not equality
       expect(channels[0].coverage).toBe('UNVERIFIED');
       expect(portfolio.reconciledCount).toBe(0);
     });

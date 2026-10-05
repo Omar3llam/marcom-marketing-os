@@ -14,7 +14,6 @@
 // ============================================================
 import { Link } from 'react-router-dom';
 import { Scale, AlertTriangle } from 'lucide-react';
-import { formatCurrency } from '@/lib/money';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
 import { useAllocation } from '@/hooks/useAllocation.js';
@@ -22,139 +21,71 @@ import { AllocationPanel } from './AllocationPanel.jsx';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
-import { HelpTip } from '@/components/ui/HelpTip.jsx';
-import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import UpgradePrompt from '@/components/plan/UpgradePrompt.jsx';
-import { gapPresentation, channelGapText } from './gapPresentation.js';
+import { channelPresentation, reconciliationPresentation, ratioText } from './reconciliationPresentation.js';
 
-// Null/non-finite ROAS → "—" (honest empty), never a fabricated 0.0× that reads
-// as a real (terrible) return. A genuine finite 0 still formats as 0.0×.
-const fx = (n) => (n == null || !Number.isFinite(Number(n))) ? '—' : `${Number(n).toFixed(1)}×`;
-
-// ── Pure, prop-driven view (unit-tested directly) ───────────────
+// One presentation model keeps desktop and mobile evidence identical.
 export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
   const channels = data?.channels ?? [];
   const portfolio = data?.portfolio ?? null;
-
-  if (channels.length === 0) {
-    return (
-      <EmptyPanel
-        Icon={Scale}
-        text="No connected channels yet — connect Meta to start validating platform-reported performance against store truth."
-      />
-    );
-  }
-
+  if (!channels.length) return <EmptyPanel Icon={Scale} text="No connected channels yet — connect Meta to compare platform-reported revenue with available actual revenue evidence." />;
   const single = channels.length < 2;
-  const currency = portfolio?.monetaryStatus === 'MONETARY_VALID' ? portfolio.currency : null;
-  const gap = gapPresentation(portfolio?.gapPct, portfolio?.gapMinor);
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
-  const staleChannels = channels.filter((c) => c.stale);
-
-  return (
-    <div className="space-y-4">
-      {/* Staleness honesty (Phase 12) — never a confident gap over stale inputs. */}
-      {staleChannels.length > 0 && (
-        <div className="rounded-2xl border border-signal-kill/40 bg-signal-kill-bg px-4 py-3 flex items-start gap-2.5">
-          <AlertTriangle className="w-4 h-4 mt-0.5 text-signal-kill flex-shrink-0" strokeWidth={1.5} />
-          <p className="text-sm text-lumi-text">
-            {staleChannels.map((c) => c.channel).join(', ')} data is stale — reconciliation may be incomplete. Re-sync to refresh the gap.
-          </p>
-        </div>
-      )}
-      {/* Hero — the gap is the whole point. */}
-      {!single && portfolio && (
-        <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
-          <div className="section-label mb-2 inline-flex items-center gap-1">
-            Platform claims vs reality
-            <HelpTip variant="popover" content={HELP.BLENDED_TRUTH} />
-          </div>
-          {portfolio.platformRoas != null && portfolio.blendedRevenueEfficiency?.value != null ? (
-            <p className="decision-title text-lumi-text leading-snug">
-              Platforms claim <span className="text-lumi-muted">{fx(portfolio.platformRoas)}</span>;
-              {' '}blended revenue efficiency is <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRevenueEfficiency.value)}</span>
-              <HelpTip variant="popover" content={HELP.BLENDED_ROAS} className="ml-1" />.
-            </p>
-          ) : (
-            <p className="decision-title text-lumi-text leading-snug">Blended monetary comparison unavailable.</p>
-          )}
-          {currency && portfolio.gapMinor != null && gap.direction !== 'UNAVAILABLE' ? (
-            <p className="mt-2 text-sm text-lumi-subtle font-mono">
-              {gap.direction === 'MATCH'
-                ? 'Platform-reported revenue matches blended revenue for this comparison.'
-                : <>Revenue gap: {gap.pctText} {gap.direction === 'ABOVE' ? 'above' : 'below'} · {formatCurrency(gap.magnitudeMinor, currency)} difference from blended revenue (gap as a share of platform-reported revenue).</>}
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-lumi-subtle font-mono">Monetary comparison unavailable{portfolio.monetaryReason ? `: ${portfolio.monetaryReason}` : '.'}</p>
-          )}
-          <p className="mt-1 text-xs text-lumi-subtle font-mono">
-            {portfolio.reconciledCount} reconciled · {portfolio.unverifiedCount} unverified (raw platform number, flagged).
-          </p>
-        </div>
-      )}
-
-      {/* Honest single-channel state — NOT a fake reconciliation. */}
-      {single && (
-        <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 mt-0.5 text-lumi-accent flex-shrink-0" strokeWidth={1.5} />
-            <div>
-              <p className="text-sm text-lumi-text font-display font-medium">
-                Blended truth reconciles across ≥2 channels.
-              </p>
-              <p className="mt-1 text-sm text-lumi-muted">
-                Currently validating {channels[0]?.name ?? channels[0]?.channel ?? channels[0]?.channelId} against store truth only —
-                connect a second channel to reconcile the portfolio. We won&apos;t fabricate a multi-channel blend.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Per-channel detail — STRATEGIST only. A table (the evidence), not a chart. */}
-      {isStrategist && (
-        <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-lumi-subtle border-b border-lumi-border">
-                <th className="px-4 py-2.5 font-medium">Channel</th>
-                <th className="px-4 py-2.5 font-medium">Platform ROAS</th>
-                <th className="px-4 py-2.5 font-medium">Blended efficiency</th>
-                <th className="px-4 py-2.5 font-medium">Gap</th>
-                <th className="px-4 py-2.5 font-medium">Coverage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map((c) => (
-                <tr key={c.channelId} className="border-b border-lumi-border/60">
-                  <td className="px-4 py-2.5 font-mono">
-                    {/* Cross-link into the Campaigns page filtered to this channel. */}
-                    <Link
-                      to={`${appRoutes.campaigns}?channel=${encodeURIComponent(c.channel ?? c.channelId)}`}
-                      className="text-lumi-text hover:text-lumi-accent hover:underline transition-colors"
-                    >
-                      {/* name → channel enum → UUID (last resort). The href filters by
-                          channel (platform), so it stays channel-based regardless. */}
-                      {c.name ?? c.channel ?? c.channelId}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(c.platformRoas)}</td>
-                  <td className="px-4 py-2.5 text-lumi-text font-mono">{fx(c.blendedRevenueEfficiency?.value)}</td>
-                  <td className="px-4 py-2.5 font-mono text-lumi-muted">{channelGapText(c.gapPct)}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`font-mono text-xs ${c.coverage === 'RECONCILED' ? 'text-signal-scale' : 'text-lumi-subtle'}`}>
-                      {c.coverage} · {c.confidence}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+  const staleChannels = channels.filter(c => c.stale);
+  const rows = channels.map(channelPresentation);
+  const comparison = reconciliationPresentation(portfolio?.reconciliation);
+  const population = portfolio?.reconciliation;
+  const channelLink = row => <Link to={`${appRoutes.campaigns}?channel=${encodeURIComponent(row.channel)}`} className="text-lumi-text hover:text-lumi-accent hover:underline transition-colors">{row.name}</Link>;
+  const reconciliationDetail = row => <>
+    <span>{row.reconciliation.label}</span>
+    {row.reconciliation.period && <span className="block mt-1">Evidence period: {row.reconciliation.period}</span>}
+    {row.reconciliation.reason && <span className="block mt-1">{row.reconciliation.reason}</span>}
+  </>;
+  return <div className="space-y-4">
+    {staleChannels.length > 0 && <div className="rounded-2xl border border-signal-kill/40 bg-signal-kill-bg px-4 py-3 flex items-start gap-2.5">
+      <AlertTriangle className="w-4 h-4 mt-0.5 text-signal-kill flex-shrink-0" strokeWidth={1.5} />
+      <p className="text-sm text-lumi-text">{staleChannels.map(c => c.channel).join(', ')} data is stale — reconciliation may be incomplete. Re-sync to refresh the gap.</p>
+    </div>}
+    {!single && portfolio && <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
+      <h2 className="text-sm font-medium text-lumi-text">Platform-reported vs actual revenue</h2>
+      <p className="mt-2 text-sm text-lumi-text">Platform ROAS: {ratioText(portfolio.platformRoas)} · Blended revenue efficiency: {ratioText(portfolio.blendedRevenueEfficiency?.value)}</p>
+      {population?.status === 'AVAILABLE' ? <>
+        <p className="mt-2 text-sm text-lumi-text font-mono">Revenue gap: {comparison.gap} from actual revenue (gap as a share of platform-reported revenue).</p>
+        <p className="mt-1 text-sm text-lumi-muted">Across {population.reconciledCount} of {population.totalChannelCount} channels with comparable evidence{population.reconciledCount < population.totalChannelCount ? ' — partial population; excluded channels are not reconciled.' : '.'}</p>
+        <p className="mt-1 text-sm text-lumi-muted">Evidence period: {comparison.period}</p>
+        {comparison.reason && <p className="mt-1 text-sm text-lumi-muted">{comparison.reason}</p>}
+      </> : <p className="mt-2 text-sm text-lumi-muted">Portfolio revenue gap {comparison.label.toLowerCase()}: {comparison.reason}</p>}
+      {population && <p className="mt-1 text-sm text-lumi-muted font-mono">{population.reconciledCount} reconciled · {population.unverifiedCount} unverified · {population.unavailableCount} unavailable.</p>}
+    </div>}
+    {single && <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
+      <p className="text-sm text-lumi-text font-medium">Blended truth reconciles across ≥2 channels.</p>
+      <p className="mt-1 text-sm text-lumi-muted">Only {rows[0].name} is present. Channel evidence appears below when your role permits; connect a second channel for a portfolio comparison.</p>
+    </div>}
+    {isStrategist && <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
+      <section aria-label="Channel revenue evidence records" className="sm:hidden divide-y divide-lumi-border text-sm">
+        {rows.map(row => <article key={row.id} aria-label={row.name + ' revenue evidence'} className="p-4 text-lumi-text break-words">
+          <h3 className="font-medium">{channelLink(row)}</h3>
+          <dl className="mt-3 space-y-3">
+            {[['Platform ROAS', row.platformRoas], ['Blended efficiency', row.blendedEfficiency], ['Gap', row.reconciliation.gap], ['Reconciliation', reconciliationDetail(row)]].map(([label, value]) => <div key={label}><dt className="text-lumi-muted">{label}</dt><dd className="mt-1">{value}</dd></div>)}
+          </dl>
+        </article>)}
+      </section>
+      <table className="hidden sm:table w-full text-sm">
+        <caption className="sr-only">Channel revenue evidence comparison</caption>
+        <thead><tr className="text-left text-lumi-muted border-b border-lumi-border">
+          {['Channel', 'Platform ROAS', 'Blended efficiency', 'Gap', 'Reconciliation'].map(label => <th key={label} scope="col" className="px-4 py-2.5 font-medium">{label}</th>)}
+        </tr></thead>
+        <tbody>{rows.map(row => <tr key={row.id} className="border-b border-lumi-border/60 text-lumi-text">
+          <th scope="row" className="px-4 py-2.5 font-medium text-left">{channelLink(row)}</th>
+          <td className="px-4 py-2.5 font-mono">{row.platformRoas}</td>
+          <td className="px-4 py-2.5 font-mono">{row.blendedEfficiency}</td>
+          <td className="px-4 py-2.5 font-mono">{row.reconciliation.gap}</td>
+          <td className="px-4 py-2.5">{reconciliationDetail(row)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+  </div>;
 }
 
 // ── Page wrapper: fetch + three states ──────────────────────────
@@ -171,7 +102,7 @@ export default function BlendedTruth() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
       <h1 className="decision-title text-lumi-text mb-1">Blended Truth</h1>
-      <p className="text-sm text-lumi-muted mb-6">What platforms claim, reconciled against store truth.</p>
+      <p className="text-sm text-lumi-muted mb-6">Compare platform-reported revenue with available actual revenue evidence.</p>
 
       <IntelligenceSubNav />
 
@@ -183,7 +114,7 @@ export default function BlendedTruth() {
       {!gated && loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
       {!gated && !loading && error && (
         <div className="flex flex-col items-center gap-3">
-          <EmptyPanel Icon={AlertTriangle} text="We couldn't load Blended Truth right now. It reconciles platform-reported spend against your store's real revenue." />
+          <EmptyPanel Icon={AlertTriangle} text="We couldn't load Blended Truth right now. It compares platform-reported revenue with available actual revenue evidence." />
           <Link to={appRoutes.connections} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
             Connect Meta →
           </Link>

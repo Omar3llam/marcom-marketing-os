@@ -28,12 +28,15 @@ import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { prisma } from '../../lib/prisma.js';
 import { readPeriodSpend } from '../budget-period/spendPeriod.js';
 import { previewAllocation, persistAllocation, planToDecisionRows } from '../allocation-engine/AllocationService.js';
+import { reconcile } from '../blended-truth/blendedTruthEngine.js';
+import { exactRevenueWindow } from '../../lib/revenueMeasurementWindow.js';
 
 function channel(over = {}) {
   return {
     channelId: 'a', channel: 'META',
     platformRevenueMinor: 100_000, blendedRevenueMinor: 90_000,
     spendMinor: 50_000, blendedRoas: 1.8, currency: 'USD', coverage: 'RECONCILED',
+    reconciliation: { status: 'AVAILABLE', gapMinor: 10_000, gapPct: .1 },
     gapMinor: 10_000, monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
     ...over,
   };
@@ -56,7 +59,32 @@ beforeEach(() => {
   prisma.incrementalityTest.findMany.mockResolvedValue([]);
 });
 
+it('allocation preview remains eligible with valid efficiency and unavailable source reconciliation', async () => {
+  const window = exactRevenueWindow('2026-08-01', '2026-08-30');
+  const money = { monetaryStatus: 'MONETARY_VALID', monetaryReason: null, currency: 'USD' };
+  const truth = reconcile({ channels: ['a', 'b'].map(channelId => ({ channelId, channel: 'META',
+    platformRevenueMinor: 100000, actualRevenueMinor: 75000, spendMinor: 25000,
+    platformRevenueWindow: exactRevenueWindow('2026-09-01', '2026-09-30'), actualRevenueWindow: window, spendWindow: window,
+    monetaryEvidence: { platform: money, actual: money, blended: money, spend: money } })) });
+  expect(truth.portfolio.blendedRevenueEfficiency.status).toBe('VALID');
+  expect(truth.channels.every(c => c.reconciliation.status === 'UNAVAILABLE')).toBe(true);
+  getBlendedTruth.mockResolvedValue(truth);
+  readPeriodSpend.mockResolvedValue({ portfolio: { status: 'MEASURABLE', ...money, spendMinor: 50000,
+    spendWindow: window, period: { start: '2026-08-01', end: '2026-08-30' } }, byEntity: new Map([['a', 25000], ['b', 25000]]) });
+  const plan = await previewAllocation('ws1', { totalBudgetMinor: 100000, totalBudgetCurrency: 'USD', period: { start: '2026-08-01', end: '2026-08-30' } });
+  expect(plan.monetaryStatus).toBe('MONETARY_VALID'); expect(plan.efficiencyStatus).toBe('VALID');
+  expect(plan.allocations.every(c => Number.isFinite(c.recommendedSpendMinor))).toBe(true);
+  expect(plan.projected.blendedRevenueEfficiencyAfter).not.toBeNull();
+});
+
 describe('ReconciliationService.getReconciliation', () => {
+  it('cannot claim reconciliation from coverage or stale aliases alone', async () => {
+    getBlendedTruth.mockResolvedValue(bt([channel({ reconciliation: { status: 'UNAVAILABLE', gapMinor: null }, gapMinor: 10000 })]));
+    const result = await getReconciliation('ws1');
+    expect(result.rows[0].blended.caveat).toBe('actual revenue evidence — platform comparison unavailable');
+    expect(result.rows[0].gaps.platformVsBlendedMinor).toBeNull();
+    expect(result.portfolio.platformVsBlendedMinor).toBeNull();
+  });
   it('requires a workspaceId', async () => {
     await expect(getReconciliation()).rejects.toThrow(/workspaceId/);
   });

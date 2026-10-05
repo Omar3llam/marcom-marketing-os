@@ -141,6 +141,7 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
     return {
       ...row, currency: monetary.currency,
       monetaryEvidence: { spend, platform, actual, blended },
+      reconciliationEvidence: { platform: _platformEvidence, actual: _actualEvidence },
       monetaryStatus: monetary.monetaryStatus, monetaryReason: monetary.monetaryReason,
       actualRevenueWindow, platformRevenueWindow, blendedRevenueWindow, spendWindow,
       spendEvidencePresent: _spendWindows.length > 0,

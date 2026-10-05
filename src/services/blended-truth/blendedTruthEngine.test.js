@@ -94,7 +94,7 @@ describe('blendedTruthEngine.reconcile', () => {
     });
     const c = channels[0];
     expect(c.blendedRevenueMinor).toBe(5000000);          // raw platform used as-is
-    expect(c.gapMinor).toBe(0);                           // no measured gap
+    expect(c.gapMinor).toBeNull();                        // no measured comparison
     expect(c.coverage).toBe(COVERAGE.UNVERIFIED);
     expect(c.confidence).toBe(CONFIDENCE.LOW);
     expect(c.blendedRoas).toBe(c.platformRoas);

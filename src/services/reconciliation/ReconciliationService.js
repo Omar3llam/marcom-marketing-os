@@ -67,7 +67,8 @@ export async function getReconciliation(workspaceId) {
       ? unavailable(c.monetaryEvidence?.blended?.monetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED)
       : attributed(c.blendedRevenueMinor, ATTRIBUTION_SOURCE.BLENDED,
       c.coverage === 'RECONCILED' ? CONFIDENCE_LEVEL.HIGH : CONFIDENCE_LEVEL.LOW,
-      { caveat: c.coverage === 'RECONCILED' ? 'GA4/Shopify reconciled' : 'unverified — no actuals source' });
+      { caveat: c.reconciliation?.status === 'AVAILABLE' ? 'platform and actual revenue reconciled'
+        : c.coverage === 'RECONCILED' ? 'actual revenue evidence — platform comparison unavailable' : 'unverified — no actuals source' });
 
     const t = holdoutDown ? undefined : tests.get(c.channelId);
     // Three states, not two (B5-01T′ · I5/I6). The value was already null in the
@@ -91,9 +92,10 @@ export async function getReconciliation(workspaceId) {
       platform, blended, incremental,
       monetaryStatus: c.monetaryStatus,
       monetaryReason: c.monetaryReason,
+      reconciliation: c.reconciliation,
       holdout: t ? { liftPct: t.liftPct, ciLow: t.ciLow, ciHigh: t.ciHigh, confidenceLabel: t.confidenceLabel } : null,
       gaps: {
-        platformVsBlendedMinor:     c.gapMinor,
+        platformVsBlendedMinor:     c.reconciliation?.status === 'AVAILABLE' ? c.reconciliation.gapMinor : null,
         blendedVsIncrementalMinor:  null,
       },
     };
@@ -114,8 +116,9 @@ export async function getReconciliation(workspaceId) {
       spendMinor:            portfolio.spendMinor,
       platformRevenueMinor:  portfolio.platformRevenueMinor,
       blendedRevenueMinor:   portfolio.blendedRevenueMinor,
-      platformVsBlendedMinor: portfolio.gapMinor,
-      gapPct:                portfolio.gapPct,
+      platformVsBlendedMinor: portfolio.reconciliation?.status === 'AVAILABLE' ? portfolio.reconciliation.gapMinor : null,
+      gapPct:                portfolio.reconciliation?.status === 'AVAILABLE' ? portfolio.reconciliation.gapPct : null,
+      reconciliation:        portfolio.reconciliation,
     },
   };
 }

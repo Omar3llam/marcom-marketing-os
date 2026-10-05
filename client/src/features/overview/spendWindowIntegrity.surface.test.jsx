@@ -42,6 +42,9 @@ const NOT_MEASURABLE_PERIOD = {
   daysCovered: null,
   spendMinor: null,
 };
+const unverifiedReconciliation = { status: 'UNVERIFIED', reason: 'ACTUAL_REVENUE_UNAVAILABLE', windowCompatibility: 'UNKNOWN',
+  window: { windowStatus: 'UNKNOWN', windowStart: null, windowEnd: null }, currency: null,
+  platformRevenueMinor: null, actualRevenueMinor: null, gapMinor: null, gapPct: null, gapPctReason: null, gapDenominator: 'PLATFORM_REVENUE' };
 
 const view = (over = {}) => ({
   workspaceId: 'ws',
@@ -57,7 +60,8 @@ const view = (over = {}) => ({
   channels: ['a', 'b'].map((channelId) => ({
     channelId, channel: 'META', name: null, currency: 'USD',
     spendMinor: 45_000, platformRevenueMinor: 90_000, actualRevenueMinor: null,
-    blendedRevenueMinor: 90_000, gapMinor: 0, gapPct: 0, platformRoas: 2, blendedRoas: 2,
+    blendedRevenueMinor: 90_000, gapMinor: null, gapPct: null, platformRoas: 2, blendedRoas: 2,
+    reconciliation: unverifiedReconciliation,
     coverage: 'UNVERIFIED', confidence: 'LOW', pacing: null,
   })),
   ...over,
@@ -87,7 +91,8 @@ describe('the contract carries the refusal', () => {
       totals: {
         spendMinor: null, platformRevenueMinor: null, blendedRevenueMinor: null,
         blendedRoas: null, platformRoas: null, gapMinor: null, gapPct: null,
-        reconciledCount: 0, unverifiedCount: 2,
+        reconciledCount: 0, unverifiedCount: 2, unavailableCount: 0, totalChannelCount: 2,
+        reconciliation: { ...unverifiedReconciliation, reconciledCount: 0, unverifiedCount: 2, unavailableCount: 0, totalChannelCount: 2 },
         currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED',
         monetaryReason: 'SPEND_CURRENCY_MIXED',
       },

@@ -100,7 +100,7 @@ export function buildNarrativeInputs({
     blendedInput = {
       evidenceRef: top.channelId,
       blendedRoas: blended.portfolio?.blendedRevenueEfficiency?.value ?? null,
-      gapPct: blended.portfolio?.gapPct ?? null,
+      gapPct: blended.portfolio?.reconciliation?.status === 'AVAILABLE' ? blended.portfolio.reconciliation.gapPct : null,
       monetaryStatus: blended.portfolio?.monetaryStatus ?? 'MONETARY_UNAVAILABLE_UNTRUSTED',
     };
   }
@@ -131,7 +131,8 @@ export function buildNarrativeInputs({
 
   const reconciled = blended?.portfolio?.reconciledCount ?? 0;
   const unverified = blended?.portfolio?.unverifiedCount ?? 0;
-  const blendedConfidence = (reconciled + unverified) > 0 ? reconciled / (reconciled + unverified) : 0;
+  const unavailable = blended?.portfolio?.unavailableCount ?? 0;
+  const blendedConfidence = (reconciled + unverified + unavailable) > 0 ? reconciled / (reconciled + unverified + unavailable) : 0;
 
   const attributionConfidence = (TIER_ATTR_CONFIDENCE[measurementTier] ?? 0.3) * (incrementality.length > 0 ? 1 : 0.6);
 

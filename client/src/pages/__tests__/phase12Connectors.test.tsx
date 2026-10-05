@@ -23,9 +23,13 @@ function withRole(role: string) {
   );
 }
 
+const unavailableReconciliation = { status: 'UNAVAILABLE', reason: 'MEASUREMENT_WINDOW_UNKNOWN', windowCompatibility: 'UNKNOWN',
+  window: { windowStatus: 'UNKNOWN', windowStart: null, windowEnd: null }, currency: null,
+  platformRevenueMinor: null, actualRevenueMinor: null, gapMinor: null, gapPct: null, gapPctReason: null, gapDenominator: 'PLATFORM_REVENUE' };
 const channel = (over = {}) => ({
   channelId: 'a', channel: 'META', currency: 'USD', spendMinor: 100000, platformRevenueMinor: 420000,
-  actualRevenueMinor: 210000, blendedRevenueMinor: 210000, gapMinor: 210000, gapPct: 50,
+  actualRevenueMinor: 210000, blendedRevenueMinor: 210000, gapMinor: null, gapPct: null,
+  reconciliation: unavailableReconciliation,
   platformRoas: 4.2, blendedRoas: 2.1, coverage: 'RECONCILED', confidence: 'HIGH', ...over,
 });
 
@@ -73,6 +77,8 @@ describe('Connections view', () => {
 describe('contract seam', () => {
   it('connections + blended-truth (with stale fields) validate', () => {
     expect(ConnectionsResponseSchema.safeParse({ workspaceId: 'w', connections: [{ platform: 'META', isActive: true, connected: true, stale: false }] }).success).toBe(true);
-    expect(BlendedTruthSchema.safeParse({ channels: [channel({ stale: true, lastSyncedAt: null })], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0, platformRoas: 0, blendedRoas: 0, reconciledCount: 0, unverifiedCount: 0, hasStale: true } }).success).toBe(true);
+    const counts = { reconciledCount: 0, unverifiedCount: 0, unavailableCount: 1, totalChannelCount: 1 };
+    expect(BlendedTruthSchema.safeParse({ channels: [channel({ stale: true, lastSyncedAt: null })], portfolio: { spendMinor: 100000, platformRevenueMinor: 420000, blendedRevenueMinor: 210000, gapMinor: null, gapPct: null, platformRoas: 4.2, blendedRoas: 2.1,
+      ...counts, reconciliation: { ...unavailableReconciliation, reason: 'NO_COMPARABLE_CHANNELS', ...counts }, hasStale: true } }).success).toBe(true);
   });
 });

@@ -29,6 +29,14 @@ const PAYLOAD = {
   },
 };
 
+const comparison = { status: 'AVAILABLE', reason: null, windowCompatibility: 'COMPATIBLE',
+  window: { windowStatus: 'EXACT', windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z' },
+  currency: 'USD', platformRevenueMinor: 300000, actualRevenueMinor: 220000, gapMinor: 80000, gapPct: 80000 / 300000, gapPctReason: null, gapDenominator: 'PLATFORM_REVENUE' };
+PAYLOAD.channels[0].gapPct = comparison.gapPct;
+PAYLOAD.channels[0].reconciliation = comparison;
+Object.assign(PAYLOAD.portfolio, { gapPct: comparison.gapPct, unavailableCount: 0, totalChannelCount: 1,
+  reconciliation: { ...comparison, reconciledCount: 1, unverifiedCount: 0, unavailableCount: 0, totalChannelCount: 1 } });
+
 describe('useBlendedTruth', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -45,8 +53,8 @@ describe('useBlendedTruth', () => {
 
   it('carries the backend-proven portfolio denomination into the page data', async () => {
     api.get.mockResolvedValue({ data: {
-      channels: PAYLOAD.channels.map((channel) => ({ ...channel, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null })),
-      portfolio: { ...PAYLOAD.portfolio, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null },
+      channels: PAYLOAD.channels.map((channel) => ({ ...channel, reconciliation: { ...channel.reconciliation, currency: 'EGP' }, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null })),
+      portfolio: { ...PAYLOAD.portfolio, reconciliation: { ...PAYLOAD.portfolio.reconciliation, currency: 'EGP' }, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null },
     } });
     const { result } = renderHook(() => useBlendedTruth());
     await waitFor(() => expect(result.current.loading).toBe(false));
