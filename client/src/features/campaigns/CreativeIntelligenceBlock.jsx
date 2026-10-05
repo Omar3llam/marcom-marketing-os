@@ -17,6 +17,7 @@
 // and a missing creative age renders "Unknown", never "new".
 // ============================================================
 import { Sparkles } from 'lucide-react';
+import { RelativeBaselineEvidence } from './RelativeBaselineEvidence.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -85,21 +86,10 @@ export function CreativeIntelligenceBlock({ viewModel = null }) {
       )}
 
       {comparison && (
-        <section aria-label="Selected comparison" className="mb-3">
+        <>
           <Label>Selected comparison</Label>
-          <p className="mb-2 font-display text-sm font-semibold text-lumi-text">{comparison.metricLabel}</p>
-          <dl className="grid grid-cols-2 gap-3">
-            <div><dt className="font-mono text-[10px] text-lumi-muted">Ad</dt>
-              <dd className="font-mono text-sm tabular-nums text-lumi-text">{comparison.childValue ?? <Dash />}</dd></div>
-            <div><dt className="font-mono text-[10px] text-lumi-muted">Ad set</dt>
-              <dd className="font-mono text-sm tabular-nums text-lumi-text">{comparison.parentValue ?? <Dash />}</dd></div>
-          </dl>
-          <p className="mt-2 flex flex-wrap gap-x-3 font-mono text-xs text-lumi-text">
-            <span>{comparison.gap ?? <Dash />}</span><span>{comparison.relation}</span>
-          </p>
-          <p className="mt-2 break-words font-mono text-[11px] leading-relaxed text-lumi-muted">{comparison.basisLabel}</p>
-          <p className="mt-1 text-xs leading-relaxed text-lumi-muted">{comparison.populationLabel}</p>
-        </section>
+          <RelativeBaselineEvidence readout={comparison} />
+        </>
       )}
       <section aria-label="Context" className="mb-3 border-t border-lumi-border pt-3">
         <Label>Context</Label>

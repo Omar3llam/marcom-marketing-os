@@ -17,6 +17,9 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import userEvent from '@testing-library/user-event';
 import { ExecutionContext } from './ExecutionContext.jsx';
 
@@ -53,6 +56,11 @@ const setup = (over = {}) => render(
 );
 
 describe('P7-04B comparison authority', () => {
+  it('P7-07B delegates the inner definition list to the shared readout', () => {
+    const code = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'ExecutionContext.jsx'), 'utf8');
+    expect(code).toMatch(/<RelativeBaselineEvidence\s+readout=/);
+    expect(code).not.toMatch(/<dl\b/);
+  });
   it('withholds an unadmitted comparison when its envelope is absent', () => {
     expect(setup({ comparisonEnvelope: null }).container).toBeEmptyDOMElement();
   });

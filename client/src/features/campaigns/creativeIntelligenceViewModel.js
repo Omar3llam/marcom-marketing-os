@@ -24,7 +24,7 @@
 // engine or from the operator.
 // ============================================================
 
-import { evidenceMetricLabel, formatEvidenceValue, formatEvidenceGap, evidenceBasisLabel, evidencePopulationLabel } from './executionContext.js';
+import { evidenceMetricLabel, buildRelativeBaselineReadout } from './executionContext.js';
 
 /** The video signals the ad-level ingestion lands, in funnel order. */
 const VIDEO_KEYS = Object.freeze(['videoView', 'video25', 'video50', 'video95']);
@@ -91,7 +91,6 @@ export function buildCreativeIntelligenceViewModel({ evidence, parent, compariso
   const metric = typeof evidence.metric === 'string' ? evidence.metric : null;
   const metricLabel = evidenceMetricLabel(metric);
   if (!metricLabel) return null;
-  const gap = formatEvidenceGap(worst._gap, 'ad set');
   // The set the server actually ranked, after its own rankability filter. Not
   // the number of ads in the ad set: rows too thin to compare were excluded, and
   // counting them would overstate how many this one came last out of.
@@ -125,15 +124,9 @@ export function buildCreativeIntelligenceViewModel({ evidence, parent, compariso
       conversions: num(worst.conversions),
     },
     videoSignals: videoSignalsOf(worst.actionMetrics),
-    comparison: {
-      basisLabel: evidenceBasisLabel(comparisonEnvelope),
-      populationLabel: evidencePopulationLabel(comparisonEnvelope, 'ads'),
-      metricLabel,
-      childValue: formatEvidenceValue(metric, worst[metric]),
-      parentValue: formatEvidenceValue(metric, parent?.[metric]),
-      gap: gap?.signed ?? null,
-      relation: gap?.relation ?? null,
-    },
+    comparison: buildRelativeBaselineReadout({ metric, subjectValue: worst[metric], parentValue: parent?.[metric],
+      gap: worst._gap, comparisonEnvelope, subjectLabel: 'Ad', parentLabel: 'Ad set',
+      relationParentLabel: 'ad set', populationNoun: 'ads' }),
     ranking: {
       // The server's word for the end of its own sorted list, not an index.
       rank: 'BOTTOM',

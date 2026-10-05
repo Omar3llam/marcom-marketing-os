@@ -46,6 +46,16 @@ const payload = (over = {}) => ({
 });
 
 describe('P7-04B same-response comparison', () => {
+  it.each([{ parent: null }, { parent: { ctr: NaN } }, { parent: { ctr: 0.02 },
+    evidence: payload({ summary: { bottom: ad({ _gap: null }) } }) }])(
+    'P7-07B withholds incomplete comparison while preserving outer creative context', (over) => {
+      const vm = buildCreativeIntelligenceViewModel({ evidence: payload(), ...over });
+      expect(vm.comparison).toBeNull();
+      expect(vm.ad.name).toBe('Hook A · 9x16');
+      expect(vm.ad.creativeAge).toBe('14 Jun 2026');
+      expect(vm.videoSignals.videoView).toBe(4000);
+      expect(vm.ranking.label).toBeTruthy();
+    });
   it('requires the server envelope instead of reconstructing one from the rows', () => {
     expect(buildCreativeIntelligenceViewModel({ evidence: payload(), comparisonEnvelope: null })).toBeNull();
   });
@@ -60,7 +70,7 @@ describe('P7-04B same-response comparison', () => {
   });
   it('carries the evidence parent and formats the published gap despite contradictory raw arithmetic', () => {
     const vm = buildCreativeIntelligenceViewModel({ parent: { ctr: 0.02 }, evidence: payload() });
-    expect(vm.comparison).toMatchObject({ metricLabel: 'CTR', childValue: '0.91%', parentValue: '2.00%', gap: '-34%', relation: '34% below ad set' });
+    expect(vm.comparison).toMatchObject({ metricLabel: 'CTR', subjectLabel: 'Ad', parentLabel: 'Ad set', subjectValue: '0.91%', parentValue: '2.00%', gap: '-34%', relation: '34% below ad set' });
     expect(vm.ad.id).toBe('ad-2');
   });
   it('withholds unknown metrics instead of inventing a format', () => {
