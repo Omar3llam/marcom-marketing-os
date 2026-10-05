@@ -10,6 +10,11 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AdRows } from './AdRows.jsx';
 
+const comparisonEnvelope = { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0 };
+
 const ad = (over = {}) => ({
   entityId: 'ad-1', name: 'Hook A · 9x16', channel: 'META', status: 'ACTIVE',
   ctr: 0.0138, frequency: 2.1, spendMinor: 90_000, currency: 'USD', ...over,
@@ -28,7 +33,7 @@ const ranking = (over = {}) => ({
     },
     dataConfidence: 0.7,
   },
-  insufficientData: false, reasonKey: null,
+  comparisonEnvelope, insufficientData: false, reasonKey: null,
   ...over,
 });
 

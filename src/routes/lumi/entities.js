@@ -21,6 +21,7 @@ import { drillBasisFor } from '../../services/entity-graph/drillBasis.js';
 import { CANONICAL_VERDICT_EVIDENCE_BASIS } from '../../services/verdict-engine/canonicalVerdictEvidence.js';
 import { CANONICAL_VERDICT_WINDOW_DAYS } from '../../services/verdict-engine/metricWindow.js';
 import { getConnectorVerdicts, needsRevenueData, analyzeEvidence, isRankable } from '../../services/verdict-engine/index.js';
+import { entityComparisonPopulation } from '../../services/verdict-engine/entityComparisonEnvelope.js';
 import { ENTITY_LEVEL } from '../../services/connectors/connectorTypes.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
 import { classifyCurrencyHomogeneity, currencyUnavailableReason } from '../../lib/currencyHomogeneity.js';
@@ -301,6 +302,7 @@ export const EVIDENCE_REASON = Object.freeze({
   INVALID_METRIC:                'INVALID_METRIC',
   BASELINE_UNAVAILABLE:          'BASELINE_UNAVAILABLE',
   NO_MEANINGFUL_GAP:             'NO_MEANINGFUL_GAP',
+  COMPARISON_ENVELOPE_UNAVAILABLE: 'COMPARISON_ENVELOPE_UNAVAILABLE',
   INSUFFICIENT_REPORTING_ADS:    'INSUFFICIENT_REPORTING_ADS',
   INSUFFICIENT_REPORTING_ADSETS: 'INSUFFICIENT_REPORTING_ADSETS',
 });
@@ -347,7 +349,7 @@ function evidenceHandler({ dimension, load, thinKey, notFound, createdTime }) {
 
       const { entity, objective, cohort } = result;
       const base = { entity, objective, metric, dimension, generatedAt: new Date().toISOString() };
-      const refuse = (reasonKey) => res.json({ ...base, evidence: null, insufficientData: true, reasonKey });
+      const refuse = (reasonKey) => res.json({ ...base, evidence: null, comparisonEnvelope: null, insufficientData: true, reasonKey });
 
       // The engine's three null causes, distinguished HERE because it cannot
       // report which one it hit. Order matters: a missing baseline is checked
@@ -356,11 +358,15 @@ function evidenceHandler({ dimension, load, thinKey, notFound, createdTime }) {
       // 1. No parent figure to rank against. Reads the SAME metric being ranked
       //    — hard-coding `entity.ctr` would let a roas request fall through and
       //    be reported as a thin cohort.
-      if (!(entity?.[metric] > 0)) return refuse(EVIDENCE_REASON.BASELINE_UNAVAILABLE);
+      if (!Number.isFinite(entity?.[metric]) || !(entity[metric] > 0)) return refuse(EVIDENCE_REASON.BASELINE_UNAVAILABLE);
 
       // 2. Fewer than two children delivering enough to compare. isRankable is
       //    the engine's own predicate, imported rather than re-typed.
-      if (cohort.filter((c) => isRankable(c, metric)).length < 2) return refuse(thinKey);
+      const rankable = cohort.filter((c) => isRankable(c, metric));
+      if (rankable.length < 2) return refuse(thinKey);
+      if (!entityComparisonPopulation(entity, rankable, metric).comparisonEnvelope) {
+        return refuse(EVIDENCE_REASON.COMPARISON_ENVELOPE_UNAVAILABLE);
+      }
 
       const evidence = analyzeEvidence({
         dimension,
@@ -380,7 +386,7 @@ function evidenceHandler({ dimension, load, thinKey, notFound, createdTime }) {
       // the metric's floor. Ordinary variance between siblings is not a finding.
       if (evidence === null) return refuse(EVIDENCE_REASON.NO_MEANINGFUL_GAP);
 
-      return res.json({ ...base, evidence, insufficientData: false, reasonKey: null });
+      return res.json({ ...base, evidence, comparisonEnvelope: evidence.comparisonEnvelope, insufficientData: false, reasonKey: null });
     } catch (err) {
       logger.error({ err: err.message, workspaceId: req.workspaceId, dimension, entityId }, '[lumi/entities] evidence failed');
       return res.status(500).json({ error: 'EvidenceUnavailable', message: 'Request failed' });

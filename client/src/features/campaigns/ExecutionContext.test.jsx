@@ -20,6 +20,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExecutionContext } from './ExecutionContext.jsx';
 
+const envelope = (over = {}) => ({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0, ...over });
+
 const campaign = { entityId: 'c-1', name: 'Q3 Prospecting', ctr: 0.0164, spendMinor: 655_300, currency: 'USD' };
 
 const worst = {
@@ -44,10 +49,25 @@ const evidenceFor = (bottom = worst, rankedCount = 3) => ({
 });
 
 const setup = (over = {}) => render(
-  <ExecutionContext campaign={campaign} parent={campaign} evidence={evidenceFor()} verdict="KILL" {...over} />,
+  <ExecutionContext campaign={campaign} parent={campaign} evidence={evidenceFor()} comparisonEnvelope={envelope({ rankableCount: 3, comparableCount: 3 })} verdict="KILL" {...over} />,
 );
 
 describe('P7-04B comparison authority', () => {
+  it('withholds an unadmitted comparison when its envelope is absent', () => {
+    expect(setup({ comparisonEnvelope: null }).container).toBeEmptyDOMElement();
+  });
+  it('preserves exact non-midnight server bounds without substituting a sync clock', () => {
+    setup({ comparisonEnvelope: envelope({ windowStart: '2026-08-01T21:00:00.000Z', windowEnd: '2026-08-30T21:00:00.000Z' }) });
+    expect(screen.getByText(/2026-08-01T21:00:00.000Z.*2026-08-30T21:00:00.000Z/)).toBeInTheDocument();
+  });
+  it('P7-07A shows the exact server period, source and comparable population', () => {
+    setup({ comparisonEnvelope: { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+      gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+      windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+      currency: null, currencyProvenance: null, rankableCount: 4, comparableCount: 3, excludedByEnvelopeCount: 1 } });
+    expect(screen.getByText(/2026-08-01.*2026-08-30.*META/)).toBeInTheDocument();
+    expect(screen.getByText(/3 reporting ad sets with comparable evidence.*1 excluded/)).toBeInTheDocument();
+  });
   it.each(['thumbstop', 'constructor'])('withholds an unknown metric %s', (metric) => {
     const { container } = setup({ evidence: { ...evidenceFor(), metric } });
     expect(container).toBeEmptyDOMElement();
@@ -83,8 +103,8 @@ describe('P7-04B comparison authority', () => {
     expect(container.querySelector('.text-signal-kill, .text-signal-scale')).toBeNull();
   });
   it('counts the subject within the reporting cohort', () => {
-    setup({ evidence: evidenceFor(worst, 4) });
-    expect(screen.getByText('Compared within 4 reporting ad sets')).toBeInTheDocument();
+    setup({ evidence: evidenceFor(worst, 4), comparisonEnvelope: envelope({ rankableCount: 4, comparableCount: 4 }) });
+    expect(screen.getByText('Compared within 4 reporting ad sets with comparable evidence')).toBeInTheDocument();
     expect(screen.queryByText(/Compared against/)).not.toBeInTheDocument();
   });
   it.each([
@@ -174,8 +194,8 @@ describe('ExecutionContext — the evidence', () => {
   // Quoted from the SERVER's ranked cohort. Picked from 3 is a weaker claim than
   // picked from 30, and the count must describe the comparison that actually ran.
   it('quotes how many ad sets the server compared', () => {
-    setup({ evidence: evidenceFor(worst, 5) });
-    expect(screen.getByText('Compared within 5 reporting ad sets')).toBeInTheDocument();
+    setup({ evidence: evidenceFor(worst, 5), comparisonEnvelope: envelope({ rankableCount: 5, comparableCount: 5 }) });
+    expect(screen.getByText('Compared within 5 reporting ad sets with comparable evidence')).toBeInTheDocument();
   });
 
   it('shows the ad set CTR and its gap against the campaign rate', () => {

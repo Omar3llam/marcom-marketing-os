@@ -28,6 +28,11 @@ vi.mock('@/hooks/useAdsDrillDown.js', () => ({
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn(() => Promise.resolve({ data: {} })) } }));
 vi.mock('../decisionSignals.js', () => ({ recordExplain: vi.fn(), recordIntent: vi.fn() }));
 
+const comparisonEnvelope = { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0 };
+
 const ev = vi.hoisted(() => ({ load: vi.fn(), byId: { current: {} } }));
 vi.mock('@/hooks/useEvidence.js', () => ({
   evidenceKey: (id, metric = 'ctr') => `${id}:${metric}`,
@@ -56,7 +61,7 @@ const ranking = (id) => ({
     summary: { bottom: bottom(), top: bottom({ entityId: 'as-1' }), outliers: [bottom()] },
     dataConfidence: 0.8,
   },
-  insufficientData: false, reasonKey: null,
+  comparisonEnvelope, insufficientData: false, reasonKey: null,
 });
 
 const campaign = (over = {}) => ({

@@ -17,6 +17,11 @@ import { MemoryRouter } from 'react-router-dom';
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn(() => Promise.resolve({ data: {} })) } }));
 vi.mock('../decisionSignals.js', () => ({ recordExplain: vi.fn(), recordIntent: vi.fn() }));
 
+const comparisonEnvelope = { status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0 };
+
 const drill = vi.hoisted(() => ({ load: vi.fn(), byId: { current: {} } }));
 vi.mock('@/hooks/useEntityDrillDown.js', () => ({
   useEntityDrillDown: () => ({ byId: drill.byId.current, load: drill.load }),
@@ -188,7 +193,7 @@ describe('what appears under the ad set', () => {
         dimension: 'AD', metric: 'ctr', ranked: [ad(), ad({ entityId: 'ad-2' })],
         summary: { bottom: ad({ entityId: 'ad-2', name: 'Hook B · 1x1', ctr: 0.0091, _gap: -0.34 }) },
       },
-      insufficientData: false, reasonKey: null,
+      comparisonEnvelope, insufficientData: false, reasonKey: null,
     } };
     renderPanel();
     openAdSets();

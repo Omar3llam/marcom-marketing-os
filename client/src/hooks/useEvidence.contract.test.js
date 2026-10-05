@@ -4,7 +4,13 @@ import { api } from '@/lib/api.js';
 import { useEvidence } from './useEvidence.js';
 
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
+const envelope = (over = {}) => ({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0, ...over });
+
 const ranking = {
+  comparisonEnvelope: envelope(),
   entity: { entityId: 'c1', ctr: 0.02 },
   evidence: { dimension: 'ADSET', metric: 'ctr',
     ranked: [{ entityId: 'as1', ctr: 0.01, _gap: -0.34 }, { entityId: 'as2', ctr: 0.02, _gap: 0 }],
@@ -14,6 +20,44 @@ const ranking = {
 beforeEach(() => vi.clearAllMocks());
 
 describe('P7-04B evidence response contract', () => {
+  it.each([undefined, null, {}, envelope({ status: 'UNKNOWN' }), envelope({ kind: 'BEFORE_AFTER' }),
+    envelope({ metric: 'frequency' }), envelope({ valueUnit: 'PERCENT' }), envelope({ gapUnit: 'PERCENTAGE_POINTS' }),
+    envelope({ gapDenominator: 'CHILD_VALUE' }), envelope({ source: null }), envelope({ source: 'UNKNOWN' }),
+    envelope({ measurementWindow: 'LEGACY_UNKNOWN' }), envelope({ windowStart: null }), envelope({ windowEnd: 'yesterday' }),
+    envelope({ windowStart: '2026-02-30T00:00:00.000Z' }), envelope({ windowEnd: '2026-07-30T00:00:00.000Z' }),
+    envelope({ comparableCount: 1 }), envelope({ rankableCount: 3 }), envelope({ excludedByEnvelopeCount: -1 }),
+    envelope({ currency: 'USD' })])('P7-07A rejects malformed published envelope %j', async (comparisonEnvelope) => {
+    api.get.mockResolvedValue({ data: { ...ranking, comparisonEnvelope } });
+    const { result } = renderHook(() => useEvidence());
+    await act(async () => { await result.current.load('c1'); });
+    expect(result.current.byId['c1:ctr']).toBeUndefined();
+    expect(result.current.failures['c1:ctr'].kind).toBe('CONTRACT_INVALID');
+  });
+  it.each(['ad', 'adset'])('P7-07A transports the envelope verbatim at %s level', async (dimension) => {
+    const comparisonEnvelope = envelope({ rankableCount: 3, excludedByEnvelopeCount: 1 });
+    api.get.mockResolvedValue({ data: { ...ranking, comparisonEnvelope } });
+    const { result } = renderHook(() => useEvidence({ dimension }));
+    await act(async () => { await result.current.load('c1'); });
+    expect(result.current.byId['c1:ctr'].comparisonEnvelope).toEqual(comparisonEnvelope);
+    expect(result.current.byId['c1:ctr'].evidence.summary.bottom._gap).toBe(-0.34);
+  });
+  it('P7-07A caches comparability refusal as a healthy answer', async () => {
+    api.get.mockResolvedValue({ data: { evidence: null, comparisonEnvelope: null,
+      insufficientData: true, reasonKey: 'COMPARISON_ENVELOPE_UNAVAILABLE' } });
+    const { result } = renderHook(() => useEvidence());
+    await act(async () => { await result.current.load('c1'); await result.current.load('c1'); });
+    expect(result.current.byId['c1:ctr']).toMatchObject({ comparisonEnvelope: null, insufficientData: true, reasonKey: 'COMPARISON_ENVELOPE_UNAVAILABLE' });
+    expect(result.current.failures['c1:ctr']).toBeNull();
+    expect(result.current.errors['c1:ctr']).toBeNull();
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+  it('P7-07A rejects usable-looking ranked evidence without the server comparison envelope', async () => {
+    api.get.mockResolvedValue({ data: { ...ranking, comparisonEnvelope: undefined } });
+    const { result } = renderHook(() => useEvidence());
+    await act(async () => { await result.current.load('c1'); });
+    expect(result.current.byId['c1:ctr']).toBeUndefined();
+    expect(result.current.failures['c1:ctr'].kind).toBe('CONTRACT_INVALID');
+  });
   it.each([
     {}, { evidence: null }, { insufficientData: false, evidence: null },
     { ...ranking, insufficientData: undefined },

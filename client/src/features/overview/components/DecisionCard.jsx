@@ -169,6 +169,7 @@ export default function DecisionCard({
               campaign={campaign}
               evidence={ev.evidence}
               parent={ev.entity}
+              comparisonEnvelope={ev.comparisonEnvelope}
               verdict={verdict}
               onExecute={() => execute(entityId)}
               onDismiss={() => dismiss(entityId)}

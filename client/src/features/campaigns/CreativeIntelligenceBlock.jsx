@@ -97,6 +97,8 @@ export function CreativeIntelligenceBlock({ viewModel = null }) {
           <p className="mt-2 flex flex-wrap gap-x-3 font-mono text-xs text-lumi-text">
             <span>{comparison.gap ?? <Dash />}</span><span>{comparison.relation}</span>
           </p>
+          <p className="mt-2 break-words font-mono text-[11px] leading-relaxed text-lumi-muted">{comparison.basisLabel}</p>
+          <p className="mt-1 text-xs leading-relaxed text-lumi-muted">{comparison.populationLabel}</p>
         </section>
       )}
       <section aria-label="Context" className="mb-3 border-t border-lumi-border pt-3">

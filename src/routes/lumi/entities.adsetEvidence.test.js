@@ -56,13 +56,17 @@ function makeApp({ collabRole } = {}) {
 // The full funnel bag keeps dataCompleteness at 1.0, so creative-age handling is
 // the ONLY thing moving dataConfidence in the tests below.
 const adSetRow = (id, over = {}) => ({
-  entityId: id, channel: 'META', name: `AdSet ${id}`, status: 'ACTIVE', adCount: 4,
+  entityId: id, source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', evidenceRows: [{ entityId: id, source: 'META' }], channel: 'META', name: `AdSet ${id}`, status: 'ACTIVE', adCount: 4,
   spendMinor: 30_000, ctr: 0.020, roas: 2.0, frequency: 2.0,
   impressions: 60_000, clicks: 1200, actionMetrics: { lpv: 1200, atc: 240 }, ...over,
 });
 
 const campaignRow = (over = {}) => ({
-  entityId: 'c1', channel: 'META', name: 'Q3 Sales', objective: 'OUTCOME_SALES',
+  entityId: 'c1', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', evidenceRows: [{ entityId: 'c1', source: 'META' }], channel: 'META', name: 'Q3 Sales', objective: 'OUTCOME_SALES',
   externalId: '23851', platformCreatedTime: '2026-04-01T00:00:00.000Z', adSetCount: 3,
   spendMinor: 400_000, ctr: 0.020, roas: 2.0, frequency: 2.0, impressions: 900_000,
   ...over,
@@ -286,5 +290,55 @@ describe('route disambiguation — three live paths, three distinct handlers', (
     // The baseline the evidence route needs is now carried here too — additive.
     expect(body.entity.entityId).toBe('c1');
     expect(body.objective).toBe('OUTCOME_SALES');
+  });
+});
+
+describe('P7-07A published entity comparison envelope (adSets)', () => {
+  it.each([{ source: 'GOOGLE' }, { source: null }, { source: 'UNKNOWN' },
+    { windowStart: null }, { windowEnd: null }, { windowStart: '2026-02-30' },
+    { measurementWindow: 'LEGACY_UNKNOWN' }, { measurementWindow: 'DAILY' },
+    { windowStart: '2026-07-01', windowEnd: '2026-07-30' }])('refuses incompatible rankable rows %j', async (fields) => {
+    h.getCampaignAdSets.mockResolvedValue({ ...WORKING, adSets: WORKING.adSets.map((r) => ({ ...r, ...fields })) });
+    const { body } = await get('/entities/c1/adsets/evidence').expect(200);
+    expect(body).toMatchObject({ evidence: null, comparisonEnvelope: null, insufficientData: true, reasonKey: 'COMPARISON_ENVELOPE_UNAVAILABLE' });
+    expect(JSON.stringify(body)).not.toContain('_gap');
+  });
+  it.each([{ source: null }, { windowStart: null }, { windowEnd: 'bad date' }, { measurementWindow: 'LEGACY_UNKNOWN' }])(
+    'refuses unproved parent envelope %j separately from its available metric', async (fields) => {
+      h.getCampaignAdSets.mockResolvedValue({ ...WORKING, entity: { ...WORKING.entity, ...fields } });
+      const { body } = await get('/entities/c1/adsets/evidence').expect(200);
+      expect(body.reasonKey).toBe('COMPARISON_ENVELOPE_UNAVAILABLE');
+      expect(body.evidence).toBeNull();
+    });
+  it('publishes the exact proven subset and exclusions, preserving each side', async () => {
+    const rows = WORKING.adSets;
+    h.getCampaignAdSets.mockResolvedValue({ ...WORKING, adSets: [rows[0], rows[2], { ...rows[1], ctr: 0, windowStart: '2026-07-01' }] });
+    const { body } = await get('/entities/c1/adsets/evidence').expect(200);
+    expect(body.comparisonEnvelope).toMatchObject({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+      gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+      windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+      currency: null, currencyProvenance: null, rankableCount: 3, comparableCount: 2, excludedByEnvelopeCount: 1 });
+    expect(body.evidence.comparisonEnvelope).toEqual(body.comparisonEnvelope);
+    expect(body.evidence.ranked.map((r) => r.entityId)).toEqual([rows[2].entityId, rows[0].entityId]);
+    expect(body.evidence.summary.bottom.entityId).toBe(rows[2].entityId);
+    expect(body.evidence.summary.top.entityId).toBe(rows[0].entityId);
+    expect(body.evidence.summary.outliers.map((r) => r.entityId)).toEqual([rows[2].entityId]);
+    for (const row of [body.entity, ...body.evidence.ranked]) expect(row).toMatchObject({ source: 'META',
+      measurementWindow: 'ROLLING_WINDOW', windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z' });
+  });
+  it('does not call a rankable cohort with only one comparable row thin reporting', async () => {
+    h.getCampaignAdSets.mockResolvedValue({ ...WORKING, adSets: WORKING.adSets.map((r, i) => i === 0 ? r : { ...r, windowStart: null }) });
+    const { body } = await get('/entities/c1/adsets/evidence').expect(200);
+    expect(body.reasonKey).toBe('COMPARISON_ENVELOPE_UNAVAILABLE');
+    expect(body.evidence).toBeNull();
+  });
+  it.each([{ currency: 'USD' }, { currencyProvenance: 'WORKSPACE_INFERRED' },
+    { evidenceRows: [{ source: 'META' }, { source: 'GA4' }] }])('rejects ROAS monetary basis %j without disabling platform ROAS', async (fields) => {
+    const valid = await get('/entities/c1/adsets/evidence?metric=roas').expect(200);
+    expect(valid.body.comparisonEnvelope).toMatchObject({ currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', valueUnit: 'MULTIPLE' });
+    h.getCampaignAdSets.mockResolvedValue({ ...WORKING, adSets: WORKING.adSets.map((r) => ({ ...r, ...fields })) });
+    const { body } = await get('/entities/c1/adsets/evidence?metric=roas').expect(200);
+    expect(body.reasonKey).toBe('COMPARISON_ENVELOPE_UNAVAILABLE');
+    expect(body.evidence).toBeNull();
   });
 });

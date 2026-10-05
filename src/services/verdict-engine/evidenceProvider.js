@@ -39,6 +39,7 @@
 // so this leaf stays a leaf.
 import { getBenchmarks, FATIGUE_FREQ } from './benchmarkProvider.js';
 import { computeConfidence, daysSince } from './confidenceEngine.js';
+import { entityComparisonPopulation } from './entityComparisonEnvelope.js';
 
 /** PURE: stored CTR ratio → the percent every benchmark and consumer speaks. */
 export const toPct = (ratio) => (ratio ?? 0) * 100;
@@ -244,8 +245,13 @@ export function analyzeEvidence({
   const baseValue = baseline[metric];
   if (!(baseValue > 0)) return null; // null / 0 / NaN all fail — nothing to divide by
 
-  const scored = entities
-    .filter((e) => isRankable(e, metric))
+  // Eligibility precedes ALL gap arithmetic and ranking. Direct callers cannot
+  // bypass the same authority the route uses to distinguish refusal causes.
+  const { comparable, comparisonEnvelope } = entityComparisonPopulation(
+    baseline, entities.filter((e) => isRankable(e, metric)), metric,
+  );
+  if (!comparisonEnvelope) return null;
+  const scored = comparable
     .map((e) => ({
       ...e,
       // Ratio of two figures in the SAME unit, so no conversion is needed here —
@@ -319,6 +325,7 @@ export function analyzeEvidence({
   return {
     dimension,
     metric,
+    comparisonEnvelope,
     ranked: sorted,
     summary: { top, bottom, outliers },
     evidence: bottom._evidence,

@@ -70,6 +70,7 @@ export function AdRows({
   // it was, and a refusal is not an error.
   const creative = buildCreativeIntelligenceViewModel({
     evidence: evidence?.evidence ?? null, parent: evidence?.entity ?? null,
+    comparisonEnvelope: evidence?.comparisonEnvelope ?? null,
   });
 
   return (

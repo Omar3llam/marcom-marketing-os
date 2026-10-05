@@ -51,14 +51,18 @@ function makeApp({ collabRole } = {}) {
 // toPct is the engine's single conversion point; a percent typed in at this
 // level would be caught by the benchmark assertions below.
 const adRow = (id, over = {}) => ({
-  entityId: id, channel: 'META', name: `Ad ${id}`, status: 'ACTIVE',
+  entityId: id, source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', evidenceRows: [{ entityId: id, source: 'META' }], channel: 'META', name: `Ad ${id}`, status: 'ACTIVE',
   platformCreatedTime: '2026-05-01T00:00:00.000Z',
   spendMinor: 20_000, ctr: 0.020, roas: 2.0, frequency: 2.0,
   impressions: 50_000, clicks: 1000, actionMetrics: null, ...over,
 });
 
 const adSetRow = (over = {}) => ({
-  entityId: 'as1', channel: 'META', name: 'Broad 25-44', status: 'ACTIVE',
+  entityId: 'as1', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', evidenceRows: [{ entityId: 'as1', source: 'META' }], channel: 'META', name: 'Broad 25-44', status: 'ACTIVE',
   adCount: 3, spendMinor: 90_000, ctr: 0.020, roas: 2.0, frequency: 2.0,
   impressions: 400_000, ...over,
 });
@@ -81,6 +85,14 @@ beforeEach(() => {
 });
 
 describe('the metric whitelist', () => {
+  it('P7-07A refuses July children against an August parent without publishing a gap or pick', async () => {
+    const period = { source: 'META', measurementWindow: 'ROLLING_WINDOW', windowStart: '2026-08-01', windowEnd: '2026-08-30' };
+    getAdSetAds.mockResolvedValue({ ...WORKING, entity: { ...WORKING.entity, ...period },
+      children: WORKING.children.map((r) => ({ ...r, ...period, windowStart: '2026-07-01', windowEnd: '2026-07-30' })) });
+    const { body } = await get('/entities/as1/evidence').expect(200);
+    expect(body).toMatchObject({ evidence: null, insufficientData: true, reasonKey: 'COMPARISON_ENVELOPE_UNAVAILABLE', comparisonEnvelope: null });
+    expect(JSON.stringify(body)).not.toContain('_gap');
+  });
   // The whitelist is hand-maintained so that adding a threshold to the engine
   // does not silently widen this API. The risk it buys is the opposite drift: a
   // metric exposed here that the engine has NO threshold for would fall through
@@ -324,5 +336,55 @@ describe('route disambiguation', () => {
     await get('/entities/as1/ads').expect(200);
     const { body } = await get('/entities/as1/ads').expect(200);
     expect(body).not.toHaveProperty('evidence'); // the ads route, not this one
+  });
+});
+
+describe('P7-07A published entity comparison envelope (children)', () => {
+  it.each([{ source: 'GOOGLE' }, { source: null }, { source: 'UNKNOWN' },
+    { windowStart: null }, { windowEnd: null }, { windowStart: '2026-02-30' },
+    { measurementWindow: 'LEGACY_UNKNOWN' }, { measurementWindow: 'DAILY' },
+    { windowStart: '2026-07-01', windowEnd: '2026-07-30' }])('refuses incompatible rankable rows %j', async (fields) => {
+    getAdSetAds.mockResolvedValue({ ...WORKING, children: WORKING.children.map((r) => ({ ...r, ...fields })) });
+    const { body } = await get('/entities/as1/evidence').expect(200);
+    expect(body).toMatchObject({ evidence: null, comparisonEnvelope: null, insufficientData: true, reasonKey: 'COMPARISON_ENVELOPE_UNAVAILABLE' });
+    expect(JSON.stringify(body)).not.toContain('_gap');
+  });
+  it.each([{ source: null }, { windowStart: null }, { windowEnd: 'bad date' }, { measurementWindow: 'LEGACY_UNKNOWN' }])(
+    'refuses unproved parent envelope %j separately from its available metric', async (fields) => {
+      getAdSetAds.mockResolvedValue({ ...WORKING, entity: { ...WORKING.entity, ...fields } });
+      const { body } = await get('/entities/as1/evidence').expect(200);
+      expect(body.reasonKey).toBe('COMPARISON_ENVELOPE_UNAVAILABLE');
+      expect(body.evidence).toBeNull();
+    });
+  it('publishes the exact proven subset and exclusions, preserving each side', async () => {
+    const rows = WORKING.children;
+    getAdSetAds.mockResolvedValue({ ...WORKING, children: [rows[0], rows[2], { ...rows[1], ctr: 0, windowStart: '2026-07-01' }] });
+    const { body } = await get('/entities/as1/evidence').expect(200);
+    expect(body.comparisonEnvelope).toMatchObject({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+      gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+      windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+      currency: null, currencyProvenance: null, rankableCount: 3, comparableCount: 2, excludedByEnvelopeCount: 1 });
+    expect(body.evidence.comparisonEnvelope).toEqual(body.comparisonEnvelope);
+    expect(body.evidence.ranked.map((r) => r.entityId)).toEqual([rows[2].entityId, rows[0].entityId]);
+    expect(body.evidence.summary.bottom.entityId).toBe(rows[2].entityId);
+    expect(body.evidence.summary.top.entityId).toBe(rows[0].entityId);
+    expect(body.evidence.summary.outliers.map((r) => r.entityId)).toEqual([rows[2].entityId]);
+    for (const row of [body.entity, ...body.evidence.ranked]) expect(row).toMatchObject({ source: 'META',
+      measurementWindow: 'ROLLING_WINDOW', windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z' });
+  });
+  it('does not call a rankable cohort with only one comparable row thin reporting', async () => {
+    getAdSetAds.mockResolvedValue({ ...WORKING, children: WORKING.children.map((r, i) => i === 0 ? r : { ...r, windowStart: null }) });
+    const { body } = await get('/entities/as1/evidence').expect(200);
+    expect(body.reasonKey).toBe('COMPARISON_ENVELOPE_UNAVAILABLE');
+    expect(body.evidence).toBeNull();
+  });
+  it.each([{ currency: 'USD' }, { currencyProvenance: 'WORKSPACE_INFERRED' },
+    { evidenceRows: [{ source: 'META' }, { source: 'GA4' }] }])('rejects ROAS monetary basis %j without disabling platform ROAS', async (fields) => {
+    const valid = await get('/entities/as1/evidence?metric=roas').expect(200);
+    expect(valid.body.comparisonEnvelope).toMatchObject({ currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED', valueUnit: 'MULTIPLE' });
+    getAdSetAds.mockResolvedValue({ ...WORKING, children: WORKING.children.map((r) => ({ ...r, ...fields })) });
+    const { body } = await get('/entities/as1/evidence?metric=roas').expect(200);
+    expect(body.reasonKey).toBe('COMPARISON_ENVELOPE_UNAVAILABLE');
+    expect(body.evidence).toBeNull();
   });
 });

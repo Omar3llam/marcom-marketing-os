@@ -12,6 +12,11 @@ import { render, screen } from '@testing-library/react';
 import { EvidenceState } from './EvidenceState.jsx';
 
 describe('EvidenceState', () => {
+  it.each(['ad', 'adset'])('P7-07A preserves a comparability refusal at %s level', (dimension) => {
+    render(<EvidenceState dimension={dimension} reasonKey="COMPARISON_ENVELOPE_UNAVAILABLE" />);
+    expect(screen.getByText('These measurements do not share enough comparable evidence to rank reliably.')).toBeInTheDocument();
+    expect(screen.queryByText(/Not enough|Couldn’t|Connect|No .*measurably/)).not.toBeInTheDocument();
+  });
   it.each(['ad', 'adset'])('renders permanent failures neutrally at %s dimension', (dimension) => {
     const { container, rerender } = render(<EvidenceState dimension={dimension} error="RoleForbidden"
       failure={{ kind: 'NOT_PERMITTED', retryable: false }} reasonKey="NO_MEANINGFUL_GAP" />);

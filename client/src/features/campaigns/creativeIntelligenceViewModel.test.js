@@ -10,7 +10,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildCreativeIntelligenceViewModel } from './creativeIntelligenceViewModel.js';
+import { buildCreativeIntelligenceViewModel as buildModel } from './creativeIntelligenceViewModel.js';
+const envelope = (over = {}) => ({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0, ...over });
+const buildCreativeIntelligenceViewModel = (input) => buildModel({ comparisonEnvelope: envelope(), ...input });
 
 /**
  * The module's CODE, with every comment stripped. The static checks below assert
@@ -41,6 +46,18 @@ const payload = (over = {}) => ({
 });
 
 describe('P7-04B same-response comparison', () => {
+  it('requires the server envelope instead of reconstructing one from the rows', () => {
+    expect(buildCreativeIntelligenceViewModel({ evidence: payload(), comparisonEnvelope: null })).toBeNull();
+  });
+  it('contains no per-side comparison eligibility predicates in any reaching layer', () => {
+    for (const file of ['ExecutionContext.jsx', 'creativeIntelligenceViewModel.js', 'CreativeIntelligenceBlock.jsx',
+      '../../hooks/useEvidence.js', 'AdRows.jsx', 'ConnectorCampaignsPanel.jsx', '../overview/components/DecisionCard.jsx']) {
+      // Null admission checks on the published envelope are schema validation,
+      // not parent/child comparison predicates.
+      expect(codeOf(file)).not.toMatch(/(?:windowStart|windowEnd|source|currencyProvenance)\s*===(?!\s*null\b)/);
+      expect(codeOf(file)).not.toMatch(/isEntityComparisonEligible|entityComparisonPopulation|sameWindow/);
+    }
+  });
   it('carries the evidence parent and formats the published gap despite contradictory raw arithmetic', () => {
     const vm = buildCreativeIntelligenceViewModel({ parent: { ctr: 0.02 }, evidence: payload() });
     expect(vm.comparison).toMatchObject({ metricLabel: 'CTR', childValue: '0.91%', parentValue: '2.00%', gap: '-34%', relation: '34% below ad set' });
@@ -100,9 +117,9 @@ describe('the ranking is the server’s answer, not an ordinal', () => {
     expect(vm.ranking).not.toHaveProperty('index');
   });
 
-  it('counts the cohort the server actually ranked', () => {
+  it('uses the server comparable count even when a raw array is absent', () => {
     expect(buildCreativeIntelligenceViewModel({ evidence: payload() }).ranking.comparedCount).toBe(2);
-    expect(buildCreativeIntelligenceViewModel({ evidence: payload({ ranked: undefined }) }).ranking.comparedCount).toBe(0);
+    expect(buildCreativeIntelligenceViewModel({ evidence: payload({ ranked: undefined }) }).ranking.comparedCount).toBe(2);
   });
 
   it('reports the metric the server ranked on', () => {
@@ -131,7 +148,7 @@ describe('the ranking is the server’s answer, not an ordinal', () => {
 describe('the finding, in words', () => {
   it('states what the number did and where it stood', () => {
     expect(buildCreativeIntelligenceViewModel({ evidence: payload() }).ranking.label)
-      .toBe('CTR 34% below the ad set within 2 reporting ads');
+      .toBe('CTR 34% below the ad set within 2 reporting ads with comparable evidence');
   });
 
   // The sign is a fact about the figure, not a judgement. A frequency over its
@@ -140,7 +157,7 @@ describe('the finding, in words', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload({
       metric: 'frequency', summary: { bottom: ad({ _gap: 0.42 }) },
     }) });
-    expect(vm.ranking.label).toBe('Frequency 42% above the ad set within 2 reporting ads');
+    expect(vm.ranking.label).toBe('Frequency 42% above the ad set within 2 reporting ads with comparable evidence');
   });
 
   // `summary.bottom` is the WORST row, and for a ceiling metric the worst row is
@@ -149,13 +166,13 @@ describe('the finding, in words', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload({
       metric: 'frequency', summary: { bottom: ad({ _gap: null }) },
     }) });
-    expect(vm.ranking.label).toBe('Furthest behind on Frequency within 2 reporting ads');
+    expect(vm.ranking.label).toBe('Furthest behind on Frequency within 2 reporting ads with comparable evidence');
     expect(vm.ranking.label).not.toMatch(/lowest/i);
   });
 
-  it('drops the cohort clause rather than claiming a comparison of one', () => {
+  it('preserves the published cohort even when raw arrays disagree', () => {
     const vm = buildCreativeIntelligenceViewModel({ evidence: payload({ ranked: [ad()] }) });
-    expect(vm.ranking.label).toBe('CTR 34% below the ad set');
+    expect(vm.ranking.label).toBe('CTR 34% below the ad set within 2 reporting ads with comparable evidence');
   });
 });
 

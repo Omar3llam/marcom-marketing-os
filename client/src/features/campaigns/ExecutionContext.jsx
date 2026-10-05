@@ -1,7 +1,7 @@
 // Supporting comparison evidence for Campaigns and Overview. The server owns
 // the selected ad set, metric, baseline and gap; the campaign row supplies only
 // identity / learning / action context. A comparison never diagnoses a cause.
-import { ACTIONABLE_VERDICTS, evidenceMetricLabel, formatEvidenceValue, formatEvidenceGap } from './executionContext.js';
+import { ACTIONABLE_VERDICTS, evidenceMetricLabel, formatEvidenceValue, formatEvidenceGap, evidenceBasisLabel, evidencePopulationLabel } from './executionContext.js';
 import { formatCurrency } from '@/lib/money';
 import { isKnownCurrency, isKnownMinorAmount } from '@/lib/monetaryCurrency.js';
 import { useDecisionLearning } from '@/hooks/useDecisionLearning.js';
@@ -13,7 +13,7 @@ const Label = ({ children }) => (
 );
 
 export function ExecutionContext({
-  campaign, parent, evidence, verdict,
+  campaign, parent, evidence, comparisonEnvelope, verdict,
   onExecute = null, onDismiss = null, executionState = null,
 }) {
   const learning = useDecisionLearning(campaign?.entityId ?? null);
@@ -24,7 +24,7 @@ export function ExecutionContext({
   const childValue = formatEvidenceValue(metric, worst?.[metric]);
   const parentValue = formatEvidenceValue(metric, parent?.[metric]);
   const gap = formatEvidenceGap(worst?._gap, 'campaign');
-  if (!worst || !metricLabel || !childValue || !parentValue || !gap || !Array.isArray(evidence.ranked)) return null;
+  if (!comparisonEnvelope || !worst || !metricLabel || !childValue || !parentValue || !gap || !Array.isArray(evidence.ranked)) return null;
   const spendKnown = isKnownMinorAmount(worst.spendMinor) && isKnownCurrency(worst.currency);
 
   return (
@@ -51,7 +51,8 @@ export function ExecutionContext({
         <p className="mt-2 flex flex-wrap gap-x-3 font-mono text-xs text-lumi-text">
           <span>{gap.signed}</span><span>{gap.relation}</span>
         </p>
-        <p className="mt-1 text-xs text-lumi-muted">Compared within {evidence.ranked.length} reporting ad sets</p>
+        <p className="mt-2 break-words font-mono text-[11px] leading-relaxed text-lumi-muted">{evidenceBasisLabel(comparisonEnvelope)}</p>
+        <p className="mt-1 text-xs leading-relaxed text-lumi-muted">{evidencePopulationLabel(comparisonEnvelope, 'ad sets')}</p>
       </section>
       <div className="mb-3 border-t border-lumi-border pt-3">
         <Label>Reported ad-set spend</Label>

@@ -17,8 +17,14 @@ import { useEvidence, evidenceKey } from './useEvidence.js';
 import { api } from '@/lib/api.js';
 
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
+const envelope = (over = {}) => ({ status: 'AVAILABLE', kind: 'RELATIVE_BASELINE', metric: 'ctr', valueUnit: 'RATIO',
+  gapUnit: 'RELATIVE_RATIO', gapDenominator: 'PARENT_VALUE', source: 'META', measurementWindow: 'ROLLING_WINDOW',
+  windowStart: '2026-08-01T00:00:00.000Z', windowEnd: '2026-08-30T00:00:00.000Z',
+  currency: null, currencyProvenance: null, rankableCount: 2, comparableCount: 2, excludedByEnvelopeCount: 0, ...over });
+
 
 const RANKING = {
+  comparisonEnvelope: envelope(),
   entity: { entityId: 'c1', ctr: 0.02, roas: 2 },
   objective: 'OUTCOME_SALES',
   evidence: { dimension: 'ADSET', metric: 'ctr',
@@ -31,7 +37,8 @@ const RANKING = {
 beforeEach(() => {
   vi.clearAllMocks();
   api.get.mockImplementation((_url, { params }) => Promise.resolve({ data: {
-    ...RANKING, entity: { ...RANKING.entity, roas: 2 },
+    ...RANKING, comparisonEnvelope: envelope({ metric: params.metric, valueUnit: params.metric === 'roas' ? 'MULTIPLE' : params.metric === 'frequency' ? 'FREQUENCY' : 'RATIO',
+      currency: params.metric === 'roas' ? 'EGP' : null, currencyProvenance: params.metric === 'roas' ? 'PLATFORM_REPORTED' : null }), entity: { ...RANKING.entity, roas: 2 },
     evidence: { ...RANKING.evidence, metric: params.metric,
       summary: { bottom: { ...RANKING.evidence.summary.bottom, roas: 1 } } },
   } }));

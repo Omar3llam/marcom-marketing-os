@@ -175,6 +175,7 @@ function metricsOf(snap) {
     // Provenance, not a metric: which row(s) the numbers below came from. Empty
     // when there is no snapshot at all — the same honest absence the nulls carry.
     evidenceRows: evidenceRowsOf(snap),
+    source: snap?.source ?? null, // primary measurement source; evidenceRows still names every contributor
     spendMinor:  snap?.spendMinor ?? null,
     roas:        snap?.roas ?? null,
     ctr:         snap?.ctr ?? null,
