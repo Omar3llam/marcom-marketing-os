@@ -113,7 +113,7 @@ it('accuracy clears a previous error immediately while refetching', async () => 
   expect(result.current).toMatchObject({ loading: true, error: null, data: null, surface: null });
   const payload = {
     accountLift: { earlyWindow: null, recentWindow: null, calibrationImprovementPct: null, status: 'INSUFFICIENT_DATA' },
-    calibration: { bins: [], binEdges: [], expectedCalibrationError: null, brierScore: null, accuracy: null, direction: 'CALIBRATED', sampleSize: 0 },
+    calibration: { bins: [], binEdges: [], expectedCalibrationError: null, brierScore: null, accuracy: null, direction: 'CALIBRATED', sampleSize: 0, populationSpan: null },
     velocity: { periods: [], trend: 'INSUFFICIENT_DATA', slope: null },
     coverage: { totalDecisions: 0, scored: 0, unscorable: 0, pendingMaturation: 0, dismissed: 0, notAPrediction: 0, scoredFraction: 0, verdict: 'INSUFFICIENT_DATA', note: 'No observations' },
     surface: { gated: true, headline: 'No observations', status: null, calibrationErrorPct: null, improvementPct: null, scored: 0, needed: 30 },

@@ -17,23 +17,43 @@ export const CoverageVerdictSchema = z.enum(['RELIABLE', 'THIN', 'INSUFFICIENT_D
 export const LiftStatusSchema = z.enum(['IMPROVING', 'FLAT', 'DEGRADING', 'INSUFFICIENT_DATA']);
 export const CalibrationDirectionSchema = z.enum(['OVERCONFIDENT', 'UNDERCONFIDENT', 'CALIBRATED']);
 
-// One row of the reliability table — bins below minBinCount are collapsed away.
+// One populated interval of the selected grid. Test/config overrides may change
+// minBinCount, so admission requires real observations, not a hardcoded floor.
+const ProbabilitySchema = z.number().finite().min(0).max(1);
 export const ReliabilityBinSchema = z.object({
   band: z.string(),
-  predicted: z.number(),
-  observed: z.number(),
-  count: z.number().int().nonnegative(),
-  gap: z.number(),
+  predicted: ProbabilitySchema,
+  observed: ProbabilitySchema,
+  count: z.number().int().positive(),
+  gap: ProbabilitySchema,
 });
+
+const PopulationSpanSchema = z.object({
+  basis: z.literal('DECISION_ISSUED_AT'),
+  from: z.string().datetime(), to: z.string().datetime(),
+}).refine(span => Date.parse(span.from) <= Date.parse(span.to), 'Issuance span must be ordered');
 
 export const CalibrationSchema = z.object({
   bins: z.array(ReliabilityBinSchema),
-  binEdges: z.array(z.number()),
-  expectedCalibrationError: z.number().nullable(), // ECE — the headline
-  brierScore: z.number().nullable(),               // binning-free backstop
-  accuracy: z.number().nullable(),                 // raw success rate — SECONDARY
+  binEdges: z.array(ProbabilitySchema), // grid geometry, including unoccupied intervals
+  expectedCalibrationError: ProbabilitySchema.nullable(),
+  brierScore: ProbabilitySchema.nullable(),
+  accuracy: ProbabilitySchema.nullable(), // raw success rate — SECONDARY
   direction: CalibrationDirectionSchema,
   sampleSize: z.number().int().nonnegative(),
+  populationSpan: PopulationSpanSchema.nullable(),
+}).superRefine((calibration, ctx) => {
+  const empty = calibration.sampleSize === 0;
+  if (empty !== (calibration.populationSpan === null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Scored population requires its issuance span; empty population has none' });
+  }
+  // Admission checks the published sample; it does not invent a replacement.
+  if (calibration.bins.reduce((sum, bin) => sum + bin.count, 0) !== calibration.sampleSize) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Reliability observations must equal the scored sample size' });
+  }
+  if ([calibration.expectedCalibrationError, calibration.brierScore, calibration.accuracy].some(value => (value === null) !== empty)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Calibration aggregates are measured exactly when the population is nonempty' });
+  }
 });
 
 const WindowSchema = z.object({

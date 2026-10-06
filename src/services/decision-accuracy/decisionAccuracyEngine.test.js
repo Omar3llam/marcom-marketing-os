@@ -487,8 +487,9 @@ describe('P7-06A — AccountLift zero-baseline direction', () => {
       expectedCalibrationError: 0.4, brierScore: 0.41, accuracy: 0.5,
       direction: CALIBRATION_DIRECTION.OVERCONFIDENT, sampleSize: 120,
     });
-    expect(result.calibration.bins).toHaveLength(10);
-    expect(result.calibration.bins[9]).toEqual({ band: '90-100%', predicted: 0.9, observed: 0.5, count: 120, gap: 0.4 });
+    expect(result.calibration.bins).toHaveLength(1);
+    expect(result.calibration.binEdges).toHaveLength(11); // selected grid stays unchanged; unobserved rows are omitted
+    expect(result.calibration.bins[0]).toEqual({ band: '90-100%', predicted: 0.9, observed: 0.5, count: 120, gap: 0.4 });
   });
 
   it('keeps coverage and numeric suppression independent of a degrading zero-baseline lift', () => {

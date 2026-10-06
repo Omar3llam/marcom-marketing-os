@@ -22,7 +22,8 @@ const window = (calibrationError) => ({
 function payload() {
   return {
     accountLift: { earlyWindow: window(0), recentWindow: window(0.4), calibrationImprovementPct: null, status: 'DEGRADING' },
-    calibration: { bins: [], binEdges: [0, 1], expectedCalibrationError: 0.2,
+    calibration: { bins: [{ band: '0-100%', predicted: .8, observed: 1, count: 100, gap: .2 }], binEdges: [0, 1], expectedCalibrationError: 0.2,
+      populationSpan: { basis: 'DECISION_ISSUED_AT', from: '2025-11-01T00:00:00.000Z', to: '2026-01-01T00:00:00.000Z' },
       brierScore: 0.08, accuracy: 1, direction: 'UNDERCONFIDENT', sampleSize: 100 },
     velocity: { trend: 'FLAT', slope: 0, periods: [
       { label: '2025-11', calibrationError: 0.9, sampleSize: 2, includedInTrend: false },

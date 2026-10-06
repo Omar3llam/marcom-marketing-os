@@ -8,6 +8,7 @@ const headline = "Lumi's calls: calibration error 8% — improving";
 const surface = { gated: false, headline, status: 'IMPROVING', improvementPct: 20 };
 const calibration = {
   expectedCalibrationError: 0.08, brierScore: 0.1, direction: 'OVERCONFIDENT', accuracy: 0.72,
+  sampleSize: 26, populationSpan: { basis: 'DECISION_ISSUED_AT', from: '2026-01-03T10:00:00.000Z', to: '2026-04-20T18:00:00.000Z' },
   bins: [{ band: '80-90%', predicted: 0.85, observed: 0.79, count: 26 }],
 };
 const period = (label, calibrationError, sampleSize, includedInTrend) =>

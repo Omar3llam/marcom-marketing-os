@@ -100,11 +100,17 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
     // measured rather than better calibrated.
     if (!Number.isFinite(d.confidence)) { unscorable += 1; continue; }
 
+    // Prisma supplies a non-null DateTime, but the pure input seam can be
+    // called directly. Refuse malformed issuance evidence without changing
+    // scored membership or substituting an execution/outcome/current instant.
+    const issuedAt = d.createdAt == null ? NaN : new Date(d.createdAt).getTime();
+    if (!Number.isFinite(issuedAt)) throw new RangeError('Scored decision requires a valid issuance timestamp');
+
     scored.push({
       id: d.id,
       confidence: clamp01(d.confidence),
       success: ok ? 1 : 0,
-      createdAt: new Date(d.createdAt).getTime(),
+      createdAt: issuedAt,
     });
   }
 
@@ -205,7 +211,7 @@ function computeCalibration(scored, cfg) {
   if (n === 0) {
     return {
       bins: [], binEdges: [0, 1], expectedCalibrationError: null, brierScore: null,
-      accuracy: null, direction: CALIBRATION_DIRECTION.CALIBRATED, sampleSize: 0,
+      accuracy: null, direction: CALIBRATION_DIRECTION.CALIBRATED, sampleSize: 0, populationSpan: null,
     };
   }
 
@@ -241,6 +247,11 @@ function computeCalibration(scored, cfg) {
     accuracy: r4(meanObserved), // raw success rate — reported, but SECONDARY to ECE
     direction,
     sampleSize: n,
+    populationSpan: {
+      basis: 'DECISION_ISSUED_AT',
+      from: new Date(scored[0].createdAt).toISOString(),
+      to: new Date(scored[n - 1].createdAt).toISOString(),
+    },
   };
 }
 
@@ -259,14 +270,17 @@ function buildBins(scored, b) {
   const buckets = Array.from({ length: b }, () => []);
   for (const d of scored) buckets[binIndex(d.confidence, b)].push(d);
   const edges = Array.from({ length: b + 1 }, (_, i) => r4(i / b));
-  const bins = buckets.map((items, i) => {
+  // Edges describe the entire chosen grid. Public rows describe observations
+  // only: a grid hole has no prediction, observed rate or calibration gap.
+  const bins = buckets.flatMap((items, i) => {
     const count = items.length;
-    const predicted = count ? r4(mean(items.map((d) => d.confidence))) : r4((i + 0.5) / b);
-    const observed = count ? r4(mean(items.map((d) => d.success))) : 0;
-    return {
+    if (count === 0) return [];
+    const predicted = r4(mean(items.map((d) => d.confidence)));
+    const observed = r4(mean(items.map((d) => d.success)));
+    return [{
       band: `${Math.round(edges[i] * 100)}-${Math.round(edges[i + 1] * 100)}%`,
       predicted, observed, count, gap: r4(Math.abs(observed - predicted)),
-    };
+    }];
   });
   return { bins, edges };
 }

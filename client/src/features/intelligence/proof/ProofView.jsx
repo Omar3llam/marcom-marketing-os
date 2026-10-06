@@ -68,6 +68,8 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
   const cal = data.calibration;
   const vel = data.velocity;
   const trendLabel = TREND_LABELS[vel?.trend] ?? 'Trend unavailable';
+  const reliabilityRows = cal.bins.map(bin => ({ band: bin.band,
+    predicted: pct(bin.predicted), observed: pct(bin.observed), count: bin.count }));
 
   return (
     <div className="space-y-4">
@@ -105,28 +107,44 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
 
       {/* Reliability table — predicted vs observed. The evidence, not a chart. */}
       {isStrategist && cal?.bins?.length > 0 && (
-        <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
-          <table className="w-full text-sm">
+        <section aria-label="Reliability by confidence band" className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
+          <div className="p-4">
+            <h3 className="text-sm font-medium text-lumi-text">Reliability by confidence band</h3>
+            <p className="mt-2 text-sm text-lumi-muted">Predicted confidence versus observed success across {cal.sampleSize} scored decisions.</p>
+            <p className="mt-1 text-sm text-lumi-text break-words">Scored-decision issuance span: {cal.populationSpan.from} → {cal.populationSpan.to} UTC</p>
+            <p className="mt-2 text-sm text-lumi-muted">Lumi said is the mean stated confidence in each band; Actually right is the observed success rate; n is the number of scored decisions.</p>
+            <p className="mt-1 text-sm text-lumi-muted">Values can update as outcomes mature or recorded outcomes are corrected.</p>
+          </div>
+          <section aria-label="Reliability evidence records" className="sm:hidden divide-y divide-lumi-border text-sm">
+            {reliabilityRows.map(row => <article key={row.band} aria-label={row.band + ' confidence band'} className="p-4 text-lumi-text">
+              <h4 className="font-mono font-medium">{row.band} confidence</h4>
+              <dl className="mt-3 space-y-2">
+                {[['Lumi said', row.predicted], ['Actually right', row.observed], ['Decisions', row.count]].map(([label, value]) => <div key={label} className="flex flex-wrap justify-between gap-2"><dt className="text-lumi-muted">{label}</dt><dd className="font-mono">{value}</dd></div>)}
+              </dl>
+            </article>)}
+          </section>
+          <table className="hidden sm:table w-full text-sm">
+            <caption className="sr-only">Reliability by confidence band</caption>
             <thead>
-              <tr className="text-left text-lumi-subtle border-b border-lumi-border">
-                <th className="px-4 py-2.5 font-medium">Confidence band</th>
-                <th className="px-4 py-2.5 font-medium">Lumi said</th>
-                <th className="px-4 py-2.5 font-medium">Actually right</th>
-                <th className="px-4 py-2.5 font-medium">n</th>
+              <tr className="text-left text-lumi-muted border-b border-lumi-border">
+                <th scope="col" className="px-4 py-2.5 font-medium">Confidence band</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Lumi said</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Actually right</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">n</th>
               </tr>
             </thead>
             <tbody>
-              {cal.bins.map((b) => (
+              {reliabilityRows.map((b) => (
                 <tr key={b.band} className="border-b border-lumi-border/60">
-                  <td className="px-4 py-2.5 font-mono text-lumi-muted">{b.band}</td>
-                  <td className="px-4 py-2.5 font-mono text-lumi-muted">{pct(b.predicted)}</td>
-                  <td className="px-4 py-2.5 font-mono text-lumi-text">{pct(b.observed)}</td>
-                  <td className="px-4 py-2.5 font-mono text-lumi-subtle">{b.count}</td>
+                  <th scope="row" className="px-4 py-2.5 font-mono font-medium text-left text-lumi-text">{b.band}</th>
+                  <td className="px-4 py-2.5 font-mono text-lumi-muted">{b.predicted}</td>
+                  <td className="px-4 py-2.5 font-mono text-lumi-text">{b.observed}</td>
+                  <td className="px-4 py-2.5 font-mono text-lumi-muted">{b.count}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </section>
       )}
     </div>
   );
