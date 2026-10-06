@@ -30,7 +30,7 @@ function withRole(role: string, loading = false) {
 // ── Fixtures ─────────────────────────────────────────────────────
 const RELIABLE = {
   coverage: { totalDecisions: 160, scored: 124, unscorable: 6, pendingMaturation: 9, dismissed: 21, notAPrediction: 0, scoredFraction: 0.95, verdict: 'RELIABLE', note: 'x' },
-  calibration: { bins: [{ band: '80-90%', predicted: 0.85, observed: 0.79, count: 26, gap: 0.06 }], binEdges: [0, 1], expectedCalibrationError: 0.11, brierScore: 0.14, accuracy: 0.71, direction: 'OVERCONFIDENT', sampleSize: 124 },
+  calibration: { bins: [{ band: '80-90%', predicted: 0.85, observed: 0.79, count: 124, gap: 0.06 }], binEdges: [0, 1], expectedCalibrationError: 0.11, brierScore: 0.14, accuracy: 0.71, direction: 'OVERCONFIDENT', sampleSize: 124, populationSpan: { basis: 'DECISION_ISSUED_AT', from: '2026-01-03T10:00:00.000Z', to: '2026-04-20T18:00:00.000Z' } },
   velocity: { periods: [{ label: '2026-01', calibrationError: 0.28, sampleSize: 34, includedInTrend: true }, { label: '2026-02', calibrationError: 0.16, sampleSize: 41, includedInTrend: true }], trend: 'IMPROVING', slope: -0.04 },
   accountLift: { earlyWindow: { calibrationError: 0.28, accuracy: 0.62, sampleSize: 50, span: { from: 'a', to: 'b' } }, recentWindow: { calibrationError: 0.11, accuracy: 0.78, sampleSize: 50, span: { from: 'a', to: 'b' } }, calibrationImprovementPct: 0.61, status: 'IMPROVING' },
 };
@@ -80,7 +80,7 @@ describe('Proof RELIABLE hard gate (acceptance #3)', () => {
   it('a RELIABLE account renders the headline + the reliability table for a STRATEGIST', () => {
     render(<ProofView data={RELIABLE} surface={RELIABLE_SURFACE} role="STRATEGIST" />, { wrapper: withRole('STRATEGIST') });
     expect(screen.getByText(/calibration error 11%/i)).toBeInTheDocument();
-    expect(screen.getByText(/Confidence band/i)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Confidence band' })).toBeInTheDocument();
   });
   it('a CLIENT sees the narrative line only — never the reliability table', () => {
     render(<ProofView data={RELIABLE} surface={RELIABLE_SURFACE} role="CLIENT" />, { wrapper: withRole('CLIENT') });
