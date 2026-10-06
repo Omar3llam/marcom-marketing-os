@@ -74,6 +74,36 @@ describe('AllocationService.planToDecisionRows — governance', () => {
 });
 
 describe('AllocationPlan persistence adapter', () => {
+  it('P7-07G persists the producer reasoning and copies amount-free diagnosis without changing move amounts', async () => {
+    const create = vi.fn(async () => ({ id: 'plan-egp' }));
+    const createMany = vi.fn(async () => ({}));
+    const db = { allocationPlan: { create }, decision: { createMany } };
+    const plan = { ...allocate({ totalBudgetMinor: 150_000, totalBudgetCurrency: 'EGP',
+      channels: [
+        { channelId: 'Meta', blendedRoas: 3, currentSpendMinor: 50_000, verdict: 'HOLD', currency: 'EGP', monetaryStatus: 'MONETARY_VALID' },
+        { channelId: 'Google', blendedRoas: 1, currentSpendMinor: 50_000, verdict: 'HOLD', currency: 'EGP', monetaryStatus: 'MONETARY_VALID' },
+      ] }), monetaryStatus: 'MONETARY_VALID', efficiencyStatus: 'VALID',
+      spendPeriod: { status: 'MEASURABLE', currency: 'EGP', period: { start: '2026-08-01', end: '2026-08-31' } } };
+    const result = await persistAllocation(db, 'ws1', plan);
+    expect(result).toEqual({ allocationPlanId: 'plan-egp', decisionsCreated: 2 });
+    expect(create.mock.calls[0][0].data).toMatchObject({ totalBudgetMinor: 150_000, currency: 'EGP',
+      reasoning: `[BLENDED_REVENUE_EFFICIENCY_V1]\n${plan.reasoningTrail.join('\n')}` });
+    expect(plan.reasoningTrail.slice(1)).toEqual([
+      'Grow Meta (HOLD, blended revenue efficiency 3.00x).',
+      'Trim Google (HOLD, blended revenue efficiency 1.00x).',
+    ]);
+    const rows = createMany.mock.calls[0][0].data;
+    expect(rows.map(row => row.diagnosis)).toEqual(plan.reasoningTrail.slice(1));
+    expect(rows.map(({ entityId, verdict, status, rootCause }) => ({ entityId, verdict, status, rootCause }))).toEqual([
+      { entityId: 'Meta', verdict: 'REALLOCATE', status: 'PROPOSED', rootCause: 'allocation:plan-egp' },
+      { entityId: 'Google', verdict: 'REALLOCATE', status: 'PROPOSED', rootCause: 'allocation:plan-egp' },
+    ]);
+    expect(plan.allocations.map(({ currentSpendMinor, recommendedSpendMinor, deltaMinor }) =>
+      ({ currentSpendMinor, recommendedSpendMinor, deltaMinor }))).toEqual([
+      { currentSpendMinor: 50_000, recommendedSpendMinor: 105_000, deltaMinor: 55_000 },
+      { currentSpendMinor: 50_000, recommendedSpendMinor: 45_000, deltaMinor: -5_000 },
+    ]);
+  });
   it('writes valid semantic ratios only to dedicated columns, safely for an old reader', async () => {
     const create = vi.fn(async ({ data }) => ({ id: 'plan-1', ...data }));
     const db = { allocationPlan: { create }, decision: { createMany: vi.fn(async () => ({})) } };

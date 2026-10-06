@@ -15,6 +15,7 @@ import {exactRevenueWindow} from '../../../../../src/lib/revenueMeasurementWindo
 import {AllocationPlanPreviewSchema} from '@/contracts/schemas/allocationPlan.schema';
 import {useAllocation} from '@/hooks/useAllocation.js';
 import {AllocationPanel} from './AllocationPanel.jsx';
+import {formatCurrency} from '@/lib/money';
 const app=express();app.use(express.json());app.use((req,res,next)=>{req.workspaceId='ws';req.collabRole='STRATEGIST';next();});app.use('/api/lumi',portfolioRouter);
 const window=exactRevenueWindow('2026-08-01','2026-08-31');
 const money={currency:'EGP',monetaryStatus:'MONETARY_VALID',monetaryReason:null};
@@ -34,6 +35,41 @@ afterEach(()=>vi.useRealTimers());
 function Read(){const state=useAllocation();return <AllocationPanel currency="EGP" {...state} onPreview={state.preview} onCommit={state.commit} canCommit/>;}
 async function show(){render(<Read/>);fireEvent.change(screen.getByLabelText('Total budget'),{target:{value:'300'}});fireEvent.click(screen.getByRole('button',{name:'Preview allocation'}));await screen.findByRole('table',{name:'Proposed channel budget allocation'});}
 describe('real previewAllocation → allocation route → schema → hook → readout',()=>{
+  it.each([
+    ['positive', 150000, 105000, 55000, 3, 'Grow Meta (HOLD, blended revenue efficiency 3.00x).'],
+    ['negative', 50000, 35000, -15000, 3, 'Trim Meta (HOLD, blended revenue efficiency 3.00x).'],
+    ['zero', 100000, 50000, 0, 2, 'Hold Meta: already near its efficient share.'],
+  ])('P7-07G %s: real route money survives admission while table and records show amount-free rationale',
+    async (_name,total,recommended,delta,efficiency,rationale)=>{
+      getBlended.mockResolvedValue({channels:['Meta','Google'].map((channel,i)=>({channelId:channel,channel,...money,
+        spendMinor:50000,blendedRevenueMinor:50000*(i===0?efficiency:efficiency===2?2:1),
+        blendedRevenueWindow:window,monetaryEvidence:{blended:money},
+        blendedRevenueEfficiency:{status:'VALID',value:i===0?efficiency:efficiency===2?2:1}}))});
+      db.decision.findMany.mockResolvedValue([{entityId:'Meta',verdict:'HOLD'},{entityId:'Google',verdict:'HOLD'}]);
+      spend.portfolio.spendMinor=100000;spend.byEntity=new Map([['Meta',50000],['Google',50000]]);
+      const expected=await previewAllocation('ws',{totalBudgetMinor:total,totalBudgetCurrency:'EGP'});
+      expect(expected.allocations[0]).toMatchObject({currentSpendMinor:50000,recommendedSpendMinor:recommended,deltaMinor:delta});
+      render(<Read/>);fireEvent.change(screen.getByLabelText('Total budget'),{target:{value:String(total/100)}});
+      fireEvent.click(screen.getByRole('button',{name:'Preview allocation'}));
+      const table=await screen.findByRole('table',{name:'Proposed channel budget allocation'});
+      const admitted=AllocationPlanPreviewSchema.parse(response.body.plan);
+      expect(response.status).toBe(200);expect(admitted).toMatchObject({totalBudgetMinor:total,currency:'EGP',
+        allocations:expected.allocations,projected:expected.projected,reasoningTrail:expected.reasoningTrail});
+      const amount=formatCurrency(delta,'EGP');
+      const change=delta>0?`+${amount}`:delta===0?`No change · ${amount}`:amount;
+      const row=within(table).getAllByRole('row')[1];
+      expect(within(row).getAllByRole('cell')[2].textContent).toBe(change);
+      expect(expected.allocations[0].rationale).toBe(rationale);
+      expect(expected.reasoningTrail[1]).toBe(rationale);
+      expect(row).toHaveTextContent(rationale);
+      expect(row.querySelector('th p').textContent).toBe(rationale);
+      const records=screen.getByRole('region',{name:'Allocation budget records'});
+      const record=within(records).getAllByRole('article')[0];
+      expect(within(record).getByText('Budget change').nextElementSibling.textContent).toBe(change);
+      expect(within(record).getByText('Why').nextElementSibling.textContent).toBe(rationale);
+      expect(row.querySelector('th p').textContent).not.toMatch(/\bby\b|EGP|USD/);
+      if(delta!==0){expect(rationale).not.toContain(String(Math.abs(delta)));expect(rationale).not.toContain((Math.abs(delta)/100).toFixed(2));}
+    });
   it('retains governed amounts, default basis and visible authored rationale despite unavailable reconciliation',async()=>{
     const expected=await previewAllocation('ws',{totalBudgetMinor:30000,totalBudgetCurrency:'EGP'});
     await show();const admitted=AllocationPlanPreviewSchema.parse(response.body.plan);

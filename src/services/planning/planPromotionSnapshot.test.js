@@ -22,6 +22,7 @@
 // read back. A snapshot written in halves is the defect in a new costume.
 // ============================================================
 import { describe, it, expect } from 'vitest';
+import { allocate } from '../allocation-engine/allocationEngine.js';
 import {
   captureMixSnapshot,
   planToAllocationCommit,
@@ -95,6 +96,21 @@ describe('the snapshot is written whole', () => {
 });
 
 describe('the snapshot is read back whole', () => {
+  it('P7-07G copies the approved amount-free rationale/trail and exact money without recomputing prose', () => {
+    const mix = { ...preview(), ...allocate({ totalBudgetMinor: 150_000, totalBudgetCurrency: 'EGP',
+      channels: [
+        { channelId: 'Meta', blendedRoas: 3, currentSpendMinor: 50_000, verdict: 'HOLD', currency: 'EGP', monetaryStatus: 'MONETARY_VALID' },
+        { channelId: 'Google', blendedRoas: 1, currentSpendMinor: 50_000, verdict: 'HOLD', currency: 'EGP', monetaryStatus: 'MONETARY_VALID' },
+      ] }), spendPeriod: { status: 'MEASURABLE', currency: 'EGP', spendMinor: 100_000 } };
+    const commit = planToAllocationCommit({ id: 'approved-egp', totalBudgetMinor: mix.totalBudgetMinor,
+      currency: mix.currency, channelMix: mix.allocations, projections: { mix: captureMixSnapshot(mix) } });
+    expect(commit).toMatchObject({ totalBudgetMinor: 150_000, currency: 'EGP',
+      allocations: mix.allocations, projected: mix.projected, reasoningTrail: mix.reasoningTrail });
+    expect(commit.allocations[0]).toMatchObject({ currentSpendMinor: 50_000,
+      recommendedSpendMinor: 105_000, deltaMinor: 55_000,
+      rationale: 'Grow Meta (HOLD, blended revenue efficiency 3.00x).' });
+    expect(commit.reasoningTrail[1]).toBe(commit.allocations[0].rationale);
+  });
   it('rebuilds the exact allocation that was approved', () => {
     const commit = planToAllocationCommit(storedPlan());
 
