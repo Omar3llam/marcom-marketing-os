@@ -15,6 +15,75 @@ const allocateProven = (args) => allocate({
   channels: args.channels.map((c) => ({ ...c, currency: 'USD', monetaryStatus: 'MONETARY_VALID' })),
 });
 
+describe('P7-07G: money stays in structured moves, not rationale', () => {
+  const channel = (channelId, blendedRoas, verdict = 'HOLD') => ({
+    channelId, channel: channelId, blendedRoas, verdict,
+    currentSpendMinor: 50_000, currentRevenueMinor: 50_000 * blendedRoas,
+    currency: 'EGP', monetaryStatus: 'MONETARY_VALID',
+  });
+  const plan = (totalBudgetMinor, channels = [channel('Meta', 3), channel('Google', 1)]) =>
+    allocate({ totalBudgetMinor, totalBudgetCurrency: 'EGP', channels });
+
+  it.each([
+    [150_000, 105_000, 55_000, 45_000, -5_000, 360_000, 'Grow'],
+    [50_000, 35_000, -15_000, 15_000, -35_000, 120_000, 'Trim'],
+    [3_544_286, 2_481_000, 2_431_000, 1_063_286, 1_013_286, 8_506_286, 'Grow'],
+  ])('keeps exact amounts/projections for budget %i but publishes amount-free reasoning',
+    (total, metaBudget, metaDelta, googleBudget, googleDelta, revenue, direction) => {
+      const result = plan(total);
+      expect(result).toMatchObject({ totalBudgetMinor: total, currency: 'EGP',
+        allocations: [
+          { currentSpendMinor: 50_000, recommendedSpendMinor: metaBudget, deltaMinor: metaDelta },
+          { currentSpendMinor: 50_000, recommendedSpendMinor: googleBudget, deltaMinor: googleDelta },
+        ],
+        projected: { blendedRevenueMinor: revenue, projectedCpaMinor: null,
+          blendedRevenueEfficiencyBefore: 2, blendedRevenueEfficiencyAfter: revenue / total },
+      });
+      const sentences = [
+        `${direction} Meta (HOLD, blended revenue efficiency 3.00x).`,
+        `${googleDelta > 0 ? 'Grow' : 'Trim'} Google (HOLD, blended revenue efficiency 1.00x).`,
+      ];
+      expect(result.allocations.map(move => move.rationale)).toEqual(sentences);
+      expect(result.reasoningTrail.slice(1)).toEqual(sentences);
+      for (const rationale of result.allocations.map(move => move.rationale)) {
+        expect(rationale).not.toMatch(/\bby\b|EGP|USD|AED|[€$£]/);
+        for (const amount of [50_000, metaBudget, Math.abs(metaDelta), googleBudget, Math.abs(googleDelta), total]) {
+          expect(rationale).not.toContain(String(amount));
+          expect(rationale).not.toContain((amount / 100).toFixed(2));
+        }
+      }
+    });
+
+  it('preserves actual REALLOCATE input and its efficiency explanation', () => {
+    const result = plan(50_000, [channel('Meta', 3), channel('Google', 1.4, 'REALLOCATE')]);
+    const move = result.allocations[1];
+    expect(move.deltaMinor).toBeLessThan(0);
+    expect(move.rationale).toBe('Trim Google (REALLOCATE, blended revenue efficiency 1.40x).');
+    expect(result.reasoningTrail[2]).toBe(move.rationale);
+  });
+
+  it('preserves genuine zero moves without introducing an amount into hold reasoning', () => {
+    const result = plan(100_000, [channel('Meta', 2), channel('Google', 2)]);
+    expect(result.allocations.map(({ currentSpendMinor, recommendedSpendMinor, deltaMinor }) =>
+      ({ currentSpendMinor, recommendedSpendMinor, deltaMinor }))).toEqual([
+      { currentSpendMinor: 50_000, recommendedSpendMinor: 50_000, deltaMinor: 0 },
+      { currentSpendMinor: 50_000, recommendedSpendMinor: 50_000, deltaMinor: 0 },
+    ]);
+    expect(result.allocations.map(move => move.rationale)).toEqual([
+      'Hold Meta: already near its efficient share.', 'Hold Google: already near its efficient share.',
+    ]);
+    expect(result.reasoningTrail.slice(1)).toEqual(result.allocations.map(move => move.rationale));
+  });
+
+  it('preserves the KILL explanation and structured budget drain', () => {
+    const result = plan(100_000, [channel('Meta', 3), channel('Google', 1, 'KILL')]);
+    expect(result.allocations[1]).toMatchObject({ currentSpendMinor: 50_000,
+      recommendedSpendMinor: 30_000, deltaMinor: -20_000,
+      rationale: 'Drain Google: KILL verdict — pull budget out.' });
+    expect(result.reasoningTrail[2]).toBe(result.allocations[1].rationale);
+  });
+});
+
 describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
   it('allocates the full budget exactly (integer minor units sum to the ceiling)', () => {
     const r = allocateProven({ totalBudgetCurrency: 'USD',

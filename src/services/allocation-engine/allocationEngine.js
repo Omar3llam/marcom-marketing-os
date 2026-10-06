@@ -208,7 +208,7 @@ export function allocate({ totalBudgetMinor, totalBudgetCurrency, goal, channels
     const rationale =
       verdict === 'KILL'  ? `Drain ${c.channelId}: KILL verdict — pull budget out.`
       : dir === 'hold'    ? `Hold ${c.channelId}: already near its efficient share.`
-      : `${dir === 'increase' ? 'Grow' : 'Trim'} ${c.channelId} by ${Math.abs(deltaMinor)} (${verdict}, blended revenue efficiency ${c.blendedRoas.toFixed(2)}x).`;
+      : `${dir === 'increase' ? 'Grow' : 'Trim'} ${c.channelId} (${verdict}, blended revenue efficiency ${c.blendedRoas.toFixed(2)}x).`;
     reasoningTrail.push(rationale);
 
     return {
