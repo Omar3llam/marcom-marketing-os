@@ -83,8 +83,11 @@ describe('BlendedTruthView — explicit reconciliation authority', () => {
     show(refusal(), 'BUYER');
     expect(screen.getByText(/Blended revenue efficiency: 1.9×/)).toBeInTheDocument();
   });
-  it.each([[.004, 100, '0% above'], [-.004, -100, '0% below'], [.006, 100, '1% above']])('keeps recorded tiny-gap presentation debt: %s', (gapPct, gapMinor, text) => {
-    show(comparison({ gapPct, gapMinor }), 'BUYER'); expect(screen.getByText(new RegExp('Revenue gap: ' + text))).toBeInTheDocument();
+  it.each([[.004, 400, '0.4% above'], [-.004, -400, '0.4% below'], [.006, 600, '0.6% above'],
+    [-.006, -600, '0.6% below'], [.0004, 40, '<0.1% above'], [-.0004, -40, '<0.1% below']])('preserves tiny nonzero reconciliation %s', (gapPct, gapMinor, text) => {
+    show(comparison({ platformRevenueMinor: 100000, actualRevenueMinor: 100000 - gapMinor, gapPct, gapMinor }), 'BUYER');
+    expect(screen.getByText(value => value.startsWith('Revenue gap: ' + text))).toBeInTheDocument();
+    expect(screen.queryByText(/Revenue gap: (0%|Match)/)).not.toBeInTheDocument();
   });
   it('uses one channel model for labelled records and an accessible desktop table', () => {
     show(); const table = screen.getByRole('table', { name: 'Channel revenue evidence comparison' });
