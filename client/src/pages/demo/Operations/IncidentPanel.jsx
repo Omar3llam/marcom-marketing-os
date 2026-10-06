@@ -17,6 +17,7 @@ import { LoadingBlock } from './components/LoadingBlock.jsx';
 import { CollisionGraph } from './components/CollisionGraph.jsx';
 import { RawAuditLogModal } from './components/RawAuditLogModal.jsx';
 import { shortId, formatTs } from './utils/formatting.js';
+import styles from './Operations.module.css';
 
 export function IncidentPanel({ executionId, onBack }) {
   const [data, setData] = useState(null);
@@ -28,9 +29,17 @@ export function IncidentPanel({ executionId, onBack }) {
   useEffect(() => {
     if (!executionId) return;
     let cancelled = false;
+    setData(null);
     setLoading(true);
     api.get(`/api/execute/${executionId}/incident`)
-      .then((res) => { if (!cancelled) { setData(res.data); setError(null); } })
+      .then((res) => {
+        if (!res.data?.execution?.id || !Array.isArray(res.data.transitions) || !Object.hasOwn(res.data, 'incident')
+          || (res.data.incident !== null && (!res.data.incident?.graph || !Array.isArray(res.data.incident.telemetry)
+            || ['from', 'winner', 'loser', 'resolution'].some(key => typeof res.data.incident.graph[key] !== 'string')))) {
+          throw new Error('The incident evidence could not be established from this response.');
+        }
+        if (!cancelled) { setData(res.data); setError(null); }
+      })
       .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load incident'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -78,12 +87,12 @@ export function IncidentPanel({ executionId, onBack }) {
       <PanelMessage
         icon={AlertTriangle}
         title="No incident for this execution"
-        hint={`#${shortId(execution.id)} is in ${execution.status} — incident view is for failed executions only.`}
+        hint={`#${shortId(execution.id)} is in ${execution.status}. No incident evidence was returned.`}
       />
     );
   }
 
-  const toneColor = (t) => t === 'kill' ? 'var(--c-kill-text)' : t === 'hold' ? 'var(--c-hold-text)' : 'var(--c-text-base)';
+  const toneColor = () => 'var(--c-text-base)';
   const toneBg    = (t) => t === 'kill' ? 'var(--c-kill-bg)'   : t === 'hold' ? 'var(--c-hold-bg)'   : 'var(--c-surface-elevated)';
 
   return (
@@ -94,14 +103,14 @@ export function IncidentPanel({ executionId, onBack }) {
         className="font-mono"
         style={{
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-          color: 'var(--c-text-muted)', fontSize: 11, letterSpacing: '0.06em',
+          color: 'var(--c-text-muted)', fontSize: 12, letterSpacing: '0.06em',
           textTransform: 'uppercase', marginBottom: 12,
         }}
       >
         ← Live Monitor
       </button>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 18, background: 'var(--c-surface-card)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, marginBottom: 18, boxShadow: '0 0 24px rgba(239,68,68,0.06)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14, padding: 18, background: 'var(--c-surface-card)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, marginBottom: 18, boxShadow: '0 0 24px rgba(239,68,68,0.06)' }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--c-kill-bg)', color: 'var(--c-kill-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <AlertTriangle size={22} />
         </div>
@@ -116,18 +125,17 @@ export function IncidentPanel({ executionId, onBack }) {
         <StatePill state={execution.status} size="lg" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 18 }}>
+      <div className={styles.incidentLayout}>
         <div>
           <div className="section-label" style={{ marginBottom: 10 }}>Transition chain</div>
-          <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 8, marginBottom: 18, boxShadow: 'var(--sh-card)' }}>
+          <ol aria-label="Incident transition history" style={{ listStyle: 'none', margin: '0 0 18px', background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 8, boxShadow: 'var(--sh-card)' }}>
             {transitions.map((t, i) => {
               const isFailureRow = FAILURE_STATUSES.includes(t.toStatus);
               return (
-                <div
+                <li
                   key={t.id}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '90px 1fr 110px',
+                    display: 'flex', flexWrap: 'wrap',
                     gap: 12,
                     alignItems: 'center',
                     padding: '10px 12px',
@@ -136,17 +144,18 @@ export function IncidentPanel({ executionId, onBack }) {
                     borderLeft: isFailureRow ? '2px solid var(--c-kill)' : '2px solid transparent',
                   }}
                 >
-                  <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{formatTs(t.createdAt)}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="font-mono tabular-nums" style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{formatTs(t.createdAt)}</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
                     <StatePill state={t.fromStatus} />
                     <ArrowRight size={11} style={{ color: 'var(--c-text-subtle)' }} />
                     <StatePill state={t.toStatus} />
                   </div>
                   <ActorBadge name={t.actor} />
-                </div>
+                  {t.reason && <p className={styles.eventReason}>{t.reason}</p>}
+                </li>
               );
             })}
-          </div>
+          </ol>
 
           <div className="section-label" style={{ marginBottom: 10 }}>Collision resolution</div>
           <CollisionGraph graph={incident.graph} />
@@ -159,15 +168,14 @@ export function IncidentPanel({ executionId, onBack }) {
               <div
                 key={t.tag}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '150px 1fr',
+                  display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)',
                   gap: 12,
                   padding: '12px 14px',
                   borderBottom: i === incident.telemetry.length - 1 ? 'none' : '1px solid var(--c-surface-border)',
                   alignItems: 'center',
                 }}
               >
-                <span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>{t.tag}</span>
+                <span className="font-mono" style={{ fontSize: 12, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>{t.tag}</span>
                 <span
                   className="font-mono"
                   style={{

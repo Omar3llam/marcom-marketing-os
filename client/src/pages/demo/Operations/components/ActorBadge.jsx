@@ -15,11 +15,12 @@ export function ActorBadge({ name }) {
         padding: '2px 8px',
         borderRadius: 999,
         background: isMachine ? 'rgba(246,201,69,0.10)' : 'var(--c-surface-elevated)',
-        color: isMachine ? 'var(--c-gold-deep)' : 'var(--c-text-soft)',
-        fontSize: 10,
+        color: 'var(--c-text-soft)',
+        fontSize: 12,
         fontWeight: 600,
         letterSpacing: '0.04em',
         textTransform: 'lowercase',
+        overflowWrap: 'anywhere',
       }}
     >
       {isMachine && <Cpu size={9} />}

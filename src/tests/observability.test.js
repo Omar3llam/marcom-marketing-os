@@ -155,6 +155,27 @@ describe('GET /live — happy path', () => {
     expect(res.body.queue.oldest_queued_at).toBeTruthy();
   });
 
+  it('P7-08 no queue has measured depth zero and no applicable wait', async () => {
+    prisma.executionRequest.groupBy.mockResolvedValue([]);
+    prisma.executionRequest.findMany.mockResolvedValue([]);
+    prisma.executionRequest.count.mockResolvedValue(0);
+    const res = await supertest(buildApp()).get('/live');
+    expect(res.status).toBe(200);
+    expect(res.body.executions).toEqual({ active: 0, paused: 0, queued: 0, failed_last_hour: 0 });
+    expect(res.body.queue).toEqual({ depth: 0, avg_wait_ms: null, oldest_queued_at: null });
+  });
+
+  it('P7-08 a real queued execution can have measured zero wait', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      prisma.executionRequest.findMany.mockImplementation(({ select }) => Promise.resolve(select.updatedAt ? [] : [{ id: 'zero-wait', createdAt: NOW }]));
+      const res = await supertest(buildApp()).get('/live');
+      expect(res.status).toBe(200);
+      expect(res.body.queue).toEqual({ depth: 1, avg_wait_ms: 0, oldest_queued_at: NOW.toISOString() });
+    } finally { vi.useRealTimers(); }
+  });
+
   it('formats recent_activity items correctly', async () => {
     const res = await supertest(buildApp()).get('/live');
     const [item] = res.body.recent_activity;

@@ -1,122 +1,68 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../../../lib/api.js';
+import { RuntimeVitalsSchema, ExecutionMetricsSummarySchema } from '@/contracts/schemas/observability.schema';
 import { formatLatency } from '../utils/formatting.js';
+import styles from '../Operations.module.css';
 
-function Divider() {
-  return <span style={{ width: 1, height: 24, background: 'var(--c-surface-border-strong)' }} />;
-}
-
-function Vital({ label, value, color, pulse, mono }) {
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {color && (
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: color,
-            boxShadow: pulse ? `0 0 6px ${color}` : 'none',
-            animation: pulse ? 'intel-pulse 1.4s ease-in-out infinite' : 'none',
-          }} />
-        )}
-        <span
-          className={mono ? 'font-mono tabular-nums' : 'font-display tabular-nums'}
-          style={{ fontSize: mono ? 16 : 20, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--c-text-base)' }}
-        >
-          {value}
-        </span>
-      </div>
-      <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', marginTop: 2 }}>
-        {label}
-      </div>
-    </div>
-  );
+function Measurements({ items }) {
+  return <dl className={styles.measurements}>{items.map(([label, value]) => <div key={label}>
+    <dt>{label}</dt><dd className="font-mono tabular-nums">{value}</dd>
+  </div>)}</dl>;
 }
 
 export function RuntimeHealthStrip() {
-  const [vitals,  setVitals]  = useState(null);
+  const [vitals, setVitals] = useState(null);
   const [metrics, setMetrics] = useState(null);
-  const [error,   setError]   = useState(false);
+  const [vitalsError, setVitalsError] = useState(false);
+  const [metricsError, setMetricsError] = useState(false);
 
-  // Vitals: real-time rolling 1h window (10s poll).
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
         const { data } = await api.get('/api/execute/vitals');
-        if (!cancelled) { setVitals(data); setError(false); }
+        const admitted = RuntimeVitalsSchema.parse(data);
+        if (!cancelled) { setVitals(admitted); setVitalsError(false); }
       } catch {
-        if (!cancelled) setError(true);
+        if (!cancelled) { setVitals(null); setVitalsError(true); }
       }
     };
-    load();
-    const id = setInterval(load, 10000);
+    load(); const id = setInterval(load, 10000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Metrics summary: 7-day aggregates (60s poll — changes slowly).
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
         const { data } = await api.get('/api/execute/metrics/summary');
-        if (!cancelled) setMetrics(data);
+        const admitted = ExecutionMetricsSummarySchema.parse(data);
+        if (!cancelled) { setMetrics(admitted); setMetricsError(false); }
       } catch {
-        // Silent — metrics are supplementary; vitals remain the authority.
+        if (!cancelled) { setMetrics(null); setMetricsError(true); }
       }
     };
-    load();
-    const id = setInterval(load, 60000);
+    load(); const id = setInterval(load, 60000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const v = vitals;
-  const m = metrics;
-  const placeholder = error ? '!' : '—';
-
-  const successPct = m?.success_rate != null
-    ? `${Math.round(m.success_rate * 100)}%`
-    : '—';
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-      <Vital
-        label="In-flight"
-        value={v ? String(v.inFlightCount) : placeholder}
-        color="var(--c-gold)"
-        pulse={!!v && v.inFlightCount > 0}
-      />
-      <Divider />
-      <Vital
-        label="Success / hr"
-        value={v ? String(v.successPerHour) : placeholder}
-        color="var(--c-scale)"
-      />
-      <Divider />
-      <Vital
-        label="Failed / hr"
-        value={v ? String(v.failedPerHour) : placeholder}
-        color="var(--c-kill)"
-      />
-      <Divider />
-      <Vital
-        label="p95"
-        value={v ? formatLatency(v.p95LatencyMs) : placeholder}
-        mono
-      />
-      <Divider />
-      <Vital
-        label="Avg exec"
-        value={m ? formatLatency(m.avg_execution_ms) : '—'}
-        mono
-      />
-      <Divider />
-      <Vital
-        label="7d success"
-        value={successPct}
-        color={m?.success_rate != null
-          ? (m.success_rate >= 0.9 ? 'var(--c-scale)' : m.success_rate >= 0.7 ? 'var(--c-hold)' : 'var(--c-kill)')
-          : undefined}
-      />
-    </div>
-  );
+  return <div className={styles.healthGroups}>
+    <section aria-label="Runtime vitals">
+      <h2>{vitals ? `Runtime, last ${vitals.windowMinutes} min` : 'Runtime vitals'}</h2>
+      {vitalsError ? <p role="status">Runtime vitals unavailable</p> : !vitals ? <p role="status">Reading runtime vitals…</p>
+        : <Measurements items={[
+          ['In-flight', vitals.inFlightCount], ['Success in window', vitals.successPerHour],
+          ['Failed in window', vitals.failedPerHour], ['p95 latency', formatLatency(vitals.p95LatencyMs)],
+        ]} />}
+    </section>
+    <section aria-label="Historical execution metrics">
+      <h2>{metrics ? `Execution history, last ${metrics.windowDays} days` : 'Execution history'}</h2>
+      {metricsError ? <p role="status">Historical metrics unavailable</p> : !metrics ? <p role="status">Reading historical metrics…</p>
+        : metrics.total_executions === 0 ? <p>No execution metrics in this {metrics.windowDays}-day window</p>
+          : <Measurements items={[
+            ['Executions', metrics.total_executions], ['Success rate', `${Math.round(metrics.success_rate * 100)}%`],
+            ['Avg execution', formatLatency(metrics.avg_execution_ms)],
+          ]} />}
+    </section>
+  </div>;
 }
