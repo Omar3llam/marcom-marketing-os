@@ -106,6 +106,7 @@ describe('the contract carries the refusal', () => {
     const parsed = AllocationPlanPreviewSchema.safeParse({
       goal: { type: 'GROWTH_CEILING', value: null },
       totalBudgetMinor: 3_000_000,
+      basis: 'blended',
       currency: 'USD',
       efficiencyStatus: 'UNAVAILABLE', efficiencyReason: 'MEASUREMENT_WINDOW_UNKNOWN',
       spendPeriod: NOT_MEASURABLE_PERIOD,
@@ -162,6 +163,7 @@ describe('Attention · pacing says what it cannot measure', () => {
 describe('Reallocate capital · no move is printed that was not measured', () => {
   const plan = {
     goal: { type: 'GROWTH_CEILING', value: null }, totalBudgetMinor: 3_000_000, currency: 'USD',
+    basis: 'blended',
     spendPeriod: NOT_MEASURABLE_PERIOD,
     allocations: [
       { channelId: 'a', channel: 'Meta A', verdict: 'HOLD', blendedRoas: 2, currentSpendMinor: null, recommendedSpendMinor: null, deltaMinor: null, rationale: 'x' },

@@ -6,12 +6,13 @@
 // gated commit, and honest in-flight / error / committed states.
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { AllocationPanel } from './AllocationPanel.jsx';
 
 const PLAN = {
   goal: { type: 'GROWTH_CEILING', value: null },
   totalBudgetMinor: 5000000, currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
+  basis: 'blended', spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' }, window: { start: '2026-08-01', end: '2026-08-31' }, daysCovered: 31, spendMinor: 5000000 },
   efficiencyStatus: 'VALID', efficiencyReason: null,
   allocations: [
     { channelId: 'meta', channel: 'Meta', verdict: 'SCALE', currentSpendMinor: 3000000, recommendedSpendMinor: 3500000, deltaMinor: 500000, blendedRoas: 2.4, rationale: 'higher blended ROAS' },
@@ -81,8 +82,9 @@ describe('AllocationPanel — preview', () => {
 describe('AllocationPanel — proposed plan + commit', () => {
   it('renders the per-channel moves and projected blended efficiency', () => {
     render(<AllocationPanel currency="USD" plan={PLAN} canCommit />);
-    expect(screen.getByText('Meta')).toBeInTheDocument();
-    expect(screen.getByText('Google')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Proposed channel budget allocation' });
+    expect(within(table).getByText('Meta')).toBeInTheDocument();
+    expect(within(table).getByText('Google')).toBeInTheDocument();
     expect(screen.getByText('1.8×')).toBeInTheDocument();
     expect(screen.getByText('2.2×')).toBeInTheDocument();
   });

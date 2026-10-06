@@ -17,6 +17,8 @@ const PREVIEW = {
   goal: { type: 'GROWTH_CEILING', value: null },
   totalBudgetMinor: 5000000,
   currency: 'USD',
+  basis: 'blended', monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
+  spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' }, window: { start: '2026-08-01', end: '2026-08-31' }, daysCovered: 31, spendMinor: 5000000 },
   efficiencyStatus: 'VALID', efficiencyReason: null,
   allocations: [
     { channelId: 'meta', channel: 'Meta', verdict: 'SCALE', currentSpendMinor: 3000000, recommendedSpendMinor: 3500000, deltaMinor: 500000, blendedRoas: 2.4, rationale: 'higher blended ROAS' },

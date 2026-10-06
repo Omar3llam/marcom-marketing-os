@@ -72,6 +72,7 @@ describe('operational monetary frontend schemas', () => {
   it('accepts a monetary-unavailable allocation preview without converting nulls', () => {
     const parsed = AllocationPlanPreviewSchema.parse({
       goal: { type: 'GROWTH_CEILING', value: null }, totalBudgetMinor: 10000,
+      basis: 'blended',
       currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED',
       efficiencyStatus: 'UNAVAILABLE', efficiencyReason: 'CURRENCY_UNTRUSTED',
       spendPeriod: null,
