@@ -77,6 +77,14 @@ describe('SC-17A budget publication rendering', () => {
     expect(row(labels[1]).querySelector('[style]')).toHaveStyle({ width: '50.02%' });
     expect(row(labels[1]).textContent).toContain(formatCurrency(500, 'EGP'));
   });
+
+  it('P7-08 preserves a genuinely published zero lane and its explicit EGP denomination', () => {
+    view({ ...available, killSpendMinor: 0, killPct: 0, holdSpendMinor: 75010, holdPct: 75.01 });
+    expect(within(row(labels[0])).getByText('0%')).toBeInTheDocument();
+    expect(row(labels[0]).textContent).toContain(formatCurrency(0, 'EGP'));
+    expect(row(labels[0]).querySelector('[style]')).toHaveStyle({ width: '0%' });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
   it.each([
     ['MIXED_CURRENCY', /currencies cannot be combined/i],
     ['UNKNOWN_CURRENCY', /denomination cannot be established/i],

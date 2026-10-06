@@ -22,7 +22,7 @@
   --c-text-base: #2B2B2B;
   --c-text-soft: #3A3A3A;
   --c-text-muted: #6B6B6B;
-  --c-text-subtle: #9A9A9A;
+  --c-text-subtle: var(--c-text-muted);
 
   /* Verdict / signal */
   --c-kill: #EF4444;
@@ -64,7 +64,7 @@
 
 .operationsRoot :global(.section-label) {
   font-family: var(--f-display);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -120,6 +120,43 @@
   border-color: var(--c-text-muted);
   color: var(--c-text-base);
   background: var(--c-surface-elevated);
+}
+
+.pageContent { max-width: 1280px; margin: 0 auto; padding: 24px 16px; }
+.healthGroups { display: flex; flex-wrap: wrap; gap: 20px; font-size: 12px; color: var(--c-text-base); }
+.healthGroups section { min-width: 0; max-width: 100%; }
+.healthGroups h2 { font-size: 12px; font-weight: 600; margin: 0 0 8px; }
+.healthGroups p { margin: 0; }
+.measurements { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 0; }
+.measurements dt { color: var(--c-text-muted); font-size: 12px; }
+.measurements dd { margin: 4px 0 0; font-size: 16px; }
+.eventLayout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.eventLayout > * { min-width: 0; overflow-wrap: anywhere; }
+.transitionHistory { list-style: none; margin: 0; padding: 8px; background: var(--c-surface-card); border: 1px solid var(--c-surface-border); border-radius: 14px; }
+.transitionRecord { padding: 12px; border-bottom: 1px solid var(--c-surface-border); font-size: 12px; }
+.transitionRecord:last-child { border-bottom: none; }
+.transitionStates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.eventFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 12px 0 0; font-size: 12px; }
+.eventFacts > div { min-width: 0; overflow-wrap: anywhere; }
+.eventFacts dt { font-size: 12px; color: var(--c-text-muted); }
+.eventFacts dd { margin: 4px 0 0; font-size: 12px; color: var(--c-text-base); }
+.eventReason { overflow-wrap: anywhere; margin: 12px 0 0; color: var(--c-text-soft); font-size: 12px; }
+.executionList { display: grid; gap: 10px; }
+.executionRecord { min-width: 0; padding: 16px; background: var(--c-surface-card); border: 1px solid var(--c-surface-border); border-radius: 12px; }
+.executionIdentity { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+.executionOpen { background: transparent; border: none; padding: 0; color: var(--c-text-base); font-size: 12px; font-weight: 600; cursor: pointer; }
+.incidentLayout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.incidentLayout > * { min-width: 0; overflow-wrap: anywhere; }
+.collisionLayout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 20px; }
+.operationsRoot button:focus-visible { outline: 2px solid var(--c-text-base); outline-offset: 3px; }
+@media (min-width: 768px) {
+  .pageContent { padding: 32px 32px 24px; }
+  .eventFacts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .collisionLayout { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+}
+@media (min-width: 1024px) {
+  .eventLayout { grid-template-columns: minmax(0, 1fr) 280px; }
+  .incidentLayout { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
 }
 
 /* ── Global animations (hoisted so inline `animation` values resolve) ── */

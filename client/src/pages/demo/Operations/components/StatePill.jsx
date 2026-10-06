@@ -1,9 +1,9 @@
 import { STATE_CFG } from '../utils/stateConfig.js';
 
 export function StatePill({ state, size = 'sm' }) {
-  const c = STATE_CFG[state] || STATE_CFG.PENDING;
+  const c = STATE_CFG[state] || { label: state || 'Unknown state', color: 'var(--c-text-muted)', bg: 'var(--c-surface-elevated)', dot: 'muted' };
   const dot = c.dot;
-  const fs = size === 'lg' ? 12 : 10;
+  const fs = 12;
   return (
     <span className="font-mono" style={{
       display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -13,7 +13,8 @@ export function StatePill({ state, size = 'sm' }) {
       fontWeight: 600,
       letterSpacing: '0.08em',
       background: c.bg,
-      color: c.color,
+      color: 'var(--c-text-base)',
+      overflowWrap: 'anywhere',
       border: `1px solid ${c.color}33`,
     }}>
       <span style={{

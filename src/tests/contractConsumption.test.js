@@ -103,12 +103,15 @@ const UNVALIDATED_CALLERS = [
   'hooks/useProjectId.js',
   'hooks/useUserRole.js',
   'hooks/useWorkspace.js',
-  'pages/Observability.jsx',
   'pages/demo/Operations/ExecutionTimeline.jsx',
   'pages/demo/Operations/LiveMonitor.jsx',
-  'pages/demo/Operations/components/RuntimeHealthStrip.jsx',
   'router/ProtectedRoute.jsx',
 ];
+
+// P7-08: Observability and RuntimeHealthStrip now admit their live operational
+// measurements against narrow schemas. Their missing/empty/failure distinctions
+// are proved through real route responses; retaining these entries would rot
+// the baseline rather than protect an outstanding validation gap.
 
 // Client contract schemas that nothing a surface parses can ever contain.
 //

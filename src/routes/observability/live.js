@@ -102,7 +102,7 @@ liveRouter.get('/live', async (req, res) => {
 
     // Calculate queue metrics
     const queueDepth = queuedExecutions.length;
-    let avgWaitMs = 0;
+    let avgWaitMs = null;
     let oldestQueuedAt = null;
 
     if (queueDepth > 0) {

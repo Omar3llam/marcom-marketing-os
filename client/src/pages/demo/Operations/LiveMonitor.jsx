@@ -6,7 +6,7 @@
 // against out-of-order packets.
 // ============================================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Activity, AlertTriangle, Search, ChevronRight } from 'lucide-react';
+import { Activity, AlertTriangle, Search } from 'lucide-react';
 import { api } from '../../../lib/api.js';
 import { connectExecutionStream } from '../../../lib/events.js';
 import { auth } from '../../../firebase.js';
@@ -16,6 +16,7 @@ import { ActorBadge } from './components/ActorBadge.jsx';
 import { PanelMessage } from './components/PanelMessage.jsx';
 import { LoadingBlock } from './components/LoadingBlock.jsx';
 import { shortId, formatAge } from './utils/formatting.js';
+import styles from './Operations.module.css';
 
 // 1-second tick used to repaint age + stale state without re-fetching.
 // Pure clock — no execution-list mutations happen on this interval.
@@ -34,7 +35,6 @@ const isInFlight = (s) => IN_FLIGHT_STATUSES.includes(s);
 const isFailed   = (s) => FAILURE_STATUSES.includes(s);
 const isStale    = (e) => isInFlight(e.status) && typeof e.liveAgeSeconds === 'number' && e.liveAgeSeconds > 30;
 
-const GRID_COLS = '90px 1fr 130px 140px 80px 80px 90px 90px 32px';
 const FILTERS = ['all', 'in-flight', 'failed', 'stale'];
 
 export function LiveMonitor({ onOpen, onOpenIncident }) {
@@ -47,7 +47,8 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
   const load = useCallback(async () => {
     try {
       const { data } = await api.get('/api/execute/active');
-      setExecutions(data.executions || []);
+      if (!Array.isArray(data?.executions) || data.executions.some(e => !e?.id)) throw new Error('The execution list could not be established from this response.');
+      setExecutions(data.executions);
       setError(null);
     } catch (err) {
       setError(err?.message || 'Failed to load executions');
@@ -171,12 +172,13 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {FILTERS.map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
+              aria-pressed={filter === f}
               className="font-mono"
               style={{
                 padding: '6px 12px',
@@ -184,7 +186,7 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
                 border: `1px solid ${filter === f ? 'var(--c-surface-border-strong)' : 'var(--c-surface-border)'}`,
                 color: filter === f ? 'var(--c-text-base)' : 'var(--c-text-muted)',
                 borderRadius: 999,
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 600,
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
@@ -196,14 +198,12 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{
               width: 6, height: 6, borderRadius: '50%',
-              background: sseConnected ? 'var(--c-scale)' : 'var(--c-hold)',
-              boxShadow: sseConnected ? '0 0 6px var(--c-scale)' : '0 0 6px var(--c-hold)',
-              animation: 'intel-pulse 1.6s ease-in-out infinite',
+              background: 'var(--c-text-muted)',
             }} />
-            {sseConnected ? 'SSE live' : 'Polling fallback'} · {rows.length} rows
+            {sseConnected ? 'SSE connected' : 'Polling fallback'} · {loading ? 'Reading executions' : error ? 'Read unavailable' : `${rows.length} rows`}
           </span>
           <button type="button" className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }}>
             <Search size={12} />
@@ -220,68 +220,38 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
         <PanelMessage
           icon={Activity}
           title="No executions match this filter"
-          hint="The runtime is idle, or your filter is too narrow."
+          hint="No executions from the current read match the selected filter."
         />
       ) : (
-        <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: 12, padding: '12px 16px', background: 'var(--c-surface-elevated)', borderBottom: '1px solid var(--c-surface-border)' }}>
-            {['Exec ID', 'Action / Target', 'State', 'Correlation', 'Actor', 'Ver', 'Age', 'Duration', ''].map((h, idx) => (
-              <span key={`${h}-${idx}`} className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>
-                {h}
-              </span>
-            ))}
-          </div>
+        <div className={styles.executionList}>
           {rows.map((e) => {
-            const stale = isStale(e);
             const failed = isFailed(e.status);
             const onClick = () => (failed ? onOpenIncident(e.id) : onOpen(e.id));
-            const duration = e.createdAt && e.updatedAt
-              ? `${Math.max(0, Math.round((new Date(e.updatedAt).getTime() - new Date(e.createdAt).getTime()) / 1000))}s`
-              : '—';
-            return (
-              <div
-                key={e.id}
-                role="button"
-                tabIndex={0}
-                onClick={onClick}
-                onKeyDown={(ev) => { if (ev.key === 'Enter') onClick(); }}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: GRID_COLS,
-                  gap: 12,
-                  padding: '14px 16px',
-                  borderBottom: '1px solid var(--c-surface-border)',
-                  alignItems: 'center',
-                  background: stale ? 'rgba(245,158,11,0.04)' : 'transparent',
-                  cursor: 'pointer',
-                  transition: 'background 120ms',
-                }}
-                onMouseEnter={(ev) => { ev.currentTarget.style.background = stale ? 'rgba(245,158,11,0.08)' : 'var(--c-surface-elevated)'; }}
-                onMouseLeave={(ev) => { ev.currentTarget.style.background = stale ? 'rgba(245,158,11,0.04)' : 'transparent'; }}
-              >
-                <span className="font-mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-base)' }}>#{shortId(e.id)}</span>
-                <div>
-                  <div className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-base)' }}>{e.actionType}</div>
-                  <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 2 }}>→ {e.targetId || '—'}</div>
-                </div>
+            const durationMs = e.createdAt && e.updatedAt
+              ? new Date(e.updatedAt).getTime() - new Date(e.createdAt).getTime() : null;
+            const duration = Number.isFinite(durationMs) && durationMs >= 0 ? `${Math.round(durationMs / 1000)}s` : '—';
+            const facts = [
+              ['Action', e.actionType || '—'], ['Target', e.targetId || '—'],
+              ['Correlation', e.correlationId || '—'], ['Actor', e.actor ? <ActorBadge name={e.actor} /> : '—'],
+              ['Version', e.version == null ? '—' : `v${e.version}`],
+              ['Age since update', formatAge(e.liveAgeSeconds)], ['Duration', duration],
+            ];
+            return <article key={e.id} aria-label={`Execution ${shortId(e.id)}`} className={styles.executionRecord}>
+              <div className={styles.executionIdentity}>
+                <button type="button" onClick={onClick} className={styles.executionOpen}>Open execution #{shortId(e.id)}</button>
                 <StatePill state={e.status} />
-                <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)' }}>{e.correlationId || '—'}</span>
-                <ActorBadge name={e.actor || 'SYSTEM'} />
-                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-soft)' }}>v{e.version ?? 0}</span>
-                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: stale ? 'var(--c-hold-text)' : 'var(--c-text-muted)' }}>
-                  {stale && <AlertTriangle size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
-                  {formatAge(e.liveAgeSeconds)}
-                </span>
-                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{duration}</span>
-                <ChevronRight size={14} style={{ color: 'var(--c-text-subtle)' }} />
               </div>
-            );
+              <dl className={styles.eventFacts}>{facts.map(([label, value]) => <div key={label}>
+                <dt>{label}</dt><dd className="font-mono">{value}</dd>
+              </div>)}</dl>
+              {isStale(e) && <p className={styles.eventReason}>Stale by the current in-flight age filter (&gt;30s).</p>}
+            </article>;
           })}
         </div>
       )}
 
-      <div className="font-mono" style={{ marginTop: 12, fontSize: 10, color: 'var(--c-text-subtle)', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <span><span style={{ color: 'var(--c-hold)' }}>●</span> stale = in-flight &gt; 30s</span>
+      <div className="font-mono" style={{ marginTop: 12, fontSize: 12, color: 'var(--c-text-muted)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14 }}>
+        <span><span aria-hidden="true" style={{ color: 'var(--c-hold)' }}>●</span> stale = in-flight &gt; 30s</span>
         <span>·</span>
         <span>workspace-isolated · SSE primary · 30s safety-net poll</span>
       </div>
