@@ -121,6 +121,30 @@ describe('P7-07C evidence-only money and labelled readouts', () => {
   });
 });
 
+describe('P7-07I local ROAS magnitude and unit policy', () => {
+  const roasCells = () => within(screen.getByRole('table', { name: 'Observed performance comparison' }))
+    .getByRole('row', { name: /^ROAS / }).querySelectorAll('td');
+  it.each([[2, '2.00×'], [1.234, '1.23×'], [2.4, '2.40×'], [.5, '0.50×'], [.01, '0.01×'],
+    [.006, '0.006×'], [.004, '0.004×'], [.001, '0.001×'], [.0004, '<0.001×'],
+    [.0099, '0.01×'], [.0040000000000000036, '0.004×'], [Number.MIN_VALUE, '<0.001×'],
+    [0, '0.00×'], [-0, '0.00×'], [null, '—']])('unsigned %s displays %s in both windows', (value, text) => {
+    show({ baseline: window_(BASELINE_DAYS, { roas: value }), observation: window_(OBSERVATION_DAYS, { roas: value }) });
+    expect([...roasCells()].slice(0, 2).map(cell => cell.textContent)).toEqual([text, text]);
+  });
+  it.each([[.25, '+0.25×'], [-.25, '-0.25×'], [.01, '+0.01×'], [-.01, '-0.01×'],
+    [.006, '+0.006×'], [-.006, '-0.006×'], [.004, '+0.004×'], [-.004, '-0.004×'],
+    [.001, '+0.001×'], [-.001, '-0.001×'], [.0004, '+<0.001×'], [-.0004, '-<0.001×'],
+    [.0009999, '+<0.001×'], [.0099, '+0.01×'], [-.0099, '-0.01×'],
+    [.0040000000000000036, '+0.004×'], [Number.MIN_VALUE, '+<0.001×'], [-Number.MIN_VALUE, '-<0.001×'],
+    [0, '0.00×'], [-0, '0.00×'], [null, '—']])('signed delta %s displays %s with labelled-record parity', (value, text) => {
+    show({ delta: { spendMinor: 0, revenueMinor: 0, roas: value, currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED' } });
+    expect(roasCells()[2].textContent).toBe(text);
+    const record = screen.getByRole('article', { name: 'ROAS evidence' });
+    expect(within(record).getByText('Observed change').nextElementSibling.textContent).toBe(text);
+    expect(record.textContent).not.toMatch(/[+-]0\.00×|[+-]0\.000×/);
+  });
+});
+
 describe('MEASURABLE', () => {
   it('shows both windows and the observed change', () => {
     show();

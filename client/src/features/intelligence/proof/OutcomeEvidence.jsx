@@ -32,6 +32,22 @@ const note = 'text-sm text-lumi-muted';
 /** A window's date range, stated plainly. ISO dates, so nothing is ambiguous. */
 const range = (w) => (w?.days?.length ? `${w.days[0]} → ${w.days[w.days.length - 1]}` : '—');
 
+// Outcome ROAS is an absolute multiple, including the server-published delta.
+// Adapt only magnitude text; never turn a measured nonzero value into zero.
+function formatOutcomeRoas(value, { signed = false } = {}) {
+  if (!Number.isFinite(value)) return '—';
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return '0.00×';
+  const sign = value < 0 ? '-' : signed ? '+' : '';
+  let text;
+  if (magnitude < 0.001) text = '<0.001';
+  else if (magnitude < 0.01) {
+    const rounded = magnitude.toFixed(3);
+    text = Number(rounded) >= 0.01 ? '0.01' : rounded;
+  } else text = magnitude.toFixed(2);
+  return `${sign}${text}×`;
+}
+
 function Shell({ children, title }) {
   return (
     <div className={box}>
@@ -53,7 +69,7 @@ function Comparison({ evidence, showDelta }) {
   // Each cell reads its own published unit, including incomplete windows.
   const money = (side, key) => denomination(side) && known(side[key]) ? formatCurrency(side[key], side.currency) : '—';
   const ratio = (side, signed = false) => denomination(side) && known(side.roas)
-    ? `${signed && side.roas > 0 ? '+' : ''}${side.roas.toFixed(2)}` : '—';
+    ? formatOutcomeRoas(side.roas, { signed }) : '—';
 
   const rows = [
     ['Spend', money(baseline, 'spendMinor'), money(observation, 'spendMinor'), money(delta, 'spendMinor')],
