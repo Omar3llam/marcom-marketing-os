@@ -63,7 +63,7 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
                 disabled={switching === platform}
                 onChange={(e) => onSwitchAccount?.(platform, e.target.value)}
                 aria-label={`Active ${LABEL[platform] ?? platform} ad account`}
-                className="font-mono text-xs bg-lumi-surface border border-lumi-border rounded px-2 py-1 text-lumi-text disabled:opacity-50 max-w-[14rem]"
+                className="font-mono text-sm bg-lumi-surface border border-lumi-border rounded px-2 py-1 text-lumi-text disabled:opacity-50 max-w-[14rem]"
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.name ? `${a.name} (${a.id})` : a.id}</option>
@@ -71,7 +71,7 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
               </select>
             )}
             {connected ? (
-              <span className="w-full min-w-0 font-mono text-xs text-lumi-subtle">
+              <span className="w-full min-w-0 font-mono text-sm text-lumi-muted">
                 {switching === platform ? 'switching…' : connectorFactLabels(c, { details: true }).map((label) => (
                   <span key={label} className="block break-words">{label}</span>
                 ))}

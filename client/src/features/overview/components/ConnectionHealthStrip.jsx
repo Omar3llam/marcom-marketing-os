@@ -35,11 +35,11 @@ export default function ConnectionHealthStrip({ compact = false, state = null })
       ? (
         <div className="space-y-1">
           <p className="section-label text-lumi-muted">Channels</p>
-          <p className="text-xs text-dark-soft">Couldn&apos;t load channel status.</p>
+          <p className="text-sm text-dark-soft">Couldn&apos;t load channel status.</p>
         </div>
       )
       : (
-        <div className="mb-6 rounded-xl border border-lumi-border bg-lumi-elevated px-4 py-2.5 font-mono text-xs text-dark-soft">
+        <div className="mb-6 rounded-xl border border-lumi-border bg-lumi-elevated px-4 py-2.5 font-mono text-sm text-dark-soft">
           Couldn&apos;t load channel status right now.
         </div>
       );
@@ -63,8 +63,8 @@ export default function ConnectionHealthStrip({ compact = false, state = null })
           const labels = connected ? connectorFactLabels(c) : ['Not connected'];
           return (
             <div key={key} className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-lumi-text">{label}</span>
-              <span className="min-w-0 text-right text-xs text-lumi-muted">
+              <span className="text-sm text-lumi-text">{label}</span>
+              <span className="min-w-0 text-right text-sm text-lumi-muted">
                 {labels.map((text) => <span key={text} className="block break-words">{text}</span>)}
               </span>
             </div>
@@ -94,8 +94,8 @@ export default function ConnectionHealthStrip({ compact = false, state = null })
         return (
           <span key={key} className="inline-flex min-w-0 items-center gap-1.5">
             <Plug className="w-3.5 h-3.5 flex-shrink-0 text-dark-subtle" strokeWidth={1.5} />
-            <span className="font-display text-xs font-medium text-dark-base">{label}</span>
-            <span className="min-w-0 font-mono text-[10px] text-dark-soft">
+            <span className="font-display text-sm font-medium text-dark-base">{label}</span>
+            <span className="min-w-0 font-mono text-sm text-dark-soft">
               {labels.map((text) => <span key={text} className="block break-words">{text}</span>)}
             </span>
           </span>
