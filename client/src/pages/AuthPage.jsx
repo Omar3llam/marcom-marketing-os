@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { toast } from 'sonner';
-import { Sparkles, AlertCircle, ExternalLink, ArrowLeft } from 'lucide-react';
+import { AlertCircle, ExternalLink, ArrowLeft } from 'lucide-react';
 import { MetricValue, DecisionTitle } from '@/components/primitives';
 import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton.jsx';
@@ -130,14 +130,13 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
 
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 text-dark-base mb-3">
-            <Sparkles className="h-6 w-6 text-lumi-gold" />
-            <MetricValue as="span" className="tracking-tight">Lumi</MetricValue>
+            <MetricValue as="span" className="tracking-tight">LUMI</MetricValue>
           </div>
           <DecisionTitle as="h1" className="text-dark-base">
             {isLogin ? 'Welcome back' : 'Create your account'}
           </DecisionTitle>
           <p className="mt-1 text-sm text-dark-soft">
-            {isLogin ? 'Sign in to continue to your workspace' : 'Get started with your AI marketing co-pilot'}
+            {isLogin ? 'Sign in to continue to your workspace' : 'Decision Intelligence for Performance Marketing'}
           </p>
         </div>
 
