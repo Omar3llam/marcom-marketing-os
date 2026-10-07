@@ -35,7 +35,7 @@ describe('LUMI landing — structure', () => {
     renderLanding();
     const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
     expect(titles).toEqual([
-      'Dashboards report everything and decide nothing.',
+      'Dashboards can show what happened. The decision about what to do next is still yours.',
       'LUMI reasons in one direction.',
       'Six verdicts. Each one is a call, not a colour.',
       'A decision keeps its grounds.',

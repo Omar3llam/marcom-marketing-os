@@ -95,7 +95,7 @@ export function MemorySection() {
     <LandingSection
       id="memory"
       title="Decisions compound into memory."
-      lead="Every decision is kept with what LUMI knew when it made it. Outcomes are measured against it. What keeps holding becomes a belief about your account — and every belief shows its record."
+      lead="Recorded decisions keep the grounds captured when the call was made. When an outcome can be observed safely, LUMI measures it against the recorded decision. Patterns that keep holding can become account beliefs. Each shows its record."
     >
       <div className={css.claimColumn}>
         <Belief />

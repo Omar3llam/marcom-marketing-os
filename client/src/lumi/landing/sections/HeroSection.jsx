@@ -55,7 +55,7 @@ export function HeroSection() {
                 <Heading level={1} variant="brand" id="hero-title">Verdicts. Not dashboards.</Heading>
               </Stack>
               <Text variant="claim" light="body" as="p">
-                LUMI reads the evidence in your Meta Ads and Google Ads accounts and commits to a call on each
+                LUMI reads evidence from supported connected ad accounts and commits to a call on each
                 campaign it can judge — with its reason, its evidence, and what it could not measure.
               </Text>
               <Inline gap="object" align="center">

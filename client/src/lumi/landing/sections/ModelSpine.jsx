@@ -38,12 +38,12 @@ import { Text } from '../../index.js';
 import css from '../landing.module.css';
 
 export const MODEL = [
-  ['Data', 'What Meta Ads, Google Ads and Google Analytics 4 report.', 'Never judges return on revenue no platform reported.'],
+  ['Data', 'What supported connected sources report.', 'Never judges return on revenue no platform reported.'],
   ['Evidence', 'Measurements over a stated window, with anything unmeasured named.', null],
   ['Verdict', 'One of six calls on a campaign.', 'Never an action by itself. Not every verdict has one.'],
   ['Decision', 'The call LUMI commits to, recorded with its reason and evidence.', 'Its call and reasons are never rewritten when a later assessment disagrees.'],
   ['Action', 'What you confirm.', 'Never carried out before you confirm it.'],
-  ['Outcome', 'What was measured after acting — or why it could not be.', null],
+  ['Outcome', 'Observed outcomes or human reports, with their limits — or why no outcome can be measured.', null],
   ['Memory', 'What keeps holding across decisions on your account.', 'Never changes a verdict. It can make LUMI more or less confident.'],
 ];
 
