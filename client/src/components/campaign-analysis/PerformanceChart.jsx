@@ -9,7 +9,7 @@ import { formatCurrency } from '@/lib/money';
 function SpendLane({ label, amountMinor, currency, pct, color }) {
   return (
     <li>
-      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
         <span className="text-lumi-text">{label}</span>
         <span className="inline-flex gap-3 font-mono text-lumi-muted">
           <span>{formatCurrency(amountMinor, currency)}</span>
@@ -56,8 +56,8 @@ export function PerformanceChart({ budgetDistribution, loading = false, error = 
   return (
     <section className="mb-6">
       <div className="section-label mb-2">Scored campaign spend distribution</div>
-      <p className="mb-3 text-xs text-lumi-muted">Positive spend on campaigns with a current LUMI verdict.</p>
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
+      <p className="mb-3 text-sm text-lumi-muted">Positive spend on campaigns with a current LUMI verdict.</p>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
         <span className="text-lumi-muted">Total scored spend</span>
         <span className="font-mono text-lumi-text">{formatCurrency(totalSpendMinor, currency)}</span>
         <span className="font-mono text-lumi-muted">{currency}</span>

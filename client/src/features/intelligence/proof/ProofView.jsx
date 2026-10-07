@@ -75,7 +75,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
     <div className="space-y-4">
       <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
         <ProofSummary surface={surface} />
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono text-lumi-subtle">
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm font-mono text-lumi-muted">
           <span className="inline-flex flex-wrap items-center gap-1">Calibration error (ECE) <HelpTip variant="popover" content={HELP.CALIBRATION} />: <strong className="text-lumi-text">{pct(cal.expectedCalibrationError)}</strong></span>
           <span>Brier: <strong className="text-lumi-text">{cal.brierScore == null ? '—' : cal.brierScore.toFixed(2)}</strong></span>
           <span>Direction: <strong className="text-lumi-text">{cal.direction}</strong></span>
@@ -90,7 +90,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
           <h3 className="section-label">Calibration by decision cohort</h3>
           <p className="mt-2 text-sm text-lumi-muted">Cohort trend: <strong className="text-lumi-text">{trendLabel}</strong></p>
           <p className="mt-2 text-sm text-lumi-muted">Calibration error for scored decisions grouped by UTC issuance month. Lower is better.</p>
-          <p className="mt-1 text-xs text-lumi-muted">The trend uses only cohorts selected by Lumi&apos;s calibration engine.</p>
+          <p className="mt-1 text-sm text-lumi-muted">The trend uses only cohorts selected by Lumi&apos;s calibration engine.</p>
           <ul className="mt-3 space-y-2">
             {vel.periods.map((p) => (
               <li key={p.label} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-lumi-border pt-2 text-sm">
@@ -101,7 +101,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-lumi-muted">Cohort values can update as outcomes mature.</p>
+          <p className="mt-3 text-sm text-lumi-muted">Cohort values can update as outcomes mature.</p>
         </section>
       )}
 

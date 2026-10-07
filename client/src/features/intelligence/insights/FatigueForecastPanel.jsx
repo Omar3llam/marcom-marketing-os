@@ -31,13 +31,6 @@ function compact(n) {
   return String(n);
 }
 
-// Colour the "% of ceiling" readout by how close frequency is to saturation.
-function exhaustionColor(pct) {
-  if (pct >= 85) return 'text-signal-kill';
-  if (pct >= 60) return 'text-signal-watch';
-  return 'text-signal-scale';
-}
-
 function breachLabel(item) {
   const d = item.daysUntilSaturation;
   switch (item.status) {
@@ -98,22 +91,22 @@ export function FatigueForecastPanel({ forecast = [], frequencyCeiling = null, l
         {forecast.map((item) => {
           const cfg = STATUS[item.status] ?? STATUS.STABLE;
           return (
-            <li key={item.entityId}>
+            <li key={item.entityId} className="min-w-0">
               {/* Deep-link to the campaign row on the Campaigns page (reads
                   ?entity= to scroll-to + expand it) — entityId is the connector
                   Campaign.id, so this resolves to the same row the agenda uses. */}
               <Link
                 to={`${appRoutes.campaigns}?entity=${encodeURIComponent(item.entityId)}`}
-                className="flex items-center justify-between gap-3 bg-lumi-surface border border-lumi-border rounded-xl p-4 hover:border-lumi-accent/40 transition-colors focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-lumi-bg"
+                className="flex min-w-0 flex-col items-start justify-between gap-3 sm:flex-row sm:items-center bg-lumi-surface border border-lumi-border rounded-xl p-4 hover:border-lumi-accent/40 transition-colors focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-lumi-bg"
               >
-                <div className="min-w-0">
-                  <p className="font-display text-sm text-lumi-text truncate">{item.name || 'Unnamed campaign'}</p>
-                  <p className="mt-0.5 font-mono text-[10px] text-lumi-subtle truncate">
+                <div className="min-w-0 flex-1 w-full">
+                  <p className="font-display text-sm text-lumi-text break-words">{item.name || 'Unnamed campaign'}</p>
+                  <p className="mt-0.5 font-mono text-sm text-lumi-muted break-words">
                     {item.channel || 'channel'} · freq {item.currentFrequency}
                     {item.velocity != null && ` · +${item.velocity}/day`}
                     {item.reach != null && ` · reach ${compact(item.reach)}`}
                     {item.exhaustionPct != null && (
-                      <span className={cn('ml-1', exhaustionColor(item.exhaustionPct))}>
+                      <span className="ml-1 text-lumi-muted">
                         · {item.exhaustionPct}% of ceiling
                       </span>
                     )}
@@ -121,12 +114,12 @@ export function FatigueForecastPanel({ forecast = [], frequencyCeiling = null, l
                 </div>
                 <span
                   className={cn(
-                    'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-xs whitespace-nowrap',
+                    'shrink-0 max-w-full inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-sm break-words',
                     cfg.text, cfg.bg,
                   )}
                 >
                   {item.status === 'SATURATED' && <AlertTriangle className="w-3 h-3" strokeWidth={2} />}
-                  {breachLabel(item)}
+                  <span className="text-lumi-text">{breachLabel(item)}</span>
                 </span>
               </Link>
             </li>
@@ -135,7 +128,7 @@ export function FatigueForecastPanel({ forecast = [], frequencyCeiling = null, l
       </ul>
 
       {typeof frequencyCeiling === 'number' && Number.isFinite(frequencyCeiling) && frequencyCeiling > 0 && (
-        <p className="mt-3 font-mono text-[10px] text-lumi-subtle">
+        <p className="mt-3 font-mono text-sm text-lumi-muted">
           Saturation threshold: frequency ≥ {frequencyCeiling} · re-scored each sync
         </p>
       )}
