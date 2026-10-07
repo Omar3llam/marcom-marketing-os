@@ -18,10 +18,10 @@ import { LandingSection } from '../parts.jsx';
 import { ModelSpine } from './ModelSpine.jsx';
 import css from '../landing.module.css';
 
-const HANDED_COLUMNS = ['What a dashboard hands you', 'What is still left to you'];
+const HANDED_COLUMNS = ['What reporting can give you', 'What is still left to you'];
 const HANDED = [
-  ['A chart for every metric', 'Deciding which of them matters for this campaign.'],
-  ['A zero where a number is missing', 'Finding out whether it was zero, or never measured.'],
+  ['Reported metrics over a chosen window', 'Deciding which of them matters for this campaign.'],
+  ['A metric without enough context', 'Deciding whether the value is real, comparable, or usable.'],
   ['This week’s numbers', 'Remembering what was decided last time — and whether it worked.'],
 ];
 
@@ -29,7 +29,7 @@ export function ProblemSection() {
   return (
     <LandingSection
       id="problem"
-      title="Dashboards report everything and decide nothing."
+      title="Dashboards can show what happened. The decision about what to do next is still yours."
       lead="Every platform reports its own numbers, over its own window, in its own words. The work that spends the budget starts after the dashboard: reading them together, making the call, and remembering what happened last time."
     >
       <div className={css.ledgerTwo}>
@@ -59,7 +59,7 @@ export function ProblemSection() {
 const SUBJECTS = [
   ['Campaigns', 'A verdict on each campaign it can judge, and a recorded decision whenever that call changes.'],
   ['Budget', 'Allocation plans across campaigns. A plan is something you approve; it is not a verdict.'],
-  ['Tests', 'Experiments and holdouts, read out as whether the change caused the result — including when the honest answer is inconclusive.'],
+  ['Tests', 'A/B experiments compare variants and identify a supported winner — a correlational comparison. Holdouts evaluate incremental causal lift. Either can remain inconclusive when evidence is insufficient.'],
 ];
 
 export function ModelSection() {

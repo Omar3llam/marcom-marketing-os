@@ -22,6 +22,126 @@ const text = (el) => el.textContent.replace(/\s+/g, ' ');
 const verdictRow = (container, verdict) =>
   container.querySelector(`#verdicts li [data-lumi-verdict="${verdict}"]`).closest('li');
 
+// P8-02A: rendered claims plus reaching source authority. These pins are review
+// triggers, not instructions to preserve today's limitations in future engines.
+describe('public claims stay within their reaching authority (P8-02A)', () => {
+  it('separates correlational A/B winners from causal holdouts, with either inconclusive', () => {
+    const { container } = renderLanding();
+    const tests = [...container.querySelectorAll('#how li')]
+      .find((row) => row.querySelector('p')?.textContent === 'Tests');
+    expect(text(tests)).toMatch(/A\/B experiments compare variants.*supported winner.*correlational/i);
+    expect(text(tests)).toMatch(/Holdouts evaluate incremental causal lift/i);
+    expect(text(tests)).toMatch(/Either can remain inconclusive.*evidence/i);
+    expect(text(tests)).not.toMatch(/experiments and holdouts.*caused the result/i);
+  });
+
+  it('pins separate test readout and holdout paths, both able to withhold conclusions', () => {
+    const tracker = read('../src/services/test-tracker/TestTrackerService.js');
+    expect(tracker).toMatch(/readTest\(/);
+    expect(tracker).toMatch(/designTest\(/);
+    expect(tracker).toMatch(/correlational[\s\S]*?causal/);
+    expect(read('../src/services/test-readout/testReadoutEngine.js'))
+      .toMatch(/winnerLabel: null,[\s\S]*?CONFIDENCE_LABEL\.INCONCLUSIVE/);
+    expect(read('../src/services/incrementality-engine/incrementalityEngine.js'))
+      .toMatch(/status: conclusive \? 'CONCLUSIVE' : 'INCONCLUSIVE'/);
+  });
+
+  it('offers Meta setup and qualifies configured Google reporting, not equivalent new setup', () => {
+    const { container } = renderLanding();
+    expect(container.querySelector('#start')).toHaveTextContent('Create an account, then connect Meta Ads.');
+    expect(text(container)).not.toMatch(/connect Meta Ads or Google Ads/i);
+    expect(container.querySelector('#questions')).toHaveTextContent('Google Ads reporting is supported for configured accounts; first-time Google setup is not currently available through the self-service connection flow.');
+    expect(text(container)).toContain('supported connected ad accounts');
+  });
+
+  it('pins the sunset Google discovery limitation; restoration requires landing claim review', () => {
+    const discovery = read('../src/routes/auth/google.js');
+    // A changed discovery path must trigger review of the public qualification.
+    // This does NOT assert v17 is a permanent requirement of the product.
+    expect(discovery, 'Google discovery changed: review landing availability claims against the restored reaching flow.')
+      .toContain('https://googleads.googleapis.com/v17/customers:listAccessibleCustomers');
+    expect(discovery).toMatch(/accountId = \(body\.resourceNames/);
+    expect(read('../src/services/connectors/GoogleAdsConnector.js'))
+      .toContain("if (!cred.accountId) return { ok: false, error: 'Google credential has no customerId' }");
+    expect(read('../src/services/connectors/google/googleAdsClient.js'))
+      .toMatch(/fetchGoogleCampaignMetrics[\s\S]*?\$\{API_VERSION\}/);
+    expect(read('src/features/connectors/services.js')).toContain("GOOGLE: '/api/auth/google/connect'");
+  });
+
+  it('does not present GA4 backend support as public self-service connection readiness', () => {
+    const { container } = renderLanding();
+    const data = [...container.querySelectorAll('[data-landing-spine] > li')]
+      .find((row) => row.querySelector('button').textContent === 'Data');
+    expect(data).toHaveTextContent('What supported connected sources report.');
+    expect(container.querySelector('#questions')).toHaveTextContent('Google Analytics 4 data support exists, but self-service connection is not currently available.');
+    expect(text(container)).not.toMatch(/Meta Ads and Google Ads, plus Google Analytics 4|connect (GA4|Google Analytics 4)|revenue automatically comes from GA4/i);
+  });
+
+  it('pins GA4 foundation and the actual onboarding, settings and mounted auth paths', () => {
+    expect(read('../src/services/connectors/connectorRegistry.js')).toContain('[GA4]:            ga4Connector');
+    expect(read('../src/services/connectors/GA4Connector.js')).toContain("if (!cred.accountId) return { ok: false, error: 'GA4 credential has no property id' }");
+    const services = read('src/features/connectors/services.js');
+    const paths = services.match(/export const CONNECT_PATH = (\{[^;]+\});/)[1];
+    expect(paths, 'New self-service path: review landing provider availability.').toBe("{ GOOGLE: '/api/auth/google/connect', META: '/api/auth/meta/connect' }");
+    expect(services).toContain('return Boolean(CONNECT_PATH[platform]);');
+    expect(services).toContain('const path = CONNECT_PATH[platform];');
+    const settings = read('src/features/connectors/ConnectorsView.jsx');
+    expect(settings).toContain("const KNOWN = ['META', 'GOOGLE', 'TIKTOK', 'LINKEDIN', 'SNAP'];");
+    expect(settings).toMatch(/isConnectable\(platform\)[\s\S]*?startConnect\(platform, projectId\)/);
+    expect(read('src/pages/OnboardingPage/steps/ConnectStep.jsx')).toContain("startConnect('META', projectId, RETURN_TO)");
+    const mountedAuth = [...read('../src/server.js').matchAll(/app\.use\('(\/api\/auth\/[^']+)'/g)].map((match) => match[1]);
+    expect(mountedAuth).toContain('/api/auth/meta');
+    expect(mountedAuth).toContain('/api/auth/google');
+    expect(mountedAuth).not.toContain('/api/auth/ga4');
+  });
+
+  it('replaces universal missing-zero and decide-nothing claims with an operator context task', () => {
+    const problem = text(renderLanding().container.querySelector('#problem'));
+    expect(problem).toContain('The decision about what to do next is still yours.');
+    expect(problem).toContain('A metric without enough context');
+    expect(problem).toContain('Deciding whether the value is real, comparable, or usable.');
+    expect(problem).not.toMatch(/report everything and decide nothing|a zero where a number is missing/i);
+  });
+
+  it('removes universal dashboard memory and missing-value claims from the comparison', () => {
+    const difference = text(renderLanding().container.querySelector('#difference'));
+    expect(difference).not.toMatch(/Nothing between visits|A zero or an empty chart/i);
+    expect(difference).toContain('A reporting workflow');
+    expect(difference).toContain('The operator’s tasks in reporting and question-answer workflows, alongside what LUMI records and supports.');
+  });
+
+  it('removes unsupported chat evidence, memory and action limitations', () => {
+    const difference = text(renderLanding().container.querySelector('#difference'));
+    expect(difference).not.toMatch(/whether or not the data supports it|The conversation\.|No one\./i);
+    expect(difference).toContain('A question-answer workflow');
+    expect(difference).toContain('Check what evidence supports the answer.');
+  });
+
+  it('limits Memory to captured grounds, safely observable outcomes and supported patterns', () => {
+    const { container } = renderLanding();
+    expect(container.querySelector('#memory')).toHaveTextContent('Recorded decisions keep the grounds captured when the call was made.');
+    expect(container.querySelector('#memory')).toHaveTextContent('When an outcome can be observed safely, LUMI measures it against the recorded decision.');
+    expect(container.querySelector('#memory')).toHaveTextContent('Patterns that keep holding can become account beliefs.');
+    expect(container.querySelector('#how')).toHaveTextContent('Observed outcomes or human reports, with their limits — or why no outcome can be measured.');
+    expect(container.querySelector('#difference')).toHaveTextContent('Recorded decisions, captured grounds, and outcomes where safely observable.');
+    expect(text(container)).not.toMatch(/Every decision is kept with what LUMI knew|Every decision, and what happened after it\./);
+  });
+
+  it('pins uncaptured decision provenance, human outcome origin/window limits and belief eligibility', () => {
+    expect(read('../src/services/verdict-engine/VerdictService.js')).toContain('if (!basis) return null;');
+    expect(read('../src/services/decision-accuracy/outcomeEvidence.js')).toContain('A recorded outcome is HUMAN-REPORTED.');
+    expect(read('../src/services/decision-accuracy/DecisionAccuracyService.js')).toContain('an outcome cannot cover time that has not happened');
+    expect(read('../src/services/pattern-engine/patternEngine.js'))
+      .toContain('effectiveSupport >= cfg.minEstablished && accuracy != null && accuracy >= cfg.minAccuracy');
+  });
+
+  it('metadata describes supported connected evidence without promising new provider setup', () => {
+    const metadata = read('index.html');
+    expect(metadata).toMatch(/name="description" content="LUMI reads evidence from supported connected ad accounts/);
+    expect(metadata).not.toMatch(/name="description" content="[^"]*your Meta Ads and Google Ads accounts/);
+  });
+});
+
 describe('no measured revenue → engagement only, and KILL / SCALE are still possible', () => {
   it('says so in the ruled words, in the footnote, both rows and the FAQ', () => {
     const { container } = renderLanding();

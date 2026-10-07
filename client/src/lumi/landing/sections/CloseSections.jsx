@@ -9,7 +9,8 @@
 //   execution    decisionExecutability.js (KILL → pause on Meta, on confirmation;
 //                SCALE / REFRESH / REALLOCATE need operator input; no auto-execution
 //                path exists in src/)
-//   connectors   connectorRegistry.js:19-23
+//   connectors   registry capability differs from self-service reachability:
+//                onboarding ConnectStep, connectors/services.js and auth/google.js
 //   verdicts     verdictEngine.js is a pure function of the evidence, not a chat model
 //   no revenue   verdictEngine.js:358-363 (roas null, engagement only), and relativeRanking.js
 //                can still rank a no-revenue campaign KILL / SCALE against comparable ones
@@ -21,21 +22,21 @@ import { cx } from '../../contract.js';
 import { LandingSection } from '../parts.jsx';
 import css from '../landing.module.css';
 
-const WAYS = ['A dashboard', 'A chat assistant', 'LUMI'];
+const WAYS = ['A reporting workflow', 'A question-answer workflow', 'LUMI'];
 const COMPARISON = [
-  ['What you get', 'Charts of what happened.', 'An answer to the question you asked.',
-    'A call on each campaign, with its reason and evidence.'],
-  ['When data is missing', 'A zero or an empty chart.', 'A fluent answer, whether or not the data supports it.',
-    'The absence, named, with its reason.'],
-  ['What it remembers', 'Nothing between visits.', 'The conversation.',
-    'Every decision, and what happened after it.'],
-  ['Who acts', 'You, after interpreting it.', 'No one.',
+  ['What you get', 'Read the reported metrics and choose the next step.', 'Ask a question and assess the answer.',
+    'A call on each campaign it can judge, with its reason and evidence.'],
+  ['When data is missing', 'Check what was measured and over which window.', 'Check what evidence supports the answer.',
+    'Supported absences, named with their reasons.'],
+  ['What it remembers', 'Keep a record of the call and the grounds you used.', 'Keep the answer and the grounds you relied on.',
+    'Recorded decisions, captured grounds, and outcomes where safely observable.'],
+  ['Who acts', 'Choose and confirm the change you intend to make.', 'Decide whether to act on the answer.',
     'You confirm. After a KILL, LUMI can pause the campaign on Meta; nothing changes on its own.'],
 ];
 
 export function DifferenceSection() {
   return (
-    <LandingSection id="difference" title="Not a dashboard. Not a chat window." lead="Three ways to work with the same account data.">
+    <LandingSection id="difference" title="Not a dashboard. Not a chat window." lead="The operator’s tasks in reporting and question-answer workflows, alongside what LUMI records and supports.">
       <div className={css.ledgerFour}>
         <div className={css.ledgerHeader}>
           <span />
@@ -61,13 +62,13 @@ export function DifferenceSection() {
 
 const QUESTIONS = [
   ['I already have dashboards. Why add LUMI?',
-    'Keep them. A dashboard shows what happened; LUMI commits to what each campaign needs and shows its grounds. Where there is no revenue to judge return on, LUMI says so instead of showing a return of zero.'],
+    'Keep them. In a reporting workflow, you read what happened and choose the next step. LUMI commits to a call on each campaign it can judge and shows its grounds. Where there is no revenue to judge return on, LUMI says so instead of showing a return of zero.'],
   ['What if my data is incomplete?',
     'Where revenue, conversions or delivery were not measured, LUMI says so, and why. A campaign whose revenue was never measured is judged on engagement alone, and its verdict says so — including when it is compared with similar campaigns in your account.'],
   ['Does LUMI change my campaigns on its own?',
     'No. Today one action can be carried out from a verdict: pausing a campaign on Meta after a KILL, when you confirm it. SCALE, REFRESH and REALLOCATE need a figure or a creative from you, so LUMI does not pretend to act on them.'],
   ['Which platforms does it connect to?',
-    'Meta Ads and Google Ads, plus Google Analytics 4 for revenue the ad platforms do not report.'],
+    'Meta Ads is available through self-service connection. Google Ads reporting is supported for configured accounts; first-time Google setup is not currently available through the self-service connection flow. Google Analytics 4 data support exists, but self-service connection is not currently available.'],
   ['Is LUMI a chatbot?',
     'No. Verdicts are computed from your account’s evidence the same way every time; they are not written by a chat model.'],
   ['Who is LUMI for?',
@@ -101,7 +102,7 @@ export function StartSection() {
     <LandingSection
       id="start"
       title="Start from your own evidence."
-      lead="Create an account, then connect Meta Ads or Google Ads. LUMI makes its calls from your account’s own data — and tells you where that data is not enough yet."
+      lead="Create an account, then connect Meta Ads. LUMI makes its calls from your account’s own data — and tells you where that data is not enough yet."
     >
       <Stack gap="object">
         <Inline gap="object" align="center">
