@@ -57,9 +57,10 @@ export function ProblemSection() {
 }
 
 const SUBJECTS = [
-  ['Campaigns', 'A verdict on each campaign it can judge, and a recorded decision whenever that call changes.'],
-  ['Budget', 'Allocation plans across campaigns. A plan is something you approve; it is not a verdict.'],
-  ['Tests', 'A/B experiments compare variants and identify a supported winner — a correlational comparison. Holdouts evaluate incremental causal lift. Either can remain inconclusive when evidence is insufficient.'],
+  ['Campaign decisions', 'Evidence-backed calls for campaigns LUMI can judge. A changed call can become a recorded decision; a verdict is not execution.'],
+  ['Budget Allocation', 'Preview a proposed budget plan from comparable currency evidence over the spend period it governs. Committing an eligible plan creates proposed moves; you still confirm them before execution.'],
+  ['Testing OS', 'Choose suggested experiments, then start and conclude the tests you commit. A/B experiments compare variants and identify a supported winner — a correlational comparison. Holdouts evaluate incremental causal lift. Either can remain inconclusive when evidence is insufficient.'],
+  ['Decision Memory', 'Recorded calls, captured grounds and outcomes where safely observable — a history to consult, not chat memory. Proof of Learning checks qualifying scored calls; insufficient evidence means no calibrated claim.'],
 ];
 
 export function ModelSection() {
@@ -71,7 +72,7 @@ export function ModelSection() {
     >
       <ModelSpine />
       <Stack gap="object">
-        <Heading level={3} variant="section">What LUMI decides about</Heading>
+        <Heading level={3} variant="section">Different capabilities, one decision system</Heading>
         <ul className={cx(css.ledgerTwo, css.ledger)}>
           {SUBJECTS.map(([subject, description]) => (
             <li key={subject} className={css.ledgerRow}>
@@ -80,6 +81,7 @@ export function ModelSection() {
             </li>
           ))}
         </ul>
+        <Text variant="body" light="body" as="p">Available capabilities depend on your account, role and plan.</Text>
       </Stack>
     </LandingSection>
   );
