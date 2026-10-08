@@ -95,6 +95,8 @@
 /* ── Hero ──────────────────────────────────────────────────── */
 .hero {
   padding-block: var(--lumi-space-macro) var(--lumi-space-macro);
+  /* Keep enlarged headings readable when a single word exceeds the frame. */
+  overflow-wrap: anywhere;
 }
 
 /* ── Hero demonstration: DATA → EVIDENCE → VERDICT ─────────── */
@@ -197,9 +199,9 @@
 /* ── Model spine: DATA → … → MEMORY, one phrase of words ───────
    A decision model, not navigation (review Q-16). Narrow: one vertical axis.
    Tablet: the same axis, each stage a row (word | what it holds and never does).
-   Laptop and wider: the seven words on one line, joined by hairlines, so the line
-   reads as a sequence of stages rather than a row of tabs: no rule above or below
-   the words, no underline, no panel. */
+   Laptop and wider: the seven words on one line when type fits, joined by
+   hairlines. Enlarged type wraps stages in the same reading order: no rule
+   above or below the words, no underline, no panel. */
 .model {
   display: flex;
   flex-direction: column;
@@ -212,6 +214,8 @@
   flex-direction: column;
   gap: var(--lumi-space-inline);
   min-width: 0;
+  /* Text enlargement must not spill one stage's evidence into the next. */
+  overflow-wrap: anywhere;
   padding-block: var(--lumi-space-meta) var(--lumi-space-object);
   border-inline-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
 }
@@ -225,6 +229,8 @@
 }
 .modelWord {
   flex: none;
+  /* Stage names stay whole; the stage layout makes room for enlarged type. */
+  overflow-wrap: normal;
   width: auto;
   color: var(--lumi-color-text-meta);
   font-family: var(--lumi-type-heading-surface-family);
@@ -342,7 +348,7 @@
      take seven rows instead of twenty-one lines. */
   .modelStop {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    grid-template-columns: minmax(min-content, 1fr) minmax(0, 2fr);
     column-gap: var(--lumi-space-section);
     row-gap: var(--lumi-space-inline);
     align-items: start;
@@ -424,8 +430,9 @@
      section heading and the mark hangs in the page gutter (32px, wider than the pull). */
   .model {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
+    /* Keep the same seven columns at normal size; enlarged type wraps stages
+       in reading order instead of splitting their names or overlapping them. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--lumi-type-heading-surface-size) * 6)), 1fr));
     margin-inline-start: calc(var(--lumi-space-object) * -1);
   }
   .modelStop {
