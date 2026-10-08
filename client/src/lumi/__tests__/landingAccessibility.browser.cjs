@@ -42,6 +42,12 @@ async function checkPage(page, width) {
     }));
   assert.deepEqual(escaped, [], 'Every heading/stage text run must remain within its own reading region');
   assert.equal(await page.locator('[data-landing-spine="model"] button').count(), 7, 'All seven model stages remain present');
+  const splitNames = await page.locator('[data-landing-spine="model"] button').evaluateAll((buttons) => buttons.filter((button) => {
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    return range.getClientRects().length !== 1;
+  }).map((button) => button.textContent.trim()));
+  assert.deepEqual(splitNames, [], 'Enlarged stage names remain whole, rather than breaking into letter fragments');
 }
 
 (async () => {
@@ -49,7 +55,7 @@ async function checkPage(page, width) {
   let failed = 0;
   try {
     const page = await browser.newPage();
-    for (const width of [320, 1096, 1440]) {
+    for (const width of [320, 688, 1096, 1440]) {
       try {
         await checkPage(page, width);
         console.log(`PASS: 200% text at ${width}px retains complete, non-overlapping content`);
