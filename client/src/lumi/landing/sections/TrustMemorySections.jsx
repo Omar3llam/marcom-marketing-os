@@ -98,7 +98,16 @@ export function MemorySection() {
       lead="Recorded decisions keep the grounds captured when the call was made. When an outcome can be observed safely, LUMI measures it against the recorded decision. Patterns that keep holding can become account beliefs. Each shows its record."
     >
       <div className={css.claimColumn}>
-        <Belief />
+        <Stack gap="section">
+          <Stack gap="object">
+            <Heading level={3} variant="section" id="proof-learning-title">Proof of Learning</Heading>
+            <Text variant="body" light="body" as="p">
+              When evidence is sufficient, Proof of Learning compares the confidence of qualifying scored decisions
+              with observed outcomes. When it is not, LUMI withholds a calibrated claim.
+            </Text>
+          </Stack>
+          <Belief />
+        </Stack>
       </div>
     </LandingSection>
   );

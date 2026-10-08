@@ -22,13 +22,111 @@ const text = (el) => el.textContent.replace(/\s+/g, ' ');
 const verdictRow = (container, verdict) =>
   container.querySelector(`#verdicts li [data-lumi-verdict="${verdict}"]`).closest('li');
 
+describe('current-product narrative is grounded in distinct capabilities (P8-03)', () => {
+  const rowFor = (container, label) => [...container.querySelectorAll('#how li')]
+    .find(row => row.querySelector('p')?.textContent === label);
+
+  it('bridges campaign evidence into planning, experiments and reusable history in the hero', () => {
+    const hero = text(renderLanding().container.querySelector('[aria-labelledby="hero-title"]'));
+    expect(hero).toContain('supported connected ad accounts');
+    expect(hero).toContain('helps you plan spend, test hypotheses and build a decision history');
+    expect(hero).toContain('You decide what to commit and execute');
+    expect(hero).toContain('outcomes only where they can be observed safely');
+  });
+
+  it('gives Budget Allocation its own plan authority rather than calling every capability a decision', () => {
+    const { container } = renderLanding();
+    expect(container.querySelector('#how')).not.toHaveTextContent('What LUMI decides about');
+    const row = rowFor(container, 'Budget Allocation');
+    expect(row).toBeDefined();
+    expect(text(row)).toMatch(/Preview a proposed budget plan.*comparable currency evidence.*spend period/i);
+    expect(text(row)).toMatch(/Committing an eligible plan creates proposed moves.*confirm them before execution/i);
+  });
+
+  it('identifies Testing OS and preserves operator lifecycle, association and causal boundaries', () => {
+    const row = rowFor(renderLanding().container, 'Testing OS');
+    expect(row).toBeDefined();
+    expect(text(row)).toMatch(/Choose suggested experiments.*start and conclude the tests you commit/i);
+    expect(text(row)).toMatch(/A\/B experiments.*supported winner.*correlational/i);
+    expect(text(row)).toMatch(/Holdouts evaluate incremental causal lift.*Either can remain inconclusive/i);
+  });
+
+  it('makes the strategic trio discoverable in the first Hero/How reading path without equal cards', () => {
+    const { container } = renderLanding();
+    const how = container.querySelector('#how');
+    expect(how).toHaveTextContent('Different capabilities, one decision system');
+    for (const label of ['Campaign decisions', 'Budget Allocation', 'Testing OS', 'Decision Memory']) {
+      expect(rowFor(container, label)).toBeDefined();
+    }
+    expect(how).toHaveTextContent('Available capabilities depend on your account, role and plan.');
+    expect(text(rowFor(container, 'Decision Memory'))).toMatch(/captured grounds.*outcomes where safely observable.*not chat memory/i);
+    expect(text(rowFor(container, 'Decision Memory'))).toContain('Proof of Learning checks qualifying scored calls; insufficient evidence means no calibrated claim.');
+  });
+
+  it('distinguishes Proof of Learning from Memory and withholds unsupported calibrated claims', () => {
+    const { container } = renderLanding();
+    const memory = container.querySelector('#memory');
+    expect(memory.querySelector('#proof-learning-title')).toHaveTextContent('Proof of Learning');
+    expect(text(memory)).toMatch(/confidence of qualifying scored decisions.*observed outcomes/i);
+    expect(text(memory)).toMatch(/evidence is sufficient.*When it is not, LUMI withholds a calibrated claim/i);
+    expect(text(memory)).not.toMatch(/accuracy improves|learning is guaranteed|retrain|\d+% accurate/i);
+    expect(memory).toHaveTextContent('Illustrative example — an invented belief and record.');
+  });
+
+  it('pins preview, eligibility and proposed moves to the reaching allocation contract', () => {
+    const service = read('../src/services/allocation-engine/AllocationService.js');
+    const preview = service.slice(service.indexOf('export async function previewAllocation('), service.indexOf('function unmeasuredAllocation'));
+    expect(preview).toContain('coverage: PERIOD_COVERAGE.COMPLETE');
+    expect(preview).toContain('matchBudgetCurrency(spend.portfolio, totalBudgetCurrency)');
+    expect(preview).toContain('sameMonetaryUnit');
+    expect(preview).not.toMatch(/\.create\(|\.update\(|executeMeta|executeAction/);
+    expect(service).toContain('Number.isFinite(a.deltaMinor) && a.deltaMinor !== 0');
+    expect(service).toMatch(/verdict:\s+'REALLOCATE'[\s\S]*?status:\s+'PROPOSED'/);
+    const panel = read('src/features/intelligence/blended-truth/AllocationPanel.jsx');
+    expect(panel).toContain('Confirm');
+    expect(panel).toContain('in Decisions to execute.');
+    expect(read('../src/routes/lumi/portfolio.js')).toContain("requirePlan('GROWTH')");
+  });
+
+  it('pins proposed/running tests and separate guarded holdout readouts', () => {
+    expect(read('../src/services/test-generator/TestGeneratorService.js')).toMatch(/commitAgenda[\s\S]*?status:\s+'PROPOSED'/);
+    expect(read('../src/services/test-tracker/TestTrackerService.js')).toMatch(/startTest[\s\S]*?status:\s+'RUNNING'/);
+    expect(read('../src/services/test-readout/testReadoutEngine.js')).toMatch(/minSample < floor[\s\S]*?return inconclusive/);
+    expect(read('../src/services/incrementality-engine/incrementalityEngine.js')).toContain("status: conclusive ? 'CONCLUSIVE' : 'INCONCLUSIVE'");
+    expect(read('../src/routes/lumi/testing.js')).toContain("testingRouter.use('/tests', requirePlan('PRO'))");
+    expect(read('../src/routes/lumi/testing.js')).toContain('requireOperator, requireMeasurementTier, requireStrategist');
+  });
+
+  it('pins incomplete provenance, conditional pattern support and confidence-only memory contribution', () => {
+    expect(read('../src/services/verdict-engine/VerdictService.js')).toContain('if (!basis) return null;');
+    expect(read('../src/services/decision-accuracy/outcomeEvidence.js')).toContain('A recorded outcome is HUMAN-REPORTED.');
+    expect(read('../src/services/pattern-engine/patternEngine.js')).toContain('effectiveSupport >= cfg.minEstablished && accuracy != null && accuracy >= cfg.minAccuracy');
+    const connector = read('../src/services/verdict-engine/connectorVerdictService.js');
+    expect(connector).toMatch(/verdict:\s+c.verdict,[\s\S]*?confidence: applyMemoryToConfidence\(c.verdictConfidence, memoryFactor\)/);
+    const { container } = renderLanding();
+    expect(container.querySelector('[data-landing-spine]')).toHaveTextContent('Never changes a verdict. It can make LUMI more or less confident.');
+  });
+
+  it('pins qualifying scored evidence and reliability publication gates to current Proof authority', () => {
+    const engine = read('../src/services/decision-accuracy/decisionAccuracyEngine.js');
+    expect(engine).toContain("if (d.accuracyStatus !== 'EXECUTED') continue;");
+    expect(engine).toContain('if (!Number.isFinite(d.confidence))');
+    expect(engine).toContain('scoredCount < cfg.minSample');
+    expect(engine).toContain('scoredFraction < cfg.reliableFraction');
+    const proof = read('src/features/intelligence/proof/ProofView.jsx');
+    expect(proof).toContain("data?.coverage?.verdict === 'RELIABLE'");
+    expect(proof).toContain('if (!reliable || role === WORKSPACE_ROLE.CLIENT)');
+    expect(read('../src/services/decision-accuracy/DecisionAccuracyService.js')).toContain("scopeFor('accuracy/population')");
+  });
+});
+
 // P8-02A: rendered claims plus reaching source authority. These pins are review
 // triggers, not instructions to preserve today's limitations in future engines.
 describe('public claims stay within their reaching authority (P8-02A)', () => {
   it('separates correlational A/B winners from causal holdouts, with either inconclusive', () => {
     const { container } = renderLanding();
     const tests = [...container.querySelectorAll('#how li')]
-      .find((row) => row.querySelector('p')?.textContent === 'Tests');
+      .find((row) => row.querySelector('p')?.textContent === 'Testing OS');
     expect(text(tests)).toMatch(/A\/B experiments compare variants.*supported winner.*correlational/i);
     expect(text(tests)).toMatch(/Holdouts evaluate incremental causal lift/i);
     expect(text(tests)).toMatch(/Either can remain inconclusive.*evidence/i);
