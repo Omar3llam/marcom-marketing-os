@@ -10,7 +10,8 @@ import fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { localDir } from '../../design-system/foundation/resolve.js';
+import { contrast, localDir } from '../../design-system/foundation/resolve.js';
+import colors from '../../design-system/tokens/colors.json';
 
 const session = vi.hoisted(() => ({
   signInWithGoogle: vi.fn(), signInWithEmail: vi.fn(), signUpWithEmail: vi.fn(),
@@ -52,6 +53,33 @@ const renderAt = (url) => render(
     </Routes>
   </MemoryRouter>,
 );
+
+describe('P8-02B-R — auth mode-switch contrast', () => {
+  // Resolve the legacy utilities this existing surface actually uses; browser
+  // verification separately measures their compiled default/hover styles.
+  const textColors = {
+    'text-lumi-gold': colors.brand.gold,
+    'text-lumi-deep': colors.brand.deep,
+    'text-dark-base': colors.text.base,
+    'text-dark-soft': colors.text.soft,
+  };
+
+  it.each([
+    ['/login', 'Sign up', 'default'], ['/login', 'Sign up', 'hover'],
+    ['/signup', 'Sign in', 'default'], ['/signup', 'Sign in', 'hover'],
+  ])('keeps %s switch text readable in %s / %s', (url, label, state) => {
+    renderAt(url);
+    const button = screen.getByRole('button', { name: label, exact: true });
+    expect(button).toHaveAttribute('type', 'button');
+    expect(button.closest('.bg-surface-light')).not.toBeNull();
+    const classes = [...button.classList];
+    const utility = state === 'hover'
+      ? classes.find(name => name.startsWith('hover:text-'))?.slice('hover:'.length)
+      : classes.find(name => name.startsWith('text-'));
+    expect(textColors[utility]).toBeDefined();
+    expect(contrast(textColors[utility], colors.surface.light)).toBeGreaterThanOrEqual(4.5);
+  });
+});
 
 describe('P8-02B — LUMI public signup/login handoff', () => {
   it('uses the landing category on signup, without generic AI-copilot framing', () => {

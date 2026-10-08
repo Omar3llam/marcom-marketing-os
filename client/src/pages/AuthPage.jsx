@@ -187,7 +187,7 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
           <button
             type="button"
             onClick={() => { setMode(isLogin ? 'signup' : 'login'); setError(null); }}
-            className="font-semibold text-lumi-gold hover:text-lumi-deep transition-colors"
+            className="font-semibold text-dark-base hover:text-dark-soft transition-colors focus-visible:ring-2 focus-visible:ring-dark-base focus-visible:ring-offset-2"
           >
             {isLogin ? 'Sign up' : 'Sign in'}
           </button>
