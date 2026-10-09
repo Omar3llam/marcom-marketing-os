@@ -2,7 +2,7 @@
 
 **Approval date:** 2026-10-09
 **Authority:** Omar, Product Owner
-**Status:** APPROVED scoped deferral ruling; separate Phase 8 final closure approval pending
+**Status:** APPROVED scoped deferral ruling; subsequent separate [formal Phase 8 closure approval](PHASE_8_FORMAL_CLOSURE.md) recorded 2026-10-09
 **Verified baseline:** `e160ce9acad4aa5934b4cdc90c18b5da5ac9da25`
 
 ## Approved Product Owner ruling
@@ -14,7 +14,7 @@
 5. **Scoped Phase 8 closure:** Phase 8 may proceed to its formal closure decision against its approved scoped acceptance criteria. This ruling does not certify full Master Spec completion, production performance, live OAuth or public launch readiness.
 6. **Phase 9:** Remains **NOT STARTED** until Phase 8 is formally closed by the Product Owner.
 
-**Phase 8 remains ACTIVE.** This approval records the scope disposition only; it is not the separate final phase-gate approval, permission to implement outstanding work, or approval of an unspecified public dataset.
+**Historical status at this deferral approval: Phase 8 remains ACTIVE.** This approval records the scope disposition only; it is not the separate final phase-gate approval, permission to implement outstanding work, or approval of an unspecified public dataset. The subsequent [formal closure record](PHASE_8_FORMAL_CLOSURE.md) records Omar's separate scoped closure approval; this ruling and its outstanding obligations are preserved.
 
 ## Independent closure audit evidence
 
@@ -64,14 +64,16 @@ The current source gate remains in force. Deferral does not permit fabricated mo
 
 The already approved Header symbol and Footer stacked lockup remain valid. Reversed/dark, monochrome, horizontal, standalone wordmark, favicon, app icon, social avatar, OG/social artwork and global minimum-size/clear-space guidance remain **SOURCE PENDING**, as recorded in the brand registry. This ruling supplies none of them and approves no new placement or variant.
 
-## Separate Phase 8 formal closure gate
+## Historical requirement for separate Phase 8 formal closure approval
 
-Omar must separately approve the Phase 8 final closure against the approved scoped acceptance criteria, using the independent audit evidence and this outstanding-work disposition. Review follows [REVIEW_GATE.md](REVIEW_GATE.md) and the Design Constitution's Article 36: author self-assessment is not approval.
+At the time of this ruling, Omar's separate Phase 8 final closure approval was required against the approved scoped acceptance criteria, using the independent audit evidence and this outstanding-work disposition. Review follows [REVIEW_GATE.md](REVIEW_GATE.md) and the Design Constitution's Article 36: author self-assessment is not approval.
 
-Until that decision is explicitly recorded:
+The historical status before that separate decision was:
 
 - **Phase 8: ACTIVE.**
 - **Final Phase 8 closure approval: PENDING PRODUCT OWNER DECISION.**
 - **Phase 9: NOT STARTED.**
+
+Omar subsequently explicitly approved **PHASE 8 — SCOPED CLOSED · PRODUCT OWNER APPROVED**, dated 2026-10-09, in the [formal closure record](PHASE_8_FORMAL_CLOSURE.md). Phase 9 remains NOT STARTED; entry/discovery is eligible only after authorized merge and origin/master verification of that record, with its own entry review and authorization still required.
 
 The ruling does not certify full Master Spec completion, production performance, live OAuth or public launch readiness. It changes documentation only; production code, tests, schema, APIs, auth, branding bytes, locked product contracts and the frozen Master Build Spec remain unchanged.
