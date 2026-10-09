@@ -21,24 +21,25 @@ const modules = {
 };
 const result = { fixture: 'SYNTHETIC: real components and compiled CSS; no authenticated runtime', cases: [], errors: [], requests: [], failures: [] };
 
-async function buildFixture() {
+async function buildFixture(outputDirectory = output, fixture = 'firstFrame.fixture.jsx', overrides = {}) {
   const { build } = await import('vite');
   const { default: react } = await import('@vitejs/plugin-react');
-  fs.mkdirSync(output, { recursive: true });
+  const dependencies = { ...modules, ...overrides };
+  fs.mkdirSync(outputDirectory, { recursive: true });
   await build({ root: client, configFile: false, plugins: [
     { name: 'isolated-onboarding-test-dependencies', enforce: 'pre',
       resolveId(source) {
         const normalized = source.replaceAll('\\', '/');
-        const suffix = Object.keys(modules).find(name => normalized === `@${name}` || normalized === `${client.replaceAll('\\', '/')}/src${name}`);
+        const suffix = Object.keys(dependencies).find(name => normalized === `@${name}` || normalized === `${client.replaceAll('\\', '/')}/src${name}`);
         return suffix ? `\0onboarding-fixture${suffix}` : null;
       },
-      load(id) { return id.startsWith('\0onboarding-fixture') ? modules[id.slice('\0onboarding-fixture'.length)] : null; },
+      load(id) { return id.startsWith('\0onboarding-fixture') ? dependencies[id.slice('\0onboarding-fixture'.length)] : null; },
     }, react(),
   ], resolve: { alias: { '@': path.join(client, 'src') } }, build: {
-    outDir: path.join(output, 'dist'), emptyOutDir: false, cssCodeSplit: false,
-    rollupOptions: { input: path.join(__dirname, 'firstFrame.fixture.jsx'), output: { entryFileNames: 'fixture.js' } },
+    outDir: path.join(outputDirectory, 'dist'), emptyOutDir: false, cssCodeSplit: false,
+    rollupOptions: { input: path.join(__dirname, fixture), output: { entryFileNames: 'fixture.js' } },
   } });
-  const dist = path.join(output, 'dist');
+  const dist = path.join(outputDirectory, 'dist');
   const css = fs.readdirSync(path.join(dist, 'assets')).filter(name => name.endsWith('.css'));
   fs.writeFileSync(path.join(dist, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${css.map(name => `<link rel="stylesheet" href="/assets/${name}">`).join('')}</head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>`);
   return dist;
@@ -152,7 +153,8 @@ async function runCase(browser, baseURL, config) {
   finally { await page.close(); }
 }
 
-(async () => {
+module.exports = { buildFixture };
+if (require.main === module) (async () => {
   // Tailwind/PostCSS resolve their real client config from cwd, as in npm build.
   process.chdir(client);
   const dist = await buildFixture();
