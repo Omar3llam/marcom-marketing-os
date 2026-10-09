@@ -555,7 +555,7 @@ There is no pill token. 📏 Tested: nothing is above 4px except `radius.round`.
 
 | Token | Value | Reduced motion | Purpose (MO-1) |
 |---|---|---|---|
-| `motion.duration.feedback` | 100ms | 100ms | acknowledging input (colour or opacity, which survives reduction) |
+| `motion.duration.feedback` | 100ms | 100ms | direct control feedback; background-color only under FC-20, or composited opacity |
 | `motion.duration.reveal` | 200ms | 0ms | a value becoming known |
 | `motion.duration.transition` | 240ms | 0ms | spatial continuity |
 | `motion.duration.maximum` | 400ms | 0ms | the ceiling for any UI motion; a limit, not an animation |
@@ -566,8 +566,28 @@ There is no pill token. 📏 Tested: nothing is above 4px except `radius.round`.
 
 - **Reduced motion lives in the tokens.** Under
   `@media (prefers-reduced-motion: reduce)` the variables take their reduced
-  values, so any consumer of the token is reduced automatically. The legacy global
-  override in `index.css` stays as the MO-7 safety net.
+  values: reveal, transition and maximum durations reduce automatically, and
+  settle becomes 0px; feedback remains 100ms. The legacy global override in
+  `index.css` stays as the MO-7 safety net.
+- **Control background-color exception — Omar, 2026-10-09 (FC-20).** A direct
+  user-interaction control may transition its `background-color` for up to 100ms
+  with the existing semantic feedback-duration and linear-easing tokens, only
+  for direct control feedback such as hover or press. No layout animation or
+  content-availability change;
+  no verdicts, metrics, data charts, progress, loading, success/failure states,
+  decoration, brand-gold or verdict-color substitution. Accessible non-motion
+  feedback and independently verified reduced behavior remain mandatory.
+  All other motion remains restricted to composited properties (primarily
+  opacity/transform). The [canonical conditions](design-governance/LUMI_DESIGN_CONSTITUTION.md#fc-20-control-feedback-exception)
+  and [MO-5/MO-6.5/MO-7](design-governance/MOTION_RULES.md) govern consumers;
+  no token value or implementation changes are authorized here.
+- **Reduction distinction:** feedback remains **100ms** in the reduced token
+  set. Reveal/transition/maximum become 0ms and settle becomes 0px. Separately,
+  the existing global `index.css` override caps actual CSS transition/animation
+  duration at **0.01ms** with `!important`; it is not a zero-valued feedback
+  token and does not replace per-animation declarations. Preserve and
+  independently verify this safety net. Legacy Auth 150ms color transitions
+  and other unverified consumers are not approved by FC-20.
 - 📏 Tested:
   - `feedback < reveal ≤ transition ≤ maximum`;
   - reveal and transition reduce to 0ms, and settle reduces to 0px;
@@ -575,7 +595,9 @@ There is no pill token. 📏 Tested: nothing is above 4px except `radius.round`.
   - no easing control point leaves [0, 1], so there is no bounce, spring overshoot
     or anticipation;
   - no token is an animation, keyframe, pulse, shimmer or loop.
-- No screen or component animation exists.
+- Phase 2 created motion tokens, not screen/component animations. Current
+  consumers must follow the governing motion rules and the bounded FC-20
+  exception; this historical token verification is not consumer certification.
 
 ### Layout and breakpoints
 

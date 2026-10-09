@@ -84,7 +84,9 @@ cinematic loading.
 ## MO-5 · Feedback behaviour
 
 1. A control acknowledges input within the feedback range (press state, focus
-   visible), with no delay introduced for effect.
+   visible), with no delay introduced for effect. The narrow background-color
+   exception in MO-6.5 applies only to direct control feedback; accessible
+   non-motion feedback and MO-7 remain required.
 2. **Process feedback shows the published stage** (`QUEUED`, `EXECUTING`) and ends
    in a terminal state. An indicator that cannot end does not exist, because
    `TIMED_OUT` exists (STATE_RULES.md §10).
@@ -108,8 +110,19 @@ cinematic loading.
    Focus moves into the overlay and returns to the invoking control on close.
 4. **No page-level cinematic transitions:** no full-screen wipes, morphs, or
    parallax between routes.
-5. Only composited properties are animated (opacity, transform). Layout does
-   not animate on data arrival (Constitution Article 26).
+5. Motion is restricted to composited properties (primarily opacity, transform),
+   with one [Product Owner exception, FC-20](LUMI_DESIGN_CONSTITUTION.md#fc-20-control-feedback-exception),
+   approved 2026-10-09: a direct user-interaction control may transition its
+   `background-color` for up to 100ms using the existing semantic
+   `motion.duration.feedback` and linear `motion.easing.feedback` tokens.
+   This is direct control feedback only, such as hover or press (MO-5), never
+   verdicts, metrics, data charts, progress, loading, success/failure states or
+   decoration. No animated layout,
+   change to content availability, brand-gold or verdict-color substitution.
+   Accessible non-motion feedback and independently verified reduced-motion
+   behavior are mandatory (MO-7). All other motion remains composited-only.
+   The exception does not approve legacy Auth 150ms color transitions or other
+   unverified consumers and authorizes no CSS, token or component change.
 
 ## MO-7 · Reduced motion
 
@@ -123,6 +136,12 @@ cinematic loading.
   - process indicators remain as **static text stage labels**.
 - The global reduced-motion override that exists today (audit §20, §25 KEEP) is
   kept as a safety net. It does not replace per-animation declarations.
+- For FC-20 control feedback, the current feedback token's reduced value remains
+  **100ms**, not zero. Independently, `index.css` caps actual transition/animation
+  durations at **0.01ms** with `!important`, limits animations to one iteration
+  and makes CSS scrolling automatic. Preserve that safety override and verify
+  actual reduced behavior independently; neither the exception nor its token
+  permits weakening MO-7's declarations or static information requirements.
 - Reduced motion never removes **information**. Anything conveyed by motion must
   also be conveyed by static means.
 
@@ -139,7 +158,7 @@ cinematic loading.
 | Celebration | confetti, bursts, sparkles, gold flash | calm precision |
 | Attention farming | shaking badges, bouncing CTAs, animated upsell | PR-4: a lock is structural |
 | Cinematic loading | branded full-screen loaders, logo reveals before content, the legacy animated-gradient `LumiLoader` (audit §17) | decoration that delays reading |
-| Scroll-jacking and parallax | scroll-linked motion on product or marketing pages | disorienting; fails reduced-motion expectations |
+| Scroll-jacking and parallax | scroll-linked motion on product or marketing pages, including discrete scroll-triggered emphasis changes even if nothing is hidden or moved (MC-1, Constitution Appendix A.2) | disorienting; fails reduced-motion expectations; no scroll-triggered exception approved |
 
 ## MO-9 · Scope of Phase 1
 

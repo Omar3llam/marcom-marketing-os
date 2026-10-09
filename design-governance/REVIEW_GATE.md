@@ -46,7 +46,7 @@ from `origin/master` by content, never by badge (`CLAUDE.md`, PR Base Rule).
 | Q-6 | **State semantics preserved?** Every contract-producible state is expressed distinctly | C | STATE_RULES.md coverage table per component; failure ≠ empty, missing ≠ zero, unknown ≠ healthy |
 | Q-7 | **Accessibility considered?** WCAG 2.2 AA where practical | C | contrast-pair verification; keyboard / focus / target / semantics checklist |
 | Q-8 | **Responsive principles defined / honoured?** | C | Constitution Article 25 table applied; no hidden capability at any width |
-| Q-9 | **Performance considered?** | — | bundle and font budget measurements; motion on composited properties only |
+| Q-9 | **Performance considered?** | — | bundle and font budget measurements; motion on composited properties except the strictly bounded [FC-20 direct-control background-color feedback exception](LUMI_DESIGN_CONSTITUTION.md#fc-20-control-feedback-exception), with independent reduced-motion verification |
 | Q-10 | **Numeric truth?** No fabricated or unwindowed figure; illustrative figures labelled | C | PR-7 checklist |
 | Q-11 | **Action identity?** Actions bound to a Decision id; verdict ≠ action | C | PR-2 / PR-5 checklist; no by-entity mutation where an id is held |
 | Q-12 | **Conflicts registered?** Every discovered conflict is in Appendix A of the Constitution, not silently resolved | C | Appendix A diff |
