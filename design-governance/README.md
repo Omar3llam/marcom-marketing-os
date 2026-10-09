@@ -30,7 +30,7 @@ zero** as a reset, not a refresh. The legacy frontend and its design system are
 | [REVIEW_GATE.md](REVIEW_GATE.md) | The mandatory gates between phases, and the Phase 1 run | moving work between phases |
 | [../DESIGN_TOKEN_ARCHITECTURE.md](../DESIGN_TOKEN_ARCHITECTURE.md) | The implemented token architecture (Phase 2): layers, namespaces, environments, contrast manifest, legacy status. Current token implementation authority: `client/design-system/foundation/` | working with tokens |
 | [LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md](LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md) | **Authority level 3.** The governing implementation brief for the whole rebuild, stored verbatim (§2.1) | planning any rebuild phase |
-| [brand/README.md](brand/README.md) | **Authority level 4.** Approved brand source files. The logo "01 / Current Base" source is **still required** | brand implementation |
+| [brand/README.md](brand/README.md) | **Authority level 4.** LUMI Brand v1: two owner-approved Illustrator SVG exports (2026-10-08); optional variants remain source pending | brand implementation |
 
 **Preserved evidence** (repository root, not modified by Phase 1):
 
@@ -52,7 +52,7 @@ Phase 1.*
                           Reference Policy, Component Rules, State Rules, Motion Rules,
                           Anti-Convergence, Review Gate, this README · DESIGN_TOKEN_ARCHITECTURE.md
 3. MASTER BUILD SPEC      design-governance/LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md
-4. APPROVED BRAND ASSETS  design-governance/brand/  (logo "01 / Current Base": SOURCE REQUIRED)
+4. APPROVED BRAND ASSETS  design-governance/brand/  (LUMI Brand v1: primary stacked lockup + symbol)
 5. HISTORICAL MATERIAL    §4, plus the legacy frontend implementation. Evidence, never authority.
                           DESIGN_SYSTEM_AUDIT.md (Phase 0) is preserved evidence at this level.
 ```
@@ -94,6 +94,10 @@ PRODUCT TRUTH  >  DESIGN CONSTITUTION  >  MASTER BUILD SPEC interpretation  >  L
 - **Figma is the visual source of truth. The repository is the behavioural
   source of truth**: behaviour, state, routing, permissions, API, measurement,
   currency and data integrity.
+  **P8-06A exception (Product Owner, 2026-10-08):** the two exact Illustrator
+  SVG exports registered in `brand/README.md` are authoritative for current
+  LUMI Brand v1; neither Figma nor the original `.ai` is required for their use.
+  Their approved internal gradient does not authorize decorative UI gradients.
 - These documents **encode** levels 1–3 for design use. Where they quote a
   ruling or code, the source is cited so it can be checked.
 

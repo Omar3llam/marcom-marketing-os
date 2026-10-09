@@ -55,6 +55,15 @@ The identity starts from the approved logo, **01 / Current Base**. It is refined
 and systemised, not replaced (🔒). Its direction and variants are in
 VISUAL_BOUNDARIES.md §5.
 
+🔒 **Product Owner ruling, 2026-10-08 (P8-06A re-entry):** the exact supplied
+Illustrator exports registered in `brand/README.md` are the current official
+**LUMI Brand v1** primary stacked lockup and symbol. Their source gate is resolved;
+Figma and the original `.ai` are not required for these two exports. Their internal
+gold gradient is approved artwork, not permission for decorative UI gradients.
+Optional variants remain pending. Earlier source-required statements, including
+FC-10 below, remain historical for these two exports. No other design or product
+rule changes; future artwork revisions require explicit versioned approval.
+
 ### Article 2 · Brand Idea 🔒
 
 > **LIGHT REVEALS WHAT MATTERS.**

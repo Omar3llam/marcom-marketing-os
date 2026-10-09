@@ -16,7 +16,7 @@
 // Review record: PHASE_4_LANDING_VISUAL_LANGUAGE_AUDIT.md.
 // ============================================================
 import { Environment, Inline, Rule, Stack, Text, TextLink } from '../index.js';
-import { BrandPlaceholder } from './parts.jsx';
+import { BrandMark } from './parts.jsx';
 import { HeroSection, LandingHeader, SECTION_LINKS } from './sections/HeroSection.jsx';
 import { ModelSection, ProblemSection } from './sections/ModelSections.jsx';
 import { VerdictsSection } from './sections/VerdictsSection.jsx';
@@ -31,7 +31,7 @@ function LandingFooter() {
       <div className={css.frame}>
         <Stack gap="object">
           <Inline gap="object" align="center" justify="between">
-            <BrandPlaceholder />
+            <BrandMark />
             <nav aria-label="Legal and account">
               <ul className={css.navList}>
                 <li><Text variant="label" as="span"><TextLink to="/privacy">Privacy</TextLink></Text></li>

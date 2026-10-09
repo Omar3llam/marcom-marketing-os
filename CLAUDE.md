@@ -24,7 +24,7 @@ anywhere in the repository, including the rest of this file.
                         README.md) + DESIGN_TOKEN_ARCHITECTURE.md
 3. MASTER BUILD SPEC    design-governance/LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md — the governing
                         implementation brief for the rebuild
-4. APPROVED BRAND ASSETS design-governance/brand/  (logo "01 / Current Base" — source still required)
+4. APPROVED BRAND ASSETS design-governance/brand/  (LUMI Brand v1 — two owner-approved Illustrator exports; see brand/README.md)
 5. HISTORICAL           legacy design docs, legacy token files, TAXONOMY-FREEZE.md, legacy UI
                         patterns — reference and evidence only, never current authority
 ```

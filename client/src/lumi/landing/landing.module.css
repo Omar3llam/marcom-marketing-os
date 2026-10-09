@@ -70,9 +70,8 @@
   min-height: var(--lumi-size-target-minimum);
 }
 
-/* The approved mark is not in the repository (FC-10). A labelled text
-   placeholder stands in; it is not typeset as the wordmark. */
-.brandPlaceholder {
+/* Brand v1: exact local artwork, neutral focus, UI text only on image failure. */
+.brandMark {
   display: inline-flex;
   align-items: center;
   min-height: var(--lumi-size-target-minimum);
@@ -84,6 +83,33 @@
   letter-spacing: var(--lumi-type-heading-section-letter-spacing);
   text-decoration-line: none;
   border-radius: var(--lumi-radius-control);
+}
+.brandSymbol {
+  display: grid;
+  place-items: center;
+  width: calc(var(--lumi-space-section) + var(--lumi-space-object));
+  aspect-ratio: 378.67 / 234.85;
+}
+.brandPrimary {
+  display: none;
+  width: calc(var(--lumi-space-macro) + var(--lumi-space-section) + var(--lumi-space-object));
+  aspect-ratio: 378.67 / 344.42;
+}
+.brandMark img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.brandFallback {
+  /* Failed-image identification must still fit when the reader enlarges text. */
+  min-width: max-content;
+}
+.footer .brandSymbol {
+  display: none;
+}
+.footer .brandPrimary {
+  display: grid;
+  place-items: center;
 }
 
 /* In-page section links are shown from tablet width. On a phone they would take the
@@ -329,7 +355,7 @@
 }
 
 /* One focus ring, neutral; the legacy global box-shadow ring is not drawn here. */
-.brandPlaceholder:focus-visible,
+.brandMark:focus-visible,
 .question:focus-visible,
 .lightControl:focus-visible,
 .modelWord:focus-visible,
@@ -467,7 +493,7 @@
 /* ── Coarse pointers: touch-size targets (last, so it wins over the base rules) ── */
 @media (pointer: coarse) {
   .navList > li,
-  .brandPlaceholder,
+  .brandMark,
   .lightControl,
   .modelWord {
     min-height: var(--lumi-size-target-touch);
