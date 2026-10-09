@@ -10,7 +10,7 @@
 // ============================================================
 import { ActionLink, Environment, Heading, Inline, Stack, Text, TextLink } from '../../index.js';
 import { cx } from '../../contract.js';
-import { BrandPlaceholder } from '../parts.jsx';
+import { BrandMark } from '../parts.jsx';
 import { HeroDemonstration } from './HeroDemonstration.jsx';
 import css from '../landing.module.css';
 
@@ -25,7 +25,7 @@ export function LandingHeader() {
   return (
     <header className={css.header}>
       <div className={cx(css.frame, css.bar)}>
-        <BrandPlaceholder />
+        <BrandMark />
         <nav aria-label="Page" className={css.pageNav}>
           <ul className={css.navList}>
             {SECTION_LINKS.map(([href, label]) => (

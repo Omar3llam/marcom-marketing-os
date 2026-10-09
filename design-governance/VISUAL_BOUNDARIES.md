@@ -83,11 +83,13 @@ expression (a verdict, a decision spine), not alternating stripes for rhythm.
 **Starting point:** the approved **01 / Current Base**. It is refined and
 systemised, never replaced with a new concept.
 
-> ⚠️ FC-10 — the approved asset is not in the repository. Its registered home is
-> `design-governance/brand/`, currently marked **SOURCE REQUIRED BEFORE BRAND
-> IMPLEMENTATION**. Per Master Build Spec §45, the source lives in the Figma brand
-> file. Everything below is a requirement to be
-> verified **on the asset**. No measurement here is invented.
+> 🔒 Product Owner, 2026-10-08 (P8-06A re-entry): **LUMI Brand v1** is registered
+> in `brand/README.md` as two exact approved Illustrator exports: primary stacked
+> lockup and symbol. FC-10's earlier missing-source/Figma requirement is superseded
+> for these exports. The exact internal gold gradient is approved only as part of
+> this artwork, an exception to VB-F8 for the logo alone. Other variants, minimum
+> sizes and clear-space guidelines remain pending; measurements are verified on
+> the artwork and reviewed by the Product Owner, never invented.
 
 **The mark must communicate** `structure + reveal + negative space`, and
 **must not primarily read as a pie chart**. A reviewer test: show the symbol

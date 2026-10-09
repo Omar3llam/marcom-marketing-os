@@ -5,9 +5,14 @@
 // only from Phase 3 primitives. None is a new primitive: each has one consumer,
 // this page (COMPONENT_RULES.md CMP-01 §2 needs two).
 // ============================================================
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heading, Stack, Text } from '../index.js';
+import { cx } from '../contract.js';
 import css from './landing.module.css';
+
+const primaryLogo = '/brand/lumi-primary-lockup-v1.svg';
+const symbolLogo = '/brand/lumi-symbol-v1.svg';
 
 /** One question of the page: an anchored section with its title and lead. */
 export function LandingSection({ id, title, lead, children }) {
@@ -42,17 +47,22 @@ export function IllustrativeNote({ children }) {
 }
 
 /**
- * ⚠️ PLACEHOLDER — the approved logo "01 / Current Base" is not in the repository
- * (Constitution FC-10; design-governance/brand/README.md: SOURCE REQUIRED).
- * The mark is not recreated, redrawn or approximated. This labelled text link
- * holds its place and is the ONLY file to change when the asset arrives. It is
- * set in a UI role, deliberately not in Space Grotesk, so it cannot pass as the
- * custom wordmark.
+ * Exact owner-approved Illustrator exports (Brand v1, 2026-10-08).
+ * The header uses the symbol; the footer has room for the stacked wordmark.
+ * Local CSS chooses the variant without rearranging any vector geometry.
+ * One link name avoids duplicate image announcements; failed images retain text.
  */
-export function BrandPlaceholder() {
+export function BrandMark() {
+  const [symbolFailed, setSymbolFailed] = useState(false);
+  const [primaryFailed, setPrimaryFailed] = useState(false);
   return (
-    <Link to="/" className={css.brandPlaceholder} data-brand-placeholder="logo 01 / Current Base — source required">
-      LUMI
+    <Link to="/" className={css.brandMark} aria-label="LUMI" data-lumi-brand="v1">
+      <span className={cx(css.brandSymbol, symbolFailed && css.brandFallback)}>
+        {symbolFailed ? 'LUMI' : <img src={symbolLogo} width={37867} height={23485} alt="" onError={() => setSymbolFailed(true)} />}
+      </span>
+      <span className={cx(css.brandPrimary, primaryFailed && css.brandFallback)}>
+        {primaryFailed ? 'LUMI' : <img src={primaryLogo} width={37867} height={34442} alt="" onError={() => setPrimaryFailed(true)} />}
+      </span>
     </Link>
   );
 }

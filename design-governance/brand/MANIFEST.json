@@ -1,0 +1,42 @@
+{
+  "identity": "LUMI",
+  "approved_mark_direction": "01 / Current Base (owner confirmed these exports as current official logo)",
+  "branding_version_label": "v1 (handoff label, not a claim of separate design-system version approval)",
+  "status": "current official until replaced by an explicitly approved revision",
+  "authorized_now": "Use original uploaded SVG graphics as current LUMI identity; production integration must still pass responsive/readability review and PR approval",
+  "source_of_artwork": "Owner-produced Adobe Illustrator exports; Figma not required",
+  "cautions": [
+    "SVGs contain internal gold gradient. Preserve it unmodified in the logo.",
+    "No approved standalone favicon, reversed dark variant or OG social graphic in this handoff.",
+    "Smallest acceptable rendered dimensions and clear space not documented: test against real responsive UI and seek owner decision for any visual compromises.",
+    "Primary lockup is vertically stacked, so inspect small header legibility before replacing existing header brand placeholder."
+  ],
+  "assets": [
+    {
+      "source_filename": "Asset 1(2).svg",
+      "suggested_repository_filename": "lumi-primary-lockup-v1.svg",
+      "role": "primary_stacked_lockup",
+      "sha256": "8fc5a26db6903306e09a1b1314ed9de6aa4f5a2803b9bedee7dec2a7c7570cac",
+      "bytes": 3242,
+      "created_in": "Adobe Illustrator (owner statement)",
+      "export_date": "not provided",
+      "original_ai_project_file": "not provided",
+      "approved_for_current_LUMI_brand_use": true,
+      "approval_basis": "Product owner confirmation in conversation on 2026-10-08",
+      "revision_policy": "Preserve immutable bytes; future changes as explicitly approved new version"
+    },
+    {
+      "source_filename": "Asset 2(1).svg",
+      "suggested_repository_filename": "lumi-symbol-v1.svg",
+      "role": "symbol_only",
+      "sha256": "7034cf5e24f6ef233728838631e75e9f8a98d2df90695fe3be71036a66a0c852",
+      "bytes": 1885,
+      "created_in": "Adobe Illustrator (owner statement)",
+      "export_date": "not provided",
+      "original_ai_project_file": "not provided",
+      "approved_for_current_LUMI_brand_use": true,
+      "approval_basis": "Product owner confirmation in conversation on 2026-10-08",
+      "revision_policy": "Preserve immutable bytes; future changes as explicitly approved new version"
+    }
+  ]
+}
