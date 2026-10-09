@@ -26,6 +26,13 @@ If an animation cannot be assigned to one of the four purposes, it does not
 ship. Motion is never decoration, attention farming, continuous animation, or
 cinematic loading.
 
+**Existing landing selection — Omar, 2026-10-09:** [FC-23](LUMI_DESIGN_CONSTITUTION.md#fc-23-secondary-selection-hierarchy)
+classifies the existing HeroDemonstration and ModelSpine selection-mark opacity
+fade as secondary **HIERARCHY**, not primary FEEDBACK or data arrival. Native
+selected-state semantics, content and text emphasis update immediately; their
+acknowledgement does not wait for the mark. Reusing the reveal duration/easing
+tokens here does not grant a general control-feedback or reveal exception.
+
 ## MO-2 · Timing principles
 
 1. **Relative order is fixed:** `feedback < reveal ≤ transition`. Feedback must
@@ -46,6 +53,12 @@ cinematic loading.
    | reveal | 160–240 ms |
    | transition | 200–320 ms |
    | maximum for any UI motion | 400 ms |
+
+For [FC-23](LUMI_DESIGN_CONSTITUTION.md#fc-23-secondary-selection-hierarchy) only,
+the existing landing selection mark may fade in opacity over 200ms using the
+unchanged reveal duration/easing tokens. Animated primary control feedback
+remains subject to **≤100ms**. No content is hidden, delayed or reordered;
+reduced-motion behavior remains instant under MO-7. No autoplay or idle motion.
 
 ## MO-3 · Easing philosophy
 
@@ -87,6 +100,8 @@ cinematic loading.
    visible), with no delay introduced for effect. The narrow background-color
    exception in MO-6.5 applies only to direct control feedback; accessible
    non-motion feedback and MO-7 remain required.
+   Primary acknowledgement does not wait for FC-23's secondary hierarchy fade;
+   that 200ms mark is not a general 200ms FEEDBACK exception.
 2. **Process feedback shows the published stage** (`QUEUED`, `EXECUTING`) and ends
    in a terminal state. An indicator that cannot end does not exist, because
    `TIMED_OUT` exists (STATE_RULES.md §10).
@@ -96,8 +111,22 @@ cinematic loading.
    haptic-style wobbles. A decision system confirms; it does not cheer.
 5. Errors do not shake, flash red or pulse. They appear in place with their
    scope (STATE_RULES.md §4).
-6. Every meaningful state change is also announced through a live region. Motion
-   is never the only feedback channel.
+6. Meaningful state changes retain accessible announcements. Async processing
+   states, platform mutation outcomes, error/status messages, completed
+   operations and updates inaccessible through native semantics retain the
+   applicable live-region requirements (Constitution Article 21; STATE_RULES.md).
+   Motion is never the only feedback channel.
+   For the existing landing's reader-controlled, presentation-only selection,
+   an additional live region is not mandatory where native buttons with accurate
+   `aria-pressed`, a visible selection mark and accessible adjacent content
+   (including the hero's "Reads" line) adequately expose selection and related
+   information. Selection must be identifiable without color alone; information
+   remains readable, keyboard-accessible and discoverable by assistive
+   technologies. It cannot impersonate a recorded Decision, executed Action or
+   measured Outcome. This bounded [FC-21 clarification](LUMI_DESIGN_CONSTITUTION.md#fc-21-native-selection-announcement)
+   preserves Omar's 2026-09-15 Q-13 ruling, clarified 2026-10-09. Other components
+   require separate review; no accessibility requirement is weakened and no
+   screen-reader or WCAG certification is claimed.
 
 ## MO-6 · Transition behaviour
 

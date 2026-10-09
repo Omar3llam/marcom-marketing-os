@@ -512,6 +512,9 @@ Accessibility is a design input, not a polish step.
   inputs, dialogs that trap focus and restore it.
 - **Status.** State changes that matter (PROCESSING → SUCCESS or FAILED) are
   announced through a live region, not only drawn.
+  The existing landing's presentation-only native selection follows the bounded
+  [FC-21 clarification](#fc-21-native-selection-announcement), not a blanket
+  exemption from status announcements or accessibility requirements.
 - **Motion.** `prefers-reduced-motion` is honoured for every animation
   (MOTION_RULES.md).
 
@@ -1015,3 +1018,144 @@ and all other conflicts remain unchanged. This is not a Q-12 PASS declaration.
 actual master SHA/content, independently recheck Q-12 before requesting Product
 Owner entry approval. [Phase 8 scoped closure](PHASE_8_FORMAL_CLOSURE.md) and
 [P8-F01–F06](PHASE_8_SCOPED_DEFERRAL.md#tracked-follow-up-register) remain unchanged.
+
+### Appendix A.3 · Final known Phase 9 governance conflicts — 2026-10-09
+
+**Authority: Omar, Product Owner. Approval date: 2026-10-09.** This records the
+explicit “Phase 9 Governance Reconciliation: Final Known Conflicts” against
+verified master `62f0e0749077a10190acd3d837614084f491c245` (merged PR #562).
+Original approval dates remain distinct from today's clarification,
+cross-registration and new classification. Appendix A/A.1/A.2 and historical
+research/audit verdicts remain intact; no other OPEN condition is closed.
+
+| ID | Original conflict / authority | Approved disposition |
+|---|---|---|
+| **FC-21** | [MO-5.6](MOTION_RULES.md) required a live region for every meaningful state change; [research §18.13 Q-13 and §18.14](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md#1814-review-patch-2026-09-15-decisions-closed) records **Omar, 2026-09-15: no additional live region** for native landing selection | **RULED — original 2026-09-15 approval preserved; bounded clarification and cross-registration approved 2026-10-09.** Existing presentation-only native selection follows the conditions below. Article 21, MO-5.6 and STATE_RULES.md retain meaningful operation/status announcements. |
+| **FC-22** | [Visual Boundaries §5](VISUAL_BOUNDARIES.md#5-logo-direction--starting-identity--requirements-only), Article 1 and the [official registry](brand/README.md#current-official-logo--lumi-brand-v1) record **Omar, 2026-10-08** approving the exact Brand v1 exports and internal gold gradient as an exception to VB-F8 | **RULED — original 2026-10-08 artwork approval preserved; cross-registered 2026-10-09.** Only the exact official primary stacked lockup and symbol Illustrator exports carry this exception. No new asset or placement approval. |
+| **FC-23** | [Research §18.15 Q-8](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md#q-8--motion-review-gate-closed) records a 200ms selection-mark fade and calls it "FEEDBACK only"; §18.14/§18.17 retain the 2026-09-15 landing review. MO-1/MO-2/MO-5 and [Token Architecture](../DESIGN_TOKEN_ARCHITECTURE.md#motion) constrain animated primary feedback to ≤100ms | **RULED — new classification by Omar, 2026-10-09.** The existing 200ms selection-mark opacity fade is secondary HIERARCHY emphasis, not primary FEEDBACK. Immediate acknowledgement remains separate; this refines the historical assessment without rewriting it. No general 200ms feedback or data-arrival exception is granted. |
+
+#### FC-21: Native selection announcement
+
+For the existing landing's **reader-controlled, presentation-only selection**,
+an additional live region is not mandatory where native accessibility semantics
+adequately expose selection and related information. All conditions remain:
+
+- Native buttons retain accurate `aria-pressed` state, a visible selection mark
+  and accessible adjacent content, including the hero's "Reads" line.
+- Selection is identifiable without color alone. Relevant information remains
+  readable, keyboard-accessible and discoverable by assistive technologies;
+  motion is never the sole feedback channel.
+- Selection cannot impersonate a recorded Decision, executed Action or measured
+  Outcome. Other components/interactions require separate review.
+- Async processing states, platform mutation outcomes, error/status messages,
+  completed operations and updates inaccessible through native semantics retain
+  applicable live-announcement requirements (Article 21, MO-5.6, STATE_RULES.md).
+- No existing accessibility requirement is weakened. No blanket screen-reader
+  or WCAG certification is claimed; actual testing is required for such claims.
+
+**Governing clauses:** Article 21 and MO-5.6, alongside FC-23's timing distinction.
+No JSX, CSS, token, test or selection-behavior change is authorized.
+
+#### FC-22: Official logo gradient
+
+The internal gold gradient is permitted **only in the exact approved Brand v1
+primary stacked lockup and symbol Illustrator exports**, under the existing
+2026-10-08 approval. VB-F8 remains binding outside those exports.
+
+No decorative UI gradients; gradient buttons, cards, borders, backgrounds or
+loaders; recoloring or derivative artwork; additional placements; favicon/OG
+variants; source-pending artwork or invented minimum-size/clear-space guidelines
+are approved. The exact artwork bytes and separately approved 2026-10-09 Header
+symbol / Footer stacked-lockup placement in the [brand registry](brand/README.md)
+remain unchanged. P8-F06 remains **SOURCE PENDING**; all P8-F01–F06 obligations
+and re-entry requirements are preserved.
+
+**Governing clauses:** Article 1, Visual Boundaries §5/VB-F8 and official registry.
+FC-10's older missing-source condition remains historical for these two exports
+only. No new artwork, asset or placement approval is granted by registration.
+
+#### FC-23: Secondary selection hierarchy
+
+**New ruling — Omar, 2026-10-09:** The existing 200ms opacity fade on landing
+selection marks is secondary **HIERARCHY** emphasis, not the primary **FEEDBACK**
+acknowledgement. Only the existing
+[HeroDemonstration](../client/src/lumi/landing/sections/HeroDemonstration.jsx) and
+[ModelSpine](../client/src/lumi/landing/sections/ModelSpine.jsx) selection-mark
+behavior is covered. All conditions are mandatory:
+
+- **Primary FEEDBACK:** `aria-pressed`, selected content and text emphasis update
+  immediately. Acknowledgement does not wait for the fade. Any animated primary
+  control feedback remains subject to **≤100ms**.
+- **Secondary HIERARCHY:** existing selection-mark opacity may fade over 200ms
+  using unchanged `motion.duration.reveal` and reveal easing tokens. This token
+  reuse does not classify the animation as data arrival or grant a general
+  200ms control-feedback exception.
+- No content is hidden, delayed or reordered. No implied platform processing,
+  executed Action or Decision mutation. No autoplay or idle animation.
+- Reduced-motion behavior remains instant under MO-7. The reveal token reduces
+  to 0ms; the existing global safety override's actual 0.01ms cap is preserved
+  and does not replace per-animation declarations. Accessibility stays mandatory.
+
+**Governing clauses:** Article 24, MO-1/MO-2/MO-5/MO-7 and Token Architecture.
+The historical §18.15 "FEEDBACK only" assessment remains verbatim; today's
+classification refines it explicitly. FC-20's separate ≤100ms direct-control
+background-color exception and all its restrictions remain unchanged.
+No new consumer, entrance effect, CSS, JSX or token value is authorized.
+
+**Current-source observations, not fresh browser tests:** both components update
+local selection directly from native button handlers, expose `aria-pressed` and
+keep text present. [Landing CSS](../client/src/lumi/landing/landing.module.css)
+changes text emphasis without a color transition and fades only the selection
+mark's opacity via the reveal tokens. The [generated token declarations](../client/design-system/foundation/generated/tokens.css)
+and [global reduced-motion override](../client/src/index.css) retain the values
+described above. These observations do not certify assistive-technology behavior,
+measured response latency or all other motion consumers.
+
+#### Bounded pre-edit reconciliation inventory
+
+The sweep covered landing interaction/accessibility rulings, motion authorities
+and approved exceptions, brand source/identity boundaries, Appendix A/A.1/A.2
+and material Phase 3/4 rulings. The classifications describe discovery against
+the baseline above; this register does not close unrelated implementation debt.
+
+| Item | Classification | Exact source and governing authority / retained boundary |
+|---|---|---|
+| FC-1–FC-6 | ALREADY REGISTERED | Appendix A; PR-1/PR-3/PR-6/PR-9 and Articles 9/12/21 retain qualified IDs, distinct token roles, mandatory verdict words, contrast constraints, NOW versus AT DECISION and NOT_SUPPORTED. |
+| FC-7 | REGISTERED AND OPEN | Appendix A; [STATE_RULES.md §6](STATE_RULES.md#6-not_connected); current [connections route](../src/routes/lumi/connections.js) still returns `workspaceId: null, connections: []` without a resolved workspace. No account-level connect instruction inferred from that shape. |
+| FC-8 | REGISTERED AND OPEN | Appendix A; PR-2; current [ActionControl](../client/src/lumi/grammar/ActionControl.jsx) refuses ENTITY targets and requires `decisionId`. No ENTITY action is authorized. |
+| FC-9 | HISTORICAL / SUPERSEDED | Appendix A; current [CLAUDE.md authority order](../CLAUDE.md#authority--read-before-any-frontend-design-or-product-semantics-work) points to governing documents, not legacy tokens. |
+| FC-10 | HISTORICAL / SUPERSEDED for registered spec and two supplied exports; remaining source gaps preserved | Appendix A, Article 1, official registry and P8-F06; no blanket asset completion. The separate gradient registration gap is FC-22. |
+| FC-11 | REGISTERED AND OPEN backend ledger | Appendix A; Constitution R-3; current [AllocationService](../src/services/allocation-engine/AllocationService.js) writes ALLOCATION rows; [decisionClassScope](../src/services/decisions/decisionClassScope.js) excludes them from Decision destinations. No motion-led semantic repair. |
+| FC-12–FC-18 | ALREADY REGISTERED | Appendix A.1; Omar's 2026-09-14 rulings retain reset, locked verdict values, separate interaction roles, published state triggers, Campaigns IA, phase-number interpretation and primitive/grammar separation. |
+| FC-19, FC-20, MC-1–MC-4 | ALREADY REGISTERED | Appendix A.2; [Phase 3 Closure §2](../PHASE_3_PRIMITIVE_AUDIT.md#2-fc-19--ruling), [research §2.1](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md#21-conflicts-between-the-spec-and-later-locked-rulings), Motion Rules, Token Architecture and Review Gate. Quiet affordance, bounded background feedback, scroll prohibition, production order, first-frame availability and no autoplay remain binding. |
+| Native selection / MO-5.6 | RULED BUT UNREGISTERED → FC-21 | Research §18.13/§18.14 Q-13, Article 21 and MO-5.6; original 2026-09-15 approval and today's bounded clarification above. |
+| Official logo / VB-F8 | RULED BUT UNREGISTERED → FC-22 | Visual Boundaries §5, Article 1 and registry; original 2026-10-08 exact-artwork approval above. |
+| 200ms mark / "FEEDBACK only" | Authority collision resolved by provided ruling → FC-23 | Research §18.15 Q-8/§18.17 versus MO-1/MO-2/MO-5 and token roles; new 2026-10-09 secondary HIERARCHY classification above, without changing the historical assessment. |
+| Earlier research Q-3/Q-11/Q-14/Q-16 questions | HISTORICAL / SUPERSEDED by recorded 2026-09-15 review; consistent scoped rulings retained | Research §18.14: defaults are presentation only, groups approved, seven model-stage titles may use Space Grotesk, wide composition is a phrase rather than tabs. Current hero/model preserve the distinctions. Model-stage titles are page parts, not verdict words or the single-Decision grammar Spine (FC-18). These source rulings are explicitly tracked here; no additional authority exception was found. |
+| Earlier research Q-12 color proposal, Q-15 copy blockers and Q-8 prototype gate | HISTORICAL / SUPERSEDED within recorded scope | Research §18.14 rejects text-color animation; §18.16 narrows copy; §18.15/§18.17 approve the existing prototype behavior. Current source preserves instant text color and always-present content. FC-20 does not revive text-color animation; FC-23 refines the historical timing-purpose assessment. No general Phase 9 gate approval or universal measurement/outcome guarantee follows. |
+| Earlier phase/brand checkpoints and outstanding landing requirements | HISTORICAL / SUPERSEDED where a later explicit decision exists; outstanding obligations preserved | Research §17 Q-6–Q-9, [Phase 8 formal scoped closure](PHASE_8_FORMAL_CLOSURE.md), [current roadmap](README.md#current-execution-roadmap-checkpoint--2026-10-09) and [P8-F01–F06](PHASE_8_SCOPED_DEFERRAL.md#tracked-follow-up-register). Missing pricing/previews/tracking and unsupplied brand variants remain outstanding; no Motion System entry approval. |
+
+No additional **NEW UNRESOLVED CONFLICT** requiring an unprovided Product Owner
+ruling was found in this bounded pre-edit authority sweep. Residual Phase 3
+unbuilt dialog/backdrop and legacy presentation/product-logic findings
+([audit Findings](../PHASE_3_PRIMITIVE_AUDIT.md#findings)) remain prerequisites or
+implementation debt; they are not permission to add tokens, overlays, money
+fallbacks or behavior here. Legacy Auth 150ms transitions and unverified motion
+consumers remain outside FC-20/FC-23 approval. This is not an exhaustive app
+audit or a fresh browser, screen-reader, WCAG or application-test certification.
+
+**Changelog required by Article 35:** 2026-10-09 — Omar approved FC-21's bounded
+native-selection clarification of MO-5.6, with an Article 21 cross-reference,
+preserving the original 2026-09-15 ruling and operation/status announcements.
+The existing 2026-10-08 exact-logo gradient approval is cross-registered as FC-22,
+with a Visual Boundaries §5 pointer. FC-23 newly classifies the existing selection
+mark as secondary HIERARCHY; MO-1/MO-2/MO-5 and Token Architecture now distinguish
+its unchanged 200ms timing from immediate primary acknowledgement and ≤100ms
+animated primary feedback. Original sources and current-source observations are
+recorded above. FC-20, MO-7, VB-F8 outside the official artwork, locked product
+truth, historical verdicts and the frozen Master Build Spec remain unchanged.
+
+**Phase 8 remains SCOPED CLOSED; Phase 9 remains NOT STARTED.** Q-12 is
+**PENDING independent post-merge recheck** after authorized merge and verification
+of actual origin/master SHA/content. Product Owner entry review remains required;
+this record does not pass Q-12, the complete entry gate or Motion implementation.
