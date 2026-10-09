@@ -676,8 +676,12 @@ but the wait.
 3. **No visual dependency without a question.** No chart, animation or effects
    library is admitted without the Article 23 or MOTION_RULES.md justification.
    There is no charting library today, so adding one is a decision.
-4. **Motion uses composited properties only** (opacity, transform). Nothing
-   animates layout on data arrival.
+4. **Motion uses composited properties** (primarily opacity, transform), except
+   the [FC-20 control feedback exception](#fc-20-control-feedback-exception):
+   direct user-interaction controls may transition only their `background-color`
+   for up to 100ms with the existing semantic feedback-duration/linear-easing
+   tokens, subject to all FC-20 conditions. All other motion remains restricted
+   to composited properties. No animated layout or change to content availability.
 5. **Existing budget.** The repository's frontend bundle budget (`CLAUDE.md`,
    "bundle < 700KB target") stays in force until Phase 2 states the new budget as
    a measured figure.
@@ -935,3 +939,79 @@ clause authority diff remains a G-2 obligation (REVIEW_GATE.md Q-13).
 - the reference process;
 - WCAG 2.2 AA;
 - dark-first product UI (PR-9) alongside the spec's "not every asset a dark cinematic render".
+
+### Appendix A.2 · Phase 9 governance reconciliation — 2026-10-09
+
+**Authority: Omar, Product Owner. Approval date: 2026-10-09.** This records the
+explicit “LUMI PS — Phase 9 Governance Reconciliation” ruling against verified
+master `939fbaf47cd0894d8185f39a7c0a894ee730802a`. It is documentation-only,
+not Phase 9 entry approval or Motion System implementation authorization.
+
+The original Appendix A/A.1 decisions and the historical research/audit records
+above and in the sources below are preserved. This subsection cross-registers
+their identifiers and records the later approved dispositions; it does not
+rewrite a historical verdict or close any other OPEN or SOURCE PENDING condition.
+
+| ID | Original conflict / authority | Approved disposition |
+|---|---|---|
+| **MC-1** | [Phase 4.1 research §2.1](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md): Master Spec §14 suggests scroll-driven patterns; [MO-8](MOTION_RULES.md) prohibits scroll-linked motion | **RULED — Omar, 2026-10-09: Scroll-linked motion prohibited.** The prohibition includes discrete scroll-triggered emphasis changes, even when they hide or move nothing. No scroll-triggered exception is currently approved. |
+| **MC-2** | [Phase 4.1 research §2.1](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md): Master Spec hero/reveal order versus Article 5 production sequence and MO-2.4 reading hierarchy | **RULED — Omar, 2026-10-09: Production order versus reading hierarchy.** Preserve DATA → EVIDENCE → VERDICT. Reading or emphasis hierarchy may prioritize the call, reason and evidence, but cannot misrepresent production sequence, alter the Decision Spine or imply a process automatically executing. No new entrance animation is authorized. |
+| **MC-3** | [Phase 4.1 research §2.1](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md): Master Spec hero/verdict/evidence reveal suggestions versus MO-2.2 and MO-4.1 | **RULED — Omar, 2026-10-09: First-frame availability.** All required content remains readable and operable at the first frame. Optional emphasis changes cannot withhold information or create simulated data arrival. |
+| **MC-4** | [Phase 4.1 research §2.1](../PHASE_4_1_VISUAL_MOTION_RESEARCH.md): Master Spec Decision Reveal sequence versus MO-6.2 fixed spine | **RULED — Omar, 2026-10-09: No autoplay Decision Spine.** Decision stages remain reader-controlled. No automatic pipeline progression, animated stage execution or implied background processing. |
+| **FC-19** | Existing [Phase 3 Closure §2 ruling](../PHASE_3_PRIMITIVE_AUDIT.md#2-fc-19--ruling); original authority **Omar, 2026-09-15** | **RULED — original 2026-09-15 decision preserved; cross-registered 2026-10-09.** Quiet actions are low-emphasis but visibly actionable before hover: visible label, persistent structural affordance, adequate hit target, hover/focus-visible/pressed states and accessible contrast. No verdict color, brand gold for prominence or pill treatment used only to create affordance. This registration does not reopen or reinterpret FC-19. |
+| **FC-20** | Original Article 26.4, MO-6.5 and Review Gate Q-9 required composited-only motion, while [Token Architecture motion guidance](../DESIGN_TOKEN_ARCHITECTURE.md#motion) permitted color feedback and current controls transition `background-color` | **RULED — Omar, 2026-10-09.** The narrow control background-color exception below replaces the unqualified composited-only wording in Article 26.4, MO-6.5 and Q-9 and constrains the previously broad token guidance. No other property or consumer is approved by analogy. |
+
+#### FC-20: Control feedback exception
+
+**Approved decision:** A direct user-interaction control may transition its
+`background-color` for up to 100ms using linear easing.
+
+All conditions are mandatory:
+
+- Applies only to direct control feedback such as hover or press.
+- Uses the existing semantic `motion.duration.feedback` and
+  `motion.easing.feedback` tokens; no token value change is authorized.
+- No animated layout or change to content availability.
+- Does not apply to verdicts, metrics, data charts, progress, loading,
+  success/failure states or decorative effects.
+- No brand-gold or verdict-color substitution.
+- Accessible non-motion feedback remains available.
+- Reduced-motion behavior follows [MO-7](MOTION_RULES.md) and must be
+  independently verified; the global safety override is preserved, not removed
+  or weakened, and does not replace per-animation declarations.
+- All other motion remains restricted to composited properties, primarily
+  opacity and transform.
+
+**Observed implementation evidence, not an implementation change:**
+[controls.module.css](../client/src/lumi/primitives/controls.module.css) transitions
+`background-color` with the semantic feedback-duration/easing variables; the
+[generated tokens](../client/design-system/foundation/generated/tokens.css) set
+them to 100ms / linear. The feedback token's reduced value is still **100ms**.
+Separately, the [global reduced-motion safety override](../client/src/index.css)
+sets actual CSS transition/animation duration to **0.01ms** with `!important`,
+limits animation iteration count to one and makes CSS scrolling automatic.
+The token itself does not become zero. Independent Phase 9 entry discovery on
+this baseline measured the public CTA at 100ms linear normally and 0.01ms with
+reduced motion. That prior browser evidence is executor-local at
+`C:/Users/user/.codex/audits/p9-entry/feedback.json`; it is not a new application
+test run for this documentation PR or certification of every consumer.
+
+The legacy Auth 150ms color transition and other unverified consumers are
+**not approved** by this exception. Source/CSS/token/component changes, broad
+motion cleanup, data/auth contract changes and new entrance animations remain
+unauthorized. Aligned clauses: Article 26.4 above;
+[Motion Rules MO-5, MO-6.5 and MO-7](MOTION_RULES.md);
+[Token Architecture motion guidance](../DESIGN_TOKEN_ARCHITECTURE.md#motion);
+[Review Gate Q-9](REVIEW_GATE.md).
+
+**Changelog required by Article 35:** 2026-10-09 — Omar approved the replacement
+of Article 26.4's unconditional composited-only statement by FC-20's bounded
+exception, supported by the source and independent discovery evidence above;
+MC-1–MC-4 are explicitly ruled and the existing FC-19 decision is cross-registered.
+The frozen Master Build Spec, locked product truth/PR-7, historical audit verdicts
+and all other conflicts remain unchanged. This is not a Q-12 PASS declaration.
+
+**Phase 9 remains NOT STARTED.** After authorized merge and verification of
+actual master SHA/content, independently recheck Q-12 before requesting Product
+Owner entry approval. [Phase 8 scoped closure](PHASE_8_FORMAL_CLOSURE.md) and
+[P8-F01–F06](PHASE_8_SCOPED_DEFERRAL.md#tracked-follow-up-register) remain unchanged.
