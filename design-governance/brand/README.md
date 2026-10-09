@@ -33,6 +33,8 @@ Byte-identical static serving copies live in `client/public/brand/`. The install
 Vite build otherwise inlines small imported SVGs. Both source/serving copies are
 hash-checked; only the two public copies ship. No artwork, build configuration or
 dependency is modified to force external image loading.
+Folder-local `.gitattributes` disables text conversion for these exact exports
+(and the original manifest), preserving approved bytes on Windows checkouts too.
 
 Public landing integration uses the symbol in the existing header and the
 stacked lockup in the footer, on the existing light ground. Current display sizes
