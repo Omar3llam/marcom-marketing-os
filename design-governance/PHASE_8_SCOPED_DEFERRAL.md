@@ -1,8 +1,8 @@
 # Phase 8 Scoped Deferral Ruling and Follow-up Register
 
-**Approval date:** 2026-10-09  
-**Authority:** Omar, Product Owner  
-**Status:** APPROVED scoped deferral ruling; separate Phase 8 final closure approval pending  
+**Approval date:** 2026-10-09
+**Authority:** Omar, Product Owner
+**Status:** APPROVED scoped deferral ruling; separate Phase 8 final closure approval pending
 **Verified baseline:** `e160ce9acad4aa5934b4cdc90c18b5da5ac9da25`
 
 ## Approved Product Owner ruling
@@ -75,4 +75,3 @@ Until that decision is explicitly recorded:
 - **Phase 9: NOT STARTED.**
 
 The ruling does not certify full Master Spec completion, production performance, live OAuth or public launch readiness. It changes documentation only; production code, tests, schema, APIs, auth, branding bytes, locked product contracts and the frozen Master Build Spec remain unchanged.
-
