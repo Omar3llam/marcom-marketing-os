@@ -28,17 +28,33 @@ historical B5/B6/B7/B8/B9 programme.
 | Phase 8 — Landing | **ACTIVE** | PRs #552–#557 landed, including copy/evidence, signup/accessibility, responsive landing and official brand integration |
 | P8-06A — LUMI Brand v1 placement | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09** | Existing Header symbol and Footer stacked lockup only; PR #557 on master at `83dc912`; see [brand/README.md](brand/README.md) |
 | P8-04B | **BLOCKED** | Preserve the separately tracked blocker, do not infer resolution from brand approval |
-| P8-06B | **NOT STARTED** | New brand variants / surfaces are not implicitly approved |
+| P8-06B | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09 · NO MATERIAL CHANGE REQUIRED** | Measurement-first first-load audit; no source changes. Local synthetic evidence only, not field performance certification |
 | Phase 9 — Motion | **NOT STARTED** | Requires its own gate; P8-06A approval does not authorize Phase 9 |
+| Phase 8 final closure gate | **PENDING INDEPENDENT REVIEW AND PRODUCT OWNER DECISION** | P8-04B remains provenance-blocked; reconcile deferred work, public truth, responsive/accessibility, metadata, first-load and source-pending assets |
 | Phases 10–18 | **FUTURE** | App shell, IA/UX, surface migration, cleanup, governance and QA under the Master Build Spec |
 | Phases 19–23 | **FUTURE** | Production/full-loop verification, dogfood, private beta and launch |
 
-**Execution discipline:** Claude Code implements narrowly scoped slices on fresh
-`origin/master`, proves RED → GREEN, runs the required checks, opens a
-dedicated PR, and verifies merged content on trunk. The Product Owner approves
-product/design rulings. Do not promote PR descriptions, historic roadmaps,
-test counts or design previews over the actual repository state. Every on-screen
-number must be traceable to a real database row.
+**Execution discipline:** Codex is the execution agent for narrowly scoped slices on fresh
+`origin/master`. It performs discovery first, uses RED → GREEN where applicable, runs
+relevant checks, opens focused PRs for changes, and verifies merged content on trunk.
+The Product Owner approves product/design rulings and phase gates. Do not promote PR
+descriptions, historic roadmaps, test counts or design previews over repository truth.
+**Numeric truth:** Real performance numbers must trace to authorized data and real
+source/database evidence. Under locked PR-7, clearly labelled illustrative examples
+are permitted as illustrations, never as real customer or product results. AI may
+state a performance number only if it exists in supplied evidence.
+
+---
+
+### P8-06B close-out evidence and limitations — 2026-10-09
+
+- **Product Owner decision:** Approved `NO MATERIAL CHANGE REQUIRED` on 2026-10-09 for the narrowly scoped Landing First-Load Hygiene slice. This is an authorized no-change close-out, not approval of any broader auth/bootstrap change.
+- **Baseline audited:** master `83dc91282b694b8289f3169af079d2717ec1075a` (before governance-only PR #558), production build on local Chromium. Five cold runs per profile, with documented synthetic mobile throttling.
+- **Observed:** 12 initial requests; browser-reported transfer 327,327 B; desktop median FCP 156 ms; simulated mobile median FCP 2,084 ms. Five-font preload regressed mobile median FCP to 2,388 ms. Single-font hint showed no material gain.
+- **Safety:** no protected-view/Zod/private-API loading observed. Deferring Firebase/shared provider/bootstrap or globally splitting shared CSS was not proven safe within this slice.
+- **Verification reported by Codex:** 13 focused files / 348 tests passed; production build, brand/browser, reflow and logged-out route tests passed. Full frontend suite, fresh lint and architecture checks not rerun because no production code changed. Real OAuth and live authenticated sessions not exercised.
+- **Measurement boundary:** local synthetic evidence, **not** production traffic, field Core Web Vitals, or production performance certification. Raw evidence reported at the executor-local `C:/Users/user/.codex/audits/p8-06b/`, not attached to this repository; treat accessibility of that path as environment-dependent.
+- **Repository changes for P8-06B:** none. This governance record does not change landing code, brand assets, auth, routes or Master Build Spec. **Phase 8 remains ACTIVE; P8-04B remains BLOCKED; Phase 9 NOT STARTED.**
 
 ---
 
