@@ -41,8 +41,11 @@ stacked lockup in the footer, on the existing light ground. Current display size
 are 48 × 29.77 CSS px (symbol) and 112 × 101.87 CSS px (stacked). These are local
 integration sizes, not newly approved global minimum-size rules. The wordmark at
 44px overall height would be approximately 8.17px high, so the stacked lockup is
-not compressed into the header. Actual responsive/legibility evidence and the
-rendered placement require Product Owner review before closure.
+not compressed into the header. Actual responsive/legibility evidence was reviewed and the rendered placement
+was **approved by the Product Owner on 2026-10-09**. P8-06A is closed for
+this exact Header symbol / Footer stacked-lockup placement, following merged
+PR #557 (`83dc912`). This is a local placement approval, **not** a new
+minimum-size or clear-space rule.
 
 Minimum sizes and clear space: no source guideline supplied. Existing layout
 spacing is preserved; no universal clear-space unit is invented. Future artwork,
@@ -54,6 +57,16 @@ Optional reversed/dark, monochrome, horizontal, standalone wordmark, minimum-siz
 favicon, app icon, social avatar and OG assets: **SOURCE PENDING**. No new variant
 is derived or approved by integration. Auth and authenticated-shell identity are
 outside P8-06A.
+
+## P8-06A close-out — Product Owner rendered approval (2026-10-09)
+
+- **Decision:** APPROVED · CLOSED for the existing rendered Header and Footer placements.
+- **Approval authority:** Omar, Product Owner, explicitly approved on 2026-10-09.
+- **Implementation:** merged PR #557, `origin/master @ 83dc912` before this documentation update.
+- **Header:** existing symbol-only variant, no artwork changes.
+- **Footer:** existing primary stacked lockup, no artwork changes.
+- **Limits:** no new variant, favicon, social/OG asset, universal clear-space or minimum size is approved; P8-06B is not started.
+- **Roadmap:** Phase 8 remains ACTIVE; P8-04B remains BLOCKED; Phase 9 not started. No wider phase closure is implied.
 
 ## Historical record — `01 / Current Base` (2026-09-14)
 
