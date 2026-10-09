@@ -25,12 +25,12 @@ historical B5/B6/B7/B8/B9 programme.
 |---|---|---|
 | Product truth + backend contracts (B5/B6/B9), IA (B7), state/UI contracts (B8) | LOCKED | Do not reopen during the frontend reset without new contradictory evidence |
 | Reset Phases 0–7 | Completed as the prerequisite to current Phase 8, per merged Phase 7 and Phase 8 work | Not a launch-readiness claim |
-| Phase 8 — Landing | **ACTIVE** | PRs #552–#557 landed, including copy/evidence, signup/accessibility, responsive landing and official brand integration |
+| Phase 8 — Landing | **SCOPED CLOSED · PRODUCT OWNER APPROVED 2026-10-09** | Implemented scoped acceptance criteria passed under the independent audit; [formal closure record](PHASE_8_FORMAL_CLOSURE.md). Outstanding requirements are retained, not waived |
 | P8-06A — LUMI Brand v1 placement | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09** | Existing Header symbol and Footer stacked lockup only; PR #557 on master at `83dc912`; see [brand/README.md](brand/README.md) |
 | P8-04B | **DEFERRED — DATA PROVENANCE BLOCKED** | Product Owner approved 2026-10-09; not implemented, completed or cancelled. Re-entry requires verified evidence and explicit approval; see [scoped ruling and follow-up register](PHASE_8_SCOPED_DEFERRAL.md) |
 | P8-06B | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09 · NO MATERIAL CHANGE REQUIRED** | Measurement-first first-load audit; no source changes. Local synthetic evidence only, not field performance certification |
-| Phase 9 — Motion | **NOT STARTED** | Cannot start until Phase 8 is formally closed by the Product Owner; requires its own gate |
-| Phase 8 final closure gate | **PENDING SEPARATE PRODUCT OWNER CLOSURE APPROVAL** | Independent audit completed; scoped deferral ruling approved 2026-10-09. Phase 8 remains ACTIVE; no full Master Spec, production, live OAuth or launch certification |
+| Phase 9 — Motion | **NOT STARTED** | Entry/discovery becomes eligible only after authorized merge and content verification of this closure record on origin/master; its own entry review and authorization remain required |
+| Phase 8 final closure decision | **SCOPED CLOSED · PRODUCT OWNER APPROVED 2026-10-09** | Omar's explicit approval follows the independent audit and scoped deferral PR #560; no full Master Spec, production performance, live OAuth, real-user Core Web Vitals or launch-readiness certification |
 | Phases 10–18 | **FUTURE** | App shell, IA/UX, surface migration, cleanup, governance and QA under the Master Build Spec |
 | Phases 19–23 | **FUTURE** | Production/full-loop verification, dogfood, private beta and launch |
 
@@ -56,10 +56,12 @@ waived or silently removed. Their timing requires separate approved planning and
 scope decisions; no milestone is assigned here. Unsupplied brand variants remain
 SOURCE PENDING and do not invalidate the approved Header/Footer placement.
 
-Phase 8 may proceed to its formal closure decision against approved scoped
-acceptance criteria. **Phase 8 remains ACTIVE pending separate final Product Owner
-approval; Phase 9 remains NOT STARTED.** This is not full Master Spec completion,
-production performance, live OAuth or public launch-readiness certification.
+At the time of that deferral ruling, Phase 8 remained ACTIVE pending separate final
+Product Owner approval. Omar subsequently approved **PHASE 8 — SCOPED CLOSED ·
+PRODUCT OWNER APPROVED** on 2026-10-09; see the [formal closure record](PHASE_8_FORMAL_CLOSURE.md).
+The register P8-F01–F06 and all re-entry gates remain in force. **Phase 9 remains
+NOT STARTED.** Neither decision certifies full Master Spec completion, production
+performance, live OAuth, real-user Core Web Vitals or public launch readiness.
 
 ### P8-06B close-out evidence and limitations — 2026-10-09
 
@@ -77,6 +79,7 @@ production performance, live OAuth or public launch-readiness certification.
 
 | Document | Answers | Start here if you are… |
 |---|---|---|
+| [PHASE_8_FORMAL_CLOSURE.md](PHASE_8_FORMAL_CLOSURE.md) | Omar's 2026-10-09 scoped Phase 8 closure approval, supporting evidence, Review Gate limits and Phase 9 entry conditions | checking the formal Phase 8 decision |
 | [PHASE_8_SCOPED_DEFERRAL.md](PHASE_8_SCOPED_DEFERRAL.md) | Approved 2026-10-09 scoped deferral, independent audit evidence, outstanding-work register and separate Phase 8 closure gate | reviewing Phase 8 closure or planning re-entry |
 | [LUMI_DESIGN_CONSTITUTION.md](LUMI_DESIGN_CONSTITUTION.md) | What LUMI is, how it looks, and the laws every design obeys. Includes the foundation-conflict register (Appendix A) | anyone — **read first** |
 | [PRODUCT_GRAMMAR.md](PRODUCT_GRAMMAR.md) | The nine objects the interface is made of, and what each must never become | designing or building any screen |
