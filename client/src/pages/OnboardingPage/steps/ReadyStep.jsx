@@ -96,7 +96,7 @@ export function ReadyStep({ onEnterApp }) {
 
       {topVerdict ? (
         <div
-          className={`rounded-2xl p-5 mb-5 border animate-verdict-enter ${
+          className={`rounded-2xl p-5 mb-5 border ${
             isKill ? 'bg-signal-kill/10 border-signal-kill/30' : 'bg-signal-scale/10 border-signal-scale/30'
           }`}
         >
@@ -145,13 +145,13 @@ export function ReadyStep({ onEnterApp }) {
       <button
         type="button"
         onClick={onEnterApp}
-        className={`${PRIMARY_BTN} mb-5 animate-fade-up-delay`}
+        className={`${PRIMARY_BTN} mb-5`}
       >
         {scored > 0 ? 'See all verdicts' : 'Open Campaigns'}
         <ArrowRight className="w-4 h-4" strokeWidth={2} />
       </button>
 
-      <div className="flex items-center justify-center gap-2 flex-wrap animate-fade-up-late">
+      <div className="flex items-center justify-center gap-2 flex-wrap">
         {metaConnected && <Chip done>Meta</Chip>}
         <Chip done={total > 0}>{`${total} Campaign${total === 1 ? '' : 's'}`}</Chip>
         <Chip done={scored > 0}>{`${scored} Verdict${scored === 1 ? '' : 's'}`}</Chip>

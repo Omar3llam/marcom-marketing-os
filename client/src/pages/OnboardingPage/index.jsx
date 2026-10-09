@@ -142,10 +142,9 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* key={step} remounts the wrapper so the entrance animation replays on
-            every step change. Safe here: the steps are already conditionally
-            mounted, so this changes nothing but the animation. */}
-        <div key={step} className="animate-step-in">
+        {/* Preserve each step's keyed lifecycle without delaying its content
+            behind an entrance animation. */}
+        <div key={step}>
           {step === 'name' && <NameStep onNext={(name) => { setWorkspaceName(name); goTo('connect'); }} />}
           {step === 'connect' && <ConnectStep onConnected={handleConnected} onSkip={handleSkip} saving={saving} />}
           {step === 'sync' && <SyncStep onComplete={handleSyncDone} />}
