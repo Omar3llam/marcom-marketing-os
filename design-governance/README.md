@@ -15,6 +15,33 @@ zero** as a reset, not a refresh. The legacy frontend and its design system are
 
 ---
 
+## Current execution roadmap checkpoint — 2026-10-09
+
+This checkpoint records the **current Frontend + Design System Reset**. It does
+not replace the verbatim Master Build Spec, the Product Constitution, or the
+historical B5/B6/B7/B8/B9 programme.
+
+| Phase / slice | Verified state | Boundary |
+|---|---|---|
+| Product truth + backend contracts (B5/B6/B9), IA (B7), state/UI contracts (B8) | LOCKED | Do not reopen during the frontend reset without new contradictory evidence |
+| Reset Phases 0–7 | Completed as the prerequisite to current Phase 8, per merged Phase 7 and Phase 8 work | Not a launch-readiness claim |
+| Phase 8 — Landing | **ACTIVE** | PRs #552–#557 landed, including copy/evidence, signup/accessibility, responsive landing and official brand integration |
+| P8-06A — LUMI Brand v1 placement | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09** | Existing Header symbol and Footer stacked lockup only; PR #557 on master at `83dc912`; see [brand/README.md](brand/README.md) |
+| P8-04B | **BLOCKED** | Preserve the separately tracked blocker, do not infer resolution from brand approval |
+| P8-06B | **NOT STARTED** | New brand variants / surfaces are not implicitly approved |
+| Phase 9 — Motion | **NOT STARTED** | Requires its own gate; P8-06A approval does not authorize Phase 9 |
+| Phases 10–18 | **FUTURE** | App shell, IA/UX, surface migration, cleanup, governance and QA under the Master Build Spec |
+| Phases 19–23 | **FUTURE** | Production/full-loop verification, dogfood, private beta and launch |
+
+**Execution discipline:** Claude Code implements narrowly scoped slices on fresh
+`origin/master`, proves RED → GREEN, runs the required checks, opens a
+dedicated PR, and verifies merged content on trunk. The Product Owner approves
+product/design rulings. Do not promote PR descriptions, historic roadmaps,
+test counts or design previews over the actual repository state. Every on-screen
+number must be traceable to a real database row.
+
+---
+
 ## 1. Documents
 
 | Document | Answers | Start here if you are… |
