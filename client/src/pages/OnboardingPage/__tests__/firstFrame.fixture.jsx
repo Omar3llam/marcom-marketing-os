@@ -11,7 +11,7 @@ import '@fontsource/inter/400.css';
 import '@fontsource/inter/600.css';
 import '@fontsource/space-grotesk/700.css';
 
-const root = createRoot(document.getElementById('root'));
+export const root = createRoot(document.getElementById('root'));
 const populated = {
   verdicts: [
     { verdict: 'SCALE', name: 'Synthetic lower spend', spendMinor: 100, confidence: 0.7 },

@@ -9,10 +9,14 @@
 // tokens read 13.1:1 and 4.9:1 — which is what they were designed for.
 export const PAGE = 'bg-lumi-bg';
 
+// An outline survives the legacy shadow cascade. Keep keyboard focus neutral
+// and immediate; the gold glow must not carry or obscure the indicator.
 export const PRIMARY_BTN =
   'w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-lumi-gold px-6 py-3 ' +
   'font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] ' +
-  'shadow-gold-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed';
+  'shadow-gold-glow transition-all focus-visible:outline focus-visible:outline-2 ' +
+  'focus-visible:outline-dark-base focus-visible:outline-offset-2 focus-visible:shadow-none ' +
+  'focus-visible:[transition-property:background-color,transform] disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const GHOST_BTN =
   'w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-lumi-border ' +
