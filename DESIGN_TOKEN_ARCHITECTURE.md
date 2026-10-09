@@ -556,7 +556,7 @@ There is no pill token. 📏 Tested: nothing is above 4px except `radius.round`.
 | Token | Value | Reduced motion | Purpose (MO-1) |
 |---|---|---|---|
 | `motion.duration.feedback` | 100ms | 100ms | direct control feedback; background-color only under FC-20, or composited opacity |
-| `motion.duration.reveal` | 200ms | 0ms | a value becoming known |
+| `motion.duration.reveal` | 200ms | 0ms | a value becoming known; existing landing selection-mark HIERARCHY only under FC-23 |
 | `motion.duration.transition` | 240ms | 0ms | spatial continuity |
 | `motion.duration.maximum` | 400ms | 0ms | the ceiling for any UI motion; a limit, not an animation |
 | `motion.easing.reveal` | `cubic-bezier(0, 0, 0.2, 1)` | — | decelerate |
@@ -588,6 +588,17 @@ There is no pill token. 📏 Tested: nothing is above 4px except `radius.round`.
   token and does not replace per-animation declarations. Preserve and
   independently verify this safety net. Legacy Auth 150ms color transitions
   and other unverified consumers are not approved by FC-20.
+- **Existing selection-mark HIERARCHY — Omar, 2026-10-09 (FC-23).** Only the
+  existing HeroDemonstration and ModelSpine marks may reuse the unchanged 200ms
+  reveal duration and reveal easing for secondary opacity emphasis. Primary
+  `aria-pressed`, content and text emphasis update immediately without waiting
+  for that fade; animated primary control feedback remains ≤100ms. This is not
+  data arrival or a general 200ms feedback exception. No content is hidden,
+  delayed or reordered; no implied processing, executed Action or Decision
+  mutation; no autoplay or idle animation. Reduced motion remains instant:
+  the reveal token reduces to 0ms, with the existing global 0.01ms safety cap
+  preserved. [FC-23's canonical scope](design-governance/LUMI_DESIGN_CONSTITUTION.md#fc-23-secondary-selection-hierarchy)
+  and MO-7 govern; no token value or application change is authorized.
 - 📏 Tested:
   - `feedback < reveal ≤ transition ≤ maximum`;
   - reveal and transition reduce to 0ms, and settle reduces to 0px;

@@ -91,6 +91,11 @@ systemised, never replaced with a new concept.
 > sizes and clear-space guidelines remain pending; measurements are verified on
 > the artwork and reviewed by the Product Owner, never invented.
 
+This existing 2026-10-08 artwork exception is cross-registered on 2026-10-09 as
+[FC-22](LUMI_DESIGN_CONSTITUTION.md#fc-22-official-logo-gradient). VB-F8 continues
+to prohibit decorative UI gradients; no recoloring, derived variant, additional
+placement, source-pending artwork or invented guideline is approved here.
+
 **The mark must communicate** `structure + reveal + negative space`, and
 **must not primarily read as a pie chart**. A reviewer test: show the symbol
 without context to someone unfamiliar with it. If "pie chart" or "chart" is the
