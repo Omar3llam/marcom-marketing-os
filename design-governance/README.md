@@ -27,10 +27,10 @@ historical B5/B6/B7/B8/B9 programme.
 | Reset Phases 0–7 | Completed as the prerequisite to current Phase 8, per merged Phase 7 and Phase 8 work | Not a launch-readiness claim |
 | Phase 8 — Landing | **ACTIVE** | PRs #552–#557 landed, including copy/evidence, signup/accessibility, responsive landing and official brand integration |
 | P8-06A — LUMI Brand v1 placement | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09** | Existing Header symbol and Footer stacked lockup only; PR #557 on master at `83dc912`; see [brand/README.md](brand/README.md) |
-| P8-04B | **BLOCKED** | Preserve the separately tracked blocker, do not infer resolution from brand approval |
+| P8-04B | **DEFERRED — DATA PROVENANCE BLOCKED** | Product Owner approved 2026-10-09; not implemented, completed or cancelled. Re-entry requires verified evidence and explicit approval; see [scoped ruling and follow-up register](PHASE_8_SCOPED_DEFERRAL.md) |
 | P8-06B | **CLOSED · PRODUCT OWNER APPROVED 2026-10-09 · NO MATERIAL CHANGE REQUIRED** | Measurement-first first-load audit; no source changes. Local synthetic evidence only, not field performance certification |
-| Phase 9 — Motion | **NOT STARTED** | Requires its own gate; P8-06A approval does not authorize Phase 9 |
-| Phase 8 final closure gate | **PENDING INDEPENDENT REVIEW AND PRODUCT OWNER DECISION** | P8-04B remains provenance-blocked; reconcile deferred work, public truth, responsive/accessibility, metadata, first-load and source-pending assets |
+| Phase 9 — Motion | **NOT STARTED** | Cannot start until Phase 8 is formally closed by the Product Owner; requires its own gate |
+| Phase 8 final closure gate | **PENDING SEPARATE PRODUCT OWNER CLOSURE APPROVAL** | Independent audit completed; scoped deferral ruling approved 2026-10-09. Phase 8 remains ACTIVE; no full Master Spec, production, live OAuth or launch certification |
 | Phases 10–18 | **FUTURE** | App shell, IA/UX, surface migration, cleanup, governance and QA under the Master Build Spec |
 | Phases 19–23 | **FUTURE** | Production/full-loop verification, dogfood, private beta and launch |
 
@@ -46,6 +46,21 @@ state a performance number only if it exists in supplied evidence.
 
 ---
 
+### Phase 8 scoped deferral ruling — 2026-10-09
+
+**Approved by Omar, Product Owner.** [The exact ruling and tracked follow-up
+register](PHASE_8_SCOPED_DEFERRAL.md) formally defer P8-04B with its data-provenance
+blocker retained. Actual application previews, three substantial real-UI visuals,
+pricing and meaningful marketing event tracking remain outstanding, not delivered,
+waived or silently removed. Their timing requires separate approved planning and
+scope decisions; no milestone is assigned here. Unsupplied brand variants remain
+SOURCE PENDING and do not invalidate the approved Header/Footer placement.
+
+Phase 8 may proceed to its formal closure decision against approved scoped
+acceptance criteria. **Phase 8 remains ACTIVE pending separate final Product Owner
+approval; Phase 9 remains NOT STARTED.** This is not full Master Spec completion,
+production performance, live OAuth or public launch-readiness certification.
+
 ### P8-06B close-out evidence and limitations — 2026-10-09
 
 - **Product Owner decision:** Approved `NO MATERIAL CHANGE REQUIRED` on 2026-10-09 for the narrowly scoped Landing First-Load Hygiene slice. This is an authorized no-change close-out, not approval of any broader auth/bootstrap change.
@@ -54,7 +69,7 @@ state a performance number only if it exists in supplied evidence.
 - **Safety:** no protected-view/Zod/private-API loading observed. Deferring Firebase/shared provider/bootstrap or globally splitting shared CSS was not proven safe within this slice.
 - **Verification reported by Codex:** 13 focused files / 348 tests passed; production build, brand/browser, reflow and logged-out route tests passed. Full frontend suite, fresh lint and architecture checks not rerun because no production code changed. Real OAuth and live authenticated sessions not exercised.
 - **Measurement boundary:** local synthetic evidence, **not** production traffic, field Core Web Vitals, or production performance certification. Raw evidence reported at the executor-local `C:/Users/user/.codex/audits/p8-06b/`, not attached to this repository; treat accessibility of that path as environment-dependent.
-- **Repository changes for P8-06B:** none. This governance record does not change landing code, brand assets, auth, routes or Master Build Spec. **Phase 8 remains ACTIVE; P8-04B remains BLOCKED; Phase 9 NOT STARTED.**
+- **Repository changes for P8-06B:** none. This governance record does not change landing code, brand assets, auth, routes or Master Build Spec. **Historical close-out status:** Phase 8 ACTIVE; P8-04B BLOCKED; Phase 9 NOT STARTED. The later scoped deferral ruling above records the current P8-04B disposition without rewriting that audit.
 
 ---
 
@@ -62,6 +77,7 @@ state a performance number only if it exists in supplied evidence.
 
 | Document | Answers | Start here if you are… |
 |---|---|---|
+| [PHASE_8_SCOPED_DEFERRAL.md](PHASE_8_SCOPED_DEFERRAL.md) | Approved 2026-10-09 scoped deferral, independent audit evidence, outstanding-work register and separate Phase 8 closure gate | reviewing Phase 8 closure or planning re-entry |
 | [LUMI_DESIGN_CONSTITUTION.md](LUMI_DESIGN_CONSTITUTION.md) | What LUMI is, how it looks, and the laws every design obeys. Includes the foundation-conflict register (Appendix A) | anyone — **read first** |
 | [PRODUCT_GRAMMAR.md](PRODUCT_GRAMMAR.md) | The nine objects the interface is made of, and what each must never become | designing or building any screen |
 | [VISUAL_BOUNDARIES.md](VISUAL_BOUNDARIES.md) | Approved and forbidden visual territory, with recognisable signals; logo direction | reviewing an artefact |
