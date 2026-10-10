@@ -36,7 +36,9 @@ function snapshot(element) {
     visible: element.matches(':focus-visible'), outline: s.outline, style: s.outlineStyle,
     width: s.outlineWidth, offset: s.outlineOffset, color: s.outlineColor, shadow: s.boxShadow,
     background: s.backgroundColor, transition: s.transitionProperty, duration: s.transitionDuration,
-    animation: s.animationName, surfaces, rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+    animation: s.animationName, opacity: s.opacity, transform: s.transform, surfaces,
+    hitArea: { width: element.offsetWidth, height: element.offsetHeight },
+    rect: { x: r.x, y: r.y, width: r.width, height: r.height },
     focusToken: s.getPropertyValue('--lumi-color-interaction-focus-ring').trim(),
     overflow: document.documentElement.scrollWidth > innerWidth };
 }
@@ -47,7 +49,29 @@ function contrast(a, b) {
   const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
+function shadowLayers(shadow) {
+  if (shadow === 'none') return [];
+  // Split between layers, never inside rgb()/rgba(). Transparent Tailwind
+  // ring/shadow placeholders are valid; inspect actual color, alpha and blur.
+  return shadow.split(/,(?![^()]*\))/).map(layer => {
+    const color = layer.match(/rgba?\(([^)]+)\)/);
+    assert.ok(color, `unrecognized computed shadow: ${layer}`);
+    const channels = color[1].split(',').map(Number);
+    const lengths = [...layer.replace(color[0], '').matchAll(/(-?[\d.]+)px/g)].map(match => Number(match[1]));
+    return { rgb: channels.slice(0, 3), alpha: channels.length === 4 ? channels[3] : 1,
+      x: lengths[0], y: lengths[1], blur: lengths[2] || 0, spread: lengths[3] || 0 };
+  });
+}
+function checkShadow(value, record, state) {
+  try {
+    const layers = shadowLayers(value.shadow);
+    (record.shadows ||= []).push({ state, opacity: value.opacity, layers });
+    assert.ok(layers.every(layer => layer.alpha === 0),
+      `${state}: no visible decorative shadow; computed ${value.shadow}`);
+  } catch (error) { record.failures.push(`shadow: ${error.message}`); }
+}
 function checkIndicator(value, record) {
+  checkShadow(value, record, 'keyboard-focus');
   try {
     assert.ok(value.focused && value.visible, 'native keyboard focus-visible must match');
     assert.equal(value.style, 'solid', 'focus outline must actually render');
@@ -91,7 +115,32 @@ async function run(browser, base, config) {
     }
     if (config.state === 'connect-connecting') { await primary.click(); await page.getByText('Redirecting to Meta…').waitFor(); }
     record.before = await primary.evaluate(snapshot);
+    checkShadow(record.before, record, disabled.includes(config.state) ? 'disabled-default' : 'default');
+    assert.equal(record.before.overflow, false);
     await page.screenshot({ path: path.join(output, `${key}-before.png`), fullPage: true });
+    const callsBeforePointer = await page.evaluate(() => window.__onboardingFixture.calls);
+    const pathBeforePointer = new URL(page.url()).pathname;
+    await primary.hover(); await page.waitForTimeout(200);
+    record.hover = await primary.evaluate(snapshot);
+    checkShadow(record.hover, record, disabled.includes(config.state) ? 'disabled-hover' : 'hover');
+    await page.screenshot({ path: path.join(output, `${key}-hover.png`), fullPage: true });
+    await page.mouse.down(); await page.waitForTimeout(200);
+    record.pointerActive = await primary.evaluate(snapshot);
+    checkShadow(record.pointerActive, record, disabled.includes(config.state) ? 'disabled-pointer-active' : 'pointer-active');
+    await page.screenshot({ path: path.join(output, `${key}-pointer-active.png`), fullPage: true });
+    // Release outside the control so presentation probing cannot activate it.
+    await page.mouse.move(0, 0); await page.mouse.up();
+    assert.deepEqual(await page.evaluate(() => window.__onboardingFixture.calls), callsBeforePointer);
+    assert.equal(new URL(page.url()).pathname, pathBeforePointer);
+    assert.deepEqual(record.hover.hitArea, record.before.hitArea);
+    assert.deepEqual(record.pointerActive.hitArea, record.before.hitArea);
+    assert.equal(record.hover.text, record.before.text);
+    assert.equal(record.pointerActive.text, record.before.text);
+    assert.equal(record.hover.overflow || record.pointerActive.overflow, false);
+    // A pointer press legitimately changes native focus. Remount unchanged
+    // fixtures before replaying the original keyboard/activation contract.
+    await mount(page, config.state);
+    if (config.state === 'connect-connecting') { await primary.click(); await page.getByText('Redirecting to Meta…').waitFor(); }
     if (disabled.includes(config.state)) {
       assert.equal(await primary.isDisabled(), true);
       await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
@@ -151,5 +200,5 @@ async function run(browser, base, config) {
     fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(result, null, 2));
     console.log(`Focus cases: ${result.cases.length}; failures: ${result.failures.length}; evidence: ${output}`);
   }
-  assert.equal(result.failures.length, 0, 'keyboard focus must render independently of glow');
+  assert.equal(result.failures.length, 0, 'focus, activation and absence of decorative glow must hold');
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
