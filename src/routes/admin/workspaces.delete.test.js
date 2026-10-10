@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     workspace: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn() },
+    user: { findUnique: vi.fn() },
     loopRun: { findMany: vi.fn() },
     adminAuditLog: { create: vi.fn() },
   },
@@ -31,6 +32,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../services/connectors/credentialStore.js', () => ({
   listConnections: vi.fn().mockResolvedValue([]),
   deleteWorkspaceCredentials: vi.fn().mockResolvedValue(0),
+  withWorkspaceCredentialTransaction: vi.fn(async (client, _id, operation) => operation(client)),
 }));
 
 import { prisma } from '../../lib/prisma.js';
@@ -67,6 +69,7 @@ const del = (body, opts) => request(makeApp(opts)).delete(`/api/admin/workspaces
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.workspace.findUnique.mockResolvedValue(workspace());
+  prisma.user.findUnique.mockResolvedValue(null);
   prisma.workspace.delete.mockResolvedValue({ id: WS });
   prisma.adminAuditLog.create.mockResolvedValue({ id: 'log-1' });
   deleteWorkspaceCredentials.mockResolvedValue(0);
@@ -171,7 +174,7 @@ describe('other admins', () => {
 describe('credentials — the table that does not cascade', () => {
   it('purges them, since marcom_credentials has no FK to workspaces', async () => {
     await del({ confirmName: NAME });
-    expect(deleteWorkspaceCredentials).toHaveBeenCalledWith(WS);
+    expect(deleteWorkspaceCredentials).toHaveBeenCalledWith(WS, prisma);
   });
 
   // If the purge throws AFTER the workspace is gone, the tokens are orphaned

@@ -12,7 +12,7 @@
 // ============================================================
 import { getDb } from '../../utils/db.js';
 import { logger } from '../../utils/logger.js';
-import { encrypt, decrypt } from '../../models/credential.js';
+import { encrypt, decrypt, saveCredentialInTransaction, withCredentialLifecycle } from '../../models/credential.js';
 import { nextHealth } from './connectorHealth.js';
 
 // Connector channel/platform identity ↔ marcom_credentials.platform string.
@@ -197,22 +197,84 @@ export async function attachWorkspaceToCredential({ projectId, userId, platform,
   if (!workspaceId || !platform || !projectId) return { stamped: false };
   const sql = getDb();
   // Link and active-row reconciliation commit together; retry never sees a half-stamp.
-  return sql.begin(async (tx) => {
-    const stamped = userId
-      ? await tx`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND user_id = ${userId} AND platform = ${platform} RETURNING id`
-      : await tx`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND platform = ${platform} RETURNING id`;
-    if (stamped.length === 0) return { stamped: false };
-    const keepId = stamped[0].id;
-    const losers = await tx`
-      UPDATE marcom_credentials SET is_active = false, updated_at = NOW()
-      WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND id <> ${keepId} AND is_active = true
-      RETURNING id
-    `;
-    if (losers.length > 0) {
-      logger.warn({ workspaceId, platform, deactivated: losers.length }, '[credentialStore] one-account rule deactivated other rows for this channel');
-    }
-    logger.info({ workspaceId, platform, projectId }, '[credentialStore] stamped workspace on credential');
-    return { stamped: true, id: keepId, deactivated: losers.length };
+  return sql.begin((tx) => attachOnTransaction(tx, { projectId, userId, platform, workspaceId }));
+}
+
+async function attachOnTransaction(tx, { projectId, userId, platform, workspaceId }) {
+  const stamped = userId
+    ? await tx`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND user_id = ${userId} AND platform = ${platform} RETURNING id`
+    : await tx`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND platform = ${platform} RETURNING id`;
+  if (stamped.length === 0) return { stamped: false };
+  const keepId = stamped[0].id;
+  const losers = await tx`
+    UPDATE marcom_credentials SET is_active = false, updated_at = NOW()
+    WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND id <> ${keepId} AND is_active = true
+    RETURNING id
+  `;
+  if (losers.length > 0) {
+    logger.warn({ workspaceId, platform, deactivated: losers.length }, '[credentialStore] one-account rule deactivated other rows for this channel');
+  }
+  logger.info({ workspaceId, platform, projectId }, '[credentialStore] stamped workspace on credential');
+  return { stamped: true, id: keepId, deactivated: losers.length };
+}
+
+export class MetaOAuthAuthorityError extends Error {
+  constructor(code) {
+    super('Meta connection authority refused');
+    this.code = code;
+  }
+}
+
+/**
+ * PILOT-SEC-02: workspace → user → project, before the FIRST credential write.
+ * Workspace FOR UPDATE also serializes Prisma lifecycle transactions and other
+ * callbacks. User FOR UPDATE orders ordinary role updates/deletions. Provider
+ * exchange MUST happen before this function, outside these database locks.
+ */
+export async function completeMetaOAuthCredential({ userId, projectId, workspaceId, accessToken, accountId, scopes, expiresAt, metadata }) {
+  if (!userId || !projectId || !workspaceId || !accessToken || !accountId) {
+    throw new MetaOAuthAuthorityError('incomplete_connection');
+  }
+  let authorityChecked = false;
+  try {
+    const sql = getDb();
+    return await sql.begin(async (tx) => {
+      const workspaces = await tx`SELECT id FROM workspaces WHERE id = ${workspaceId}::uuid FOR UPDATE`;
+      if (!workspaces.length) throw new MetaOAuthAuthorityError('workspace_unavailable');
+      const users = await tx`SELECT "workspaceId", "collabRole" FROM users WHERE "clerkId" = ${userId} FOR UPDATE`;
+      if (users[0]?.collabRole !== 'STRATEGIST') throw new MetaOAuthAuthorityError('role_forbidden');
+      const canonicalId = workspaces[0].id;
+      if (users[0].workspaceId !== canonicalId) throw new MetaOAuthAuthorityError('workspace_mismatch');
+      const projects = await tx`SELECT project_id FROM marcom_projects WHERE project_id = ${projectId} AND user_id = ${userId} FOR UPDATE`;
+      if (!projects.length) throw new MetaOAuthAuthorityError('project_not_found');
+      const existing = await tx`SELECT user_id, workspace_id FROM marcom_credentials WHERE project_id = ${projectId} AND platform = 'meta_ads' FOR UPDATE`;
+      if (existing.length && (existing[0].user_id !== userId
+        || (existing[0].workspace_id && existing[0].workspace_id !== canonicalId))) {
+        throw new MetaOAuthAuthorityError('workspace_mismatch');
+      }
+      authorityChecked = true;
+      await saveCredentialInTransaction(tx, userId, { projectId, platform: 'meta_ads', accessToken, accountId, scopes, expiresAt, metadata });
+      const linked = await attachOnTransaction(tx, { projectId, userId, platform: 'meta_ads', workspaceId: canonicalId });
+      if (!linked.stamped) throw new MetaOAuthAuthorityError('incomplete_connection');
+      return linked;
+    });
+  } catch (err) {
+    if (err instanceof MetaOAuthAuthorityError || authorityChecked) throw err;
+    throw new MetaOAuthAuthorityError('authority_unavailable');
+  }
+}
+
+/**
+ * A Prisma transaction owns BOTH its raw purge and ORM cascade. It coordinates
+ * with raw OAuth transactions through the SAME workspace row, not a shared pool.
+ * No provider/Firebase calls or successful-deletion audit belong in operation.
+ */
+export async function withWorkspaceCredentialTransaction(client, workspaceId, operation) {
+  return client.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId}::uuid FOR UPDATE`;
+    // Freeze destructive roster/ADMIN/last-strategist guards as well as FK joins.
+    await tx.$queryRaw`SELECT id FROM users WHERE "workspaceId" = ${workspaceId}::uuid ORDER BY id FOR UPDATE`;
+    return operation(tx);
   });
 }
 
@@ -224,16 +286,21 @@ export async function attachWorkspaceToCredential({ projectId, userId, platform,
 export async function upsertWorkspaceCredential(workspaceId, channel, { userId, accessToken, refreshToken, accountId, scopes, expiresAt } = {}) {
   const platform = dbPlatform(channel);
   if (!workspaceId || !platform) throw new Error('upsertWorkspaceCredential: workspaceId + channel required');
-  const sql = getDb();
   const accessEnc = accessToken ? encrypt(accessToken) : null;
   const refreshEnc = refreshToken ? encrypt(refreshToken) : null;
-  await sql`
+  await withCredentialLifecycle({ userId, workspaceId }, async (tx, canonicalId) => {
+    const existing = await tx`SELECT workspace_id, user_id FROM marcom_credentials WHERE project_id = ${canonicalId} AND platform = ${platform} FOR UPDATE`;
+    if (existing.length && (existing[0].workspace_id !== canonicalId
+      && !(existing[0].workspace_id === null && existing[0].user_id === userId))) {
+      throw new Error('Credential lifecycle association unavailable');
+    }
+    await tx`
     INSERT INTO marcom_credentials
       (project_id, user_id, workspace_id, platform, access_token_enc, refresh_token_enc, account_id, scopes, expires_at, is_active, updated_at)
     VALUES
-      (${workspaceId}, ${userId ?? workspaceId}, ${workspaceId}, ${platform}, ${accessEnc}, ${refreshEnc}, ${accountId ?? null}, ${scopes ?? null}, ${expiresAt ?? null}, true, NOW())
+      (${canonicalId}, ${userId}, ${canonicalId}, ${platform}, ${accessEnc}, ${refreshEnc}, ${accountId ?? null}, ${scopes ?? null}, ${expiresAt ?? null}, true, NOW())
     ON CONFLICT (project_id, platform) DO UPDATE SET
-      workspace_id      = ${workspaceId},
+      workspace_id      = ${canonicalId},
       access_token_enc  = EXCLUDED.access_token_enc,
       refresh_token_enc = COALESCE(EXCLUDED.refresh_token_enc, marcom_credentials.refresh_token_enc),
       account_id        = COALESCE(EXCLUDED.account_id, marcom_credentials.account_id),
@@ -241,13 +308,17 @@ export async function upsertWorkspaceCredential(workspaceId, channel, { userId, 
       expires_at        = COALESCE(EXCLUDED.expires_at, marcom_credentials.expires_at),
       is_active         = true,
       updated_at        = NOW()
-  `;
+    `;
+    // Workspace-keyed replacements reconcile legacy rows in the SAME commit.
+    await attachOnTransaction(tx, { projectId: canonicalId, platform, workspaceId: canonicalId });
+  });
   logger.info({ workspaceId, channel }, '[credentialStore] upserted workspace credential');
 }
 
 /**
- * Purge every credential belonging to a workspace. Used by the admin workspace
- * delete, which is the ONLY caller — nothing else destroys a whole account.
+ * Purge credentials for admin and sole-member workspace deletion. Runtime
+ * callers supply their locked Prisma transaction; maintenance callers retain
+ * the historical two-key purge without claiming lifecycle coordination.
  *
  * This exists because marcom_credentials is a RAW-SQL table deliberately kept
  * out of the Prisma schema, so it has NO foreign key to workspaces and does NOT
@@ -263,8 +334,39 @@ export async function upsertWorkspaceCredential(workspaceId, channel, { userId, 
  *
  * @returns {Promise<number>} rows deleted (0 when the workspace never connected)
  */
-export async function deleteWorkspaceCredentials(workspaceId) {
+export async function deleteWorkspaceCredentials(workspaceId, transaction = null) {
   if (!workspaceId) return 0;
+  if (transaction) {
+    // Owner/project evidence must be resolved while users still exist. These
+    // locks follow the workspace/user locks held by the deletion transaction.
+    await transaction.$queryRaw`
+      SELECT p.project_id FROM marcom_projects p
+      JOIN users u ON u."clerkId" = p.user_id
+      WHERE u."workspaceId" = ${workspaceId}::uuid
+      ORDER BY p.project_id FOR UPDATE OF p
+    `;
+    const ambiguous = await transaction.$queryRaw`
+      SELECT c.id FROM marcom_credentials c LEFT JOIN users u ON u."clerkId" = c.user_id
+      WHERE (u."workspaceId" = ${workspaceId}::uuid AND c.workspace_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM marcom_projects p WHERE p.project_id = c.project_id AND p.user_id = c.user_id))
+        OR (c.project_id = ${workspaceId} AND c.workspace_id IS DISTINCT FROM ${workspaceId}
+          AND NOT (c.workspace_id IS NULL AND COALESCE(u."workspaceId" = ${workspaceId}::uuid, false)
+            AND EXISTS (SELECT 1 FROM marcom_projects p WHERE p.project_id = c.project_id AND p.user_id = c.user_id)))
+      FOR UPDATE OF c
+    `;
+    if (ambiguous.length) throw new Error('Workspace credential association unavailable');
+    const rows = await transaction.$queryRaw`
+      DELETE FROM marcom_credentials c
+      WHERE c.workspace_id = ${workspaceId}
+        OR (c.workspace_id IS NULL AND EXISTS (
+          SELECT 1 FROM users u JOIN marcom_projects p ON p.user_id = u."clerkId"
+          WHERE u."workspaceId" = ${workspaceId}::uuid
+            AND u."clerkId" = c.user_id AND p.project_id = c.project_id
+        ))
+      RETURNING id
+    `;
+    return rows.length;
+  }
   const sql = getDb();
   const rows = await sql`
     DELETE FROM marcom_credentials
@@ -274,4 +376,27 @@ export async function deleteWorkspaceCredentials(workspaceId) {
   const count = rows.length;
   if (count) logger.info({ workspaceId, count }, '[credentialStore] purged workspace credentials');
   return count;
+}
+
+// Member removal keeps stamped workspace sources, but must resolve private
+// legacy ownership BEFORE its User FK is destroyed. Caller holds workspace/users.
+export async function deleteLegacyOwnerCredentials(userId, workspaceId, tx) {
+  await tx.$queryRaw`
+    SELECT p.project_id FROM marcom_projects p JOIN users u ON u."clerkId" = p.user_id
+    WHERE u."clerkId" = ${userId} AND u."workspaceId" = ${workspaceId}::uuid
+    ORDER BY p.project_id FOR UPDATE OF p
+  `;
+  const ambiguous = await tx.$queryRaw`
+    SELECT c.id FROM marcom_credentials c WHERE c.user_id = ${userId} AND c.workspace_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM marcom_projects p WHERE p.project_id = c.project_id AND p.user_id = c.user_id)
+    FOR UPDATE OF c
+  `;
+  if (ambiguous.length) throw new Error('Workspace credential association unavailable');
+  const rows = await tx.$queryRaw`
+    DELETE FROM marcom_credentials c WHERE c.user_id = ${userId} AND c.workspace_id IS NULL
+      AND EXISTS (SELECT 1 FROM marcom_projects p JOIN users u ON u."clerkId" = p.user_id
+        WHERE p.project_id = c.project_id AND p.user_id = c.user_id AND u."workspaceId" = ${workspaceId}::uuid)
+    RETURNING id
+  `;
+  return rows.length;
 }

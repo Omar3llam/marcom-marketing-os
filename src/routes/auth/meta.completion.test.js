@@ -5,20 +5,20 @@ vi.mock('../../middleware/firebaseAuth.js', () => ({ requireAuth: (_req, _res, n
 vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn() } } }));
 vi.mock('../../models/credential.js', () => ({ saveCredential: vi.fn() }));
 vi.mock('../../models/project.js', () => ({ getProject: vi.fn() }));
-vi.mock('../../services/connectors/credentialStore.js', () => ({ attachWorkspaceToCredential: vi.fn(), listConnections: vi.fn(), resolveCredential: vi.fn() }));
+vi.mock('../../services/connectors/credentialStore.js', () => ({ completeMetaOAuthCredential: vi.fn(), listConnections: vi.fn(), resolveCredential: vi.fn() }));
 vi.mock('../../services/metaAdsService.js', () => ({ exchangeForLongLivedToken: vi.fn(), listAdAccounts: vi.fn() }));
 vi.mock('../../utils/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 import { prisma } from '../../lib/prisma.js';
 import { saveCredential } from '../../models/credential.js';
 import { getProject } from '../../models/project.js';
-import { attachWorkspaceToCredential, listConnections, resolveCredential } from '../../services/connectors/credentialStore.js';
+import { completeMetaOAuthCredential, listConnections, resolveCredential } from '../../services/connectors/credentialStore.js';
 import { exchangeForLongLivedToken, listAdAccounts } from '../../services/metaAdsService.js';
 import { logger } from '../../utils/logger.js';
 import { authMetaRouter, buildState } from './meta.js';
 const secretFailure = new Error('private-db-detail secret-access-token stack-information');
 const app = express().use('/api/auth/meta', authMetaRouter);
 const callback = (returnTo = '/onboarding?step=connect') => request(app).get('/api/auth/meta/callback')
-  .query({ code: 'private-code', state: buildState('uid1', 'p1', returnTo) });
+  .query({ code: 'private-code', state: buildState('uid1', 'p1', returnTo, 'ws1') });
 const params = (res) => new URL(res.headers.location, 'http://localhost').searchParams;
 beforeEach(() => {
   vi.resetAllMocks();
@@ -29,7 +29,7 @@ beforeEach(() => {
   saveCredential.mockResolvedValue({ id: 'credential1' });
   exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'secret-access-token', expiresAt: null });
   listAdAccounts.mockResolvedValue([{ id: 'act1', accountStatus: 1 }]);
-  attachWorkspaceToCredential.mockResolvedValue({ stamped: true, id: 'credential1' });
+  completeMetaOAuthCredential.mockResolvedValue({ stamped: true, id: 'credential1' });
   listConnections.mockResolvedValue([{ platform: 'META', isActive: true, accountId: 'act1' }]);
   resolveCredential.mockResolvedValue({ accessToken: 'secret-access-token', accountId: 'act1' });
 });
@@ -40,17 +40,13 @@ describe('OAuth completion requires operational workspace persistence', () => {
     expect(params(res).get('meta_connected')).toBe('1');
     expect(params(res).get('projectId')).toBe('p1');
     expect(params(res).get('adAccountId')).toBe('act1');
-    expect(attachWorkspaceToCredential).toHaveBeenCalledWith({ projectId: 'p1', userId: 'uid1', platform: 'meta_ads', workspaceId: 'ws1' });
+    expect(completeMetaOAuthCredential).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1', userId: 'uid1', workspaceId: 'ws1' }));
     expect(listConnections).toHaveBeenCalledWith('ws1');
     expect(resolveCredential).toHaveBeenCalledWith('ws1', 'META');
   });
   it.each(['false stamp', 'throw stamp', 'save', 'no workspace', 'no identity', 'lookup', 'display', 'decrypt', 'token', 'account', 'account lookup'])('rejects incomplete %s without leaking details', async (failure) => {
-    if (failure === 'false stamp') attachWorkspaceToCredential.mockResolvedValue({ stamped: false });
-    if (failure === 'throw stamp') attachWorkspaceToCredential.mockRejectedValue(secretFailure);
-    if (failure === 'save') saveCredential.mockRejectedValue(secretFailure);
-    if (failure === 'no workspace') prisma.user.findUnique.mockResolvedValue({ workspaceId: null });
-    if (failure === 'no identity') prisma.user.findUnique.mockResolvedValue(null);
-    if (failure === 'lookup') prisma.user.findUnique.mockRejectedValue(secretFailure);
+    if (failure === 'false stamp') completeMetaOAuthCredential.mockResolvedValue({ stamped: false });
+    if (['throw stamp', 'save', 'no workspace', 'no identity', 'lookup'].includes(failure)) completeMetaOAuthCredential.mockRejectedValue(secretFailure);
     if (failure === 'display') listConnections.mockResolvedValue([]);
     if (failure === 'decrypt') resolveCredential.mockRejectedValue(secretFailure);
     if (failure === 'token') resolveCredential.mockResolvedValue({ accessToken: 'older-token', accountId: 'act1' });
@@ -58,17 +54,18 @@ describe('OAuth completion requires operational workspace persistence', () => {
     if (failure === 'account lookup') listAdAccounts.mockRejectedValue(secretFailure);
     const res = await callback('/onboarding?step=connect&meta_connected=1&meta_error=old').expect(302);
     expect(params(res).has('meta_connected')).toBe(false);
-    expect(params(res).get('meta_error')).toBe('server_error');
+    expect(params(res).get('meta_error')).toBe(['account', 'account lookup'].includes(failure) ? 'incomplete_connection' : 'server_error');
     expect(params(res).get('step')).toBe('connect');
     expect(res.headers.location).not.toMatch(/private|secret|stack/);
     expect(res.text).not.toMatch(/private|secret|stack/);
     expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(/private|secret|stack/);
     expect(JSON.stringify(logger.warn.mock.calls)).not.toMatch(/private|secret|stack/);
   });
-  it('a failed save cannot attempt linking', async () => {
-    saveCredential.mockRejectedValue(secretFailure);
+  it('a failed transaction cannot announce completion or invoke the generic independent writer', async () => {
+    completeMetaOAuthCredential.mockRejectedValue(secretFailure);
     await callback().expect(302);
-    expect(attachWorkspaceToCredential).not.toHaveBeenCalled();
+    expect(saveCredential).not.toHaveBeenCalled();
+    expect(listConnections).not.toHaveBeenCalled();
   });
   it('success replaces stale callback errors while retaining the return path and fragment', async () => {
     const res = await callback('/app/settings?tab=connections&meta_error=old#meta').expect(302);

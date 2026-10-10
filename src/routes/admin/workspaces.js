@@ -11,7 +11,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { recordAdminAction } from '../../lib/adminAudit.js';
-import { listConnections, deleteWorkspaceCredentials } from '../../services/connectors/credentialStore.js';
+import { listConnections, deleteWorkspaceCredentials, withWorkspaceCredentialTransaction } from '../../services/connectors/credentialStore.js';
 import { parseLimit, parseOffset, parseSearch, parseEnum } from './pagination.js';
 
 export const workspacesRouter = Router();
@@ -272,62 +272,66 @@ const DELETE_COUNTS = {
 //   4. AUDIT — DELETE_WORKSPACE, with the full counts, written after the fact.
 //      admin_audit_logs has no FK to workspaces precisely so this row survives.
 //
-// Credentials are purged FIRST and separately: marcom_credentials is raw SQL
-// with no foreign key, so it does not cascade (see deleteWorkspaceCredentials).
+// Purge and cascade share a Prisma transaction and OAuth's workspace row lock.
 workspacesRouter.delete('/:id', async (req, res) => {
   const { id } = req.params;
   const confirmName = typeof req.body?.confirmName === 'string' ? req.body.confirmName : null;
   const force = req.body?.force === true;
 
   try {
-    const ws = await prisma.workspace.findUnique({
-      where: { id },
-      select: {
-        id: true, name: true, plan: true, createdAt: true,
-        users: { where: { role: 'ADMIN' }, select: { id: true, email: true } },
-        _count: { select: DELETE_COUNTS },
-      },
+    const result = await withWorkspaceCredentialTransaction(prisma, id, async (tx) => {
+      const ws = await tx.workspace.findUnique({
+        where: { id },
+        select: {
+          id: true, name: true, plan: true, createdAt: true,
+          users: { where: { role: 'ADMIN' }, select: { id: true, email: true } },
+          _count: { select: DELETE_COUNTS },
+        },
+      });
+      if (!ws) return { status: 404, body: { error: 'Workspace not found' } };
+
+      // GUARD 2 — before the name check, so an operator who typed their own
+      // workspace's name correctly still gets the real reason for the refusal.
+      const actor = await tx.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
+      if ((req.workspaceId && req.workspaceId.toLowerCase() === ws.id) || actor?.workspaceId === ws.id) {
+        return { status: 409, body: {
+          error: 'Refusing to delete the workspace you are signed in to. Switch workspaces first.',
+        } };
+      }
+
+      // GUARD 1 — exact match, no trimming or case-folding. A near-miss is a
+      // near-miss; silently accepting one would defeat the point of typing it.
+      if (confirmName !== ws.name) {
+        return { status: 400, body: {
+          error: 'Confirmation does not match. Send confirmName exactly equal to the workspace name.',
+          expectedName: ws.name,
+        } };
+      }
+
+      // GUARD 3 — another operator's account. Overridable, never silent.
+      const otherAdmins = ws.users.filter((u) => u.id !== req.userId);
+      if (otherAdmins.length > 0 && !force) {
+        return { status: 409, body: {
+          error: `This workspace has ${otherAdmins.length} other ADMIN member${otherAdmins.length === 1 ? '' : 's'}. Re-send with force: true to delete anyway.`,
+          admins: otherAdmins.map((u) => u.email),
+        } };
+      }
+
+      // Counts are captured BEFORE anything is destroyed — after the cascade
+      // there is nothing left to count, and an audit row that could not say what
+      // it removed would be a record of nothing.
+      const before = { name: ws.name, plan: ws.plan ?? 'FREE', createdAt: ws.createdAt, counts: { ...ws._count } };
+
+      // Credentials first. They do NOT cascade (no FK — raw-SQL table), and if
+      // this throws we abort with the workspace still intact, rather than leaving
+      // live OAuth tokens orphaned behind a deleted account.
+      const credentialsDeleted = await deleteWorkspaceCredentials(ws.id, tx);
+      await tx.workspace.delete({ where: { id: ws.id } });
+      return { ws, before, credentialsDeleted };
     });
-    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
-
-    // GUARD 2 — before the name check, so an operator who typed their own
-    // workspace's name correctly still gets the real reason for the refusal.
-    if (req.workspaceId && req.workspaceId === id) {
-      return res.status(409).json({
-        error: 'Refusing to delete the workspace you are signed in to. Switch workspaces first.',
-      });
-    }
-
-    // GUARD 1 — exact match, no trimming or case-folding. A near-miss is a
-    // near-miss; silently accepting one would defeat the point of typing it.
-    if (confirmName !== ws.name) {
-      return res.status(400).json({
-        error: 'Confirmation does not match. Send confirmName exactly equal to the workspace name.',
-        expectedName: ws.name,
-      });
-    }
-
-    // GUARD 3 — another operator's account. Overridable, never silent.
-    const otherAdmins = ws.users.filter((u) => u.id !== req.userId);
-    if (otherAdmins.length > 0 && !force) {
-      return res.status(409).json({
-        error: `This workspace has ${otherAdmins.length} other ADMIN member${otherAdmins.length === 1 ? '' : 's'}. Re-send with force: true to delete anyway.`,
-        admins: otherAdmins.map((u) => u.email),
-      });
-    }
-
-    // Counts are captured BEFORE anything is destroyed — after the cascade
-    // there is nothing left to count, and an audit row that could not say what
-    // it removed would be a record of nothing.
-    const before = { name: ws.name, plan: ws.plan ?? 'FREE', createdAt: ws.createdAt, counts: { ...ws._count } };
-
-    // Credentials first. They do NOT cascade (no FK — raw-SQL table), and if
-    // this throws we abort with the workspace still intact, rather than leaving
-    // live OAuth tokens orphaned behind a deleted account.
-    const credentialsDeleted = await deleteWorkspaceCredentials(id);
-
-    await prisma.workspace.delete({ where: { id } });
-    logger.warn({ workspaceId: id, name: ws.name, credentialsDeleted, counts: before.counts, actorUid: req.userId },
+    if (result.status) return res.status(result.status).json(result.body);
+    const { ws, before, credentialsDeleted } = result;
+    logger.warn({ workspaceId: ws.id, name: ws.name, credentialsDeleted, counts: before.counts, actorUid: req.userId },
       '[admin/workspaces] DELETED workspace');
 
     // After the delete, for the same reason the demo route does it: a row
@@ -338,12 +342,12 @@ workspacesRouter.delete('/:id', async (req, res) => {
       actorEmail: req.user?.email,
       type: 'DELETE_WORKSPACE',
       targetType: 'WORKSPACE',
-      targetId: id,
-      workspaceId: id,
+      targetId: ws.id,
+      workspaceId: ws.id,
       before: { ...before, credentialsDeleted, forced: force },
     });
 
-    return res.json({ deleted: true, workspaceId: id, name: ws.name, counts: before.counts, credentialsDeleted });
+    return res.json({ deleted: true, workspaceId: ws.id, name: ws.name, counts: before.counts, credentialsDeleted });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Workspace not found' });
     logger.error({ err: err.message, id }, '[admin/workspaces] delete failed');

@@ -250,26 +250,22 @@ describe('demo seed / delete → SEED_DEMO, DELETE_DEMO', () => {
     expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
   });
 
-  it('DELETE_DEMO records the name the workspace had', async () => {
+  it('PO disables Demo Delete: no deletion or success audit, even for a seeded name', async () => {
     prisma.workspace.findUnique.mockResolvedValue({ id: 'ws-1', name: 'Demo — Maison Salam · x' });
     prisma.workspace.delete.mockResolvedValue({});
-    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(200);
-
-    expect(audited()).toMatchObject({
-      type: 'DELETE_DEMO', targetType: 'WORKSPACE', targetId: 'ws-1', workspaceId: 'ws-1',
-      before: { name: 'Demo — Maison Salam · x' },
-    });
-    expect(audited().after).toBeNull();
+    const res = await request(makeApp()).delete('/api/admin/demo/ws-1').expect(409);
+    expect(res.body.error).toBe('DemoDeletionUnavailable');
+    expect(prisma.workspace.delete).not.toHaveBeenCalled();
+    expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
   });
 
   // The workspace is gone, so the row can only exist because the column has no
   // foreign key. If someone adds `@relation(onDelete: Cascade)` this stays green
   // in the mock but the row disappears in Postgres — hence the schema assertion
   // in the migration/schema pair, which this test documents rather than proves.
-  it('stores workspaceId as a plain string, with no relational connect', async () => {
-    prisma.workspace.findUnique.mockResolvedValue({ id: 'ws-1', name: 'Demo — gone' });
-    prisma.workspace.delete.mockResolvedValue({});
-    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(200);
+  it('preserved seed audit stores workspaceId as a plain string, with no relational connect', async () => {
+    seedDemoWorkspace.mockResolvedValue({ workspaceId: 'ws-1' });
+    await request(makeApp()).post('/api/admin/demo/seed').expect(201);
 
     expect(audited().workspaceId).toBe('ws-1');
     expect(audited().workspace).toBeUndefined(); // never a nested connect
@@ -278,15 +274,25 @@ describe('demo seed / delete → SEED_DEMO, DELETE_DEMO', () => {
   // Ordering: the row must describe something that happened.
   it('a refused delete (non-demo workspace) writes nothing', async () => {
     prisma.workspace.findUnique.mockResolvedValue({ id: 'ws-1', name: 'Acme Production' });
-    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(403);
+    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(409);
     expect(prisma.workspace.delete).not.toHaveBeenCalled();
     expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
   });
 
-  it('a FAILED delete writes nothing — no row may assert a deletion that did not happen', async () => {
+  it('disabled Demo Delete cannot invoke even a failing destructive writer', async () => {
     prisma.workspace.findUnique.mockResolvedValue({ id: 'ws-1', name: 'Demo — doomed' });
     prisma.workspace.delete.mockRejectedValue(new Error('deadlock detected'));
-    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(500);
+    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(409);
+    expect(prisma.workspace.delete).not.toHaveBeenCalled();
+    expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+  it('missing demo workspace stays 404; unauthorized caller is refused before lookup', async () => {
+    prisma.workspace.findUnique.mockResolvedValue(null);
+    await request(makeApp()).delete('/api/admin/demo/ws-1').expect(404);
+    prisma.workspace.findUnique.mockClear();
+    await request(makeApp({ role: 'VIEWER' })).delete('/api/admin/demo/ws-1').expect(403);
+    expect(prisma.workspace.findUnique).not.toHaveBeenCalled();
+    expect(prisma.workspace.delete).not.toHaveBeenCalled();
     expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
   });
 });

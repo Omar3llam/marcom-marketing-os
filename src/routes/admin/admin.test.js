@@ -208,20 +208,20 @@ describe('POST /api/admin/demo/seed', () => {
 });
 
 describe('DELETE /api/admin/demo/:workspaceId', () => {
-  it('deletes a demo workspace (name starts with the sentinel)', async () => {
+  it('PO temporary policy: a demo name is insufficient identity, so deletion is disabled', async () => {
     prisma.workspace.findUnique.mockResolvedValue({ id: 'demo-ws-1', name: 'Demo — Maison Salam · 2026' });
     prisma.workspace.delete.mockResolvedValue({ id: 'demo-ws-1' });
 
-    const res = await request(makeApp()).delete('/api/admin/demo/demo-ws-1').expect(200);
-    expect(res.body).toEqual({ deleted: true, workspaceId: 'demo-ws-1' });
-    expect(prisma.workspace.delete).toHaveBeenCalledWith({ where: { id: 'demo-ws-1' } });
+    const res = await request(makeApp()).delete('/api/admin/demo/demo-ws-1').expect(409);
+    expect(res.body).toEqual({ error: 'DemoDeletionUnavailable', message: 'Demo deletion is unavailable until immutable demo identity is established.' });
+    expect(prisma.workspace.delete).not.toHaveBeenCalled();
   });
 
-  it('REFUSES to delete a non-demo workspace (403, no delete call)', async () => {
+  it('REFUSES to delete a non-demo workspace under the same temporary policy', async () => {
     prisma.workspace.findUnique.mockResolvedValue({ id: 'real-ws', name: 'Acme Corp' });
 
-    const res = await request(makeApp()).delete('/api/admin/demo/real-ws').expect(403);
-    expect(res.body).toEqual({ error: 'Refusing to delete a non-demo workspace' });
+    const res = await request(makeApp()).delete('/api/admin/demo/real-ws').expect(409);
+    expect(res.body).toEqual({ error: 'DemoDeletionUnavailable', message: 'Demo deletion is unavailable until immutable demo identity is established.' });
     expect(prisma.workspace.delete).not.toHaveBeenCalled();
   });
 
