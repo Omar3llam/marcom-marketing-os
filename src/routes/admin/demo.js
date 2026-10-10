@@ -5,9 +5,8 @@
 //
 // ADMIN-only (gated at the mount). The seeder reuses the canonical
 // seedDemoWorkspace() (the apparel "Maison Salam" 9-phase graph) with a UNIQUE
-// key per call so demos never collide. DELETE refuses any workspace whose name
-// does NOT start with the "Demo —" sentinel — a hard guard so this route can
-// never tear down a real customer workspace. Errors return { error } only.
+// key per call so demos never collide. DELETE temporarily fails closed because
+// mutable names cannot establish immutable demo identity. Errors return { error }.
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
@@ -65,35 +64,12 @@ demoRouter.delete('/:workspaceId', async (req, res) => {
       return res.status(404).json({ error: 'Workspace not found' });
     }
 
-    // HARD SAFETY GUARD: never delete a non-demo workspace.
-    if (!ws.name.startsWith(DEMO_NAME_PREFIX)) {
-      logger.warn({ workspaceId, name: ws.name }, '[admin/demo] refused delete of non-demo workspace');
-      return res.status(403).json({ error: 'Refusing to delete a non-demo workspace' });
-    }
-
-    // Relations cascade on workspace delete (every workspace-scoped model
-    // carries onDelete: Cascade).
-    await prisma.workspace.delete({ where: { id: workspaceId } });
-    logger.info({ workspaceId, name: ws.name }, '[admin/demo] deleted demo workspace');
-
-    // Recorded AFTER the delete, not before it. The audit row survives either
-    // way — that is what the missing foreign key buys — so ordering is purely a
-    // question of truthfulness, and a row written first would permanently
-    // assert a deletion that a failed DELETE never performed. The cascade is a
-    // single atomic statement, so there is no partial-deletion state that a
-    // write-ahead row would be needed to catch. `before` is read from the
-    // sentinel guard above, so nothing is lost by waiting.
-    await recordAdminAction({
-      actorUid: req.userId,
-      actorEmail: req.user?.email,
-      type: 'DELETE_DEMO',
-      targetType: 'WORKSPACE',
-      targetId: workspaceId,
-      workspaceId,
-      before: { name: ws.name },
+    // PO 2026-10-10: no immutable demo designation exists. Keep ADMIN authority
+    // and missing-workspace 404; do not purge, delete or audit a success.
+    return res.status(409).json({
+      error: 'DemoDeletionUnavailable',
+      message: 'Demo deletion is unavailable until immutable demo identity is established.',
     });
-
-    return res.json({ deleted: true, workspaceId });
   } catch (err) {
     logger.error({ err: err.message, workspaceId }, '[admin/demo] delete failed');
     return res.status(500).json({ error: 'Failed to delete demo workspace' });

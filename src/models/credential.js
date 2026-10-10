@@ -178,7 +178,42 @@ async function backfillWorkspaceIds(sql) {
  * @param {Date}   [params.expiresAt]
  */
 export async function saveCredential(userId, { projectId, platform, accessToken, refreshToken, accountId, scopes, expiresAt, metadata }) {
+  return withCredentialLifecycle({ userId, projectId }, async (tx, workspaceId) => {
+    const existing = await tx`SELECT user_id, workspace_id FROM marcom_credentials WHERE project_id = ${projectId} AND platform = ${platform} FOR UPDATE`;
+    if (existing.length && (existing[0].user_id !== userId
+      || (existing[0].workspace_id && existing[0].workspace_id !== workspaceId))) {
+      throw new Error('Credential lifecycle association unavailable');
+    }
+    return saveCredentialInTransaction(tx, userId, { projectId, platform, accessToken, refreshToken, accountId, scopes, expiresAt, metadata });
+  });
+}
+
+/** Lifecycle only: permission policy remains with each caller. Never trust the
+ * preliminary lookup after locking: membership may have changed meanwhile.
+ * All writers coordinate with deletion via workspace -> user -> project.
+ */
+export async function withCredentialLifecycle({ userId, projectId, workspaceId }, operation) {
+  if (!userId || (!projectId && !workspaceId)) throw new Error('Credential lifecycle association unavailable');
   const sql = getDb();
+  return sql.begin(async (tx) => {
+    const owners = await tx`SELECT "workspaceId" FROM users WHERE "clerkId" = ${userId}`;
+    const target = workspaceId || owners[0]?.workspaceId;
+    if (!target) throw new Error('Credential lifecycle association unavailable');
+    const workspaces = await tx`SELECT id FROM workspaces WHERE id = ${target}::uuid FOR UPDATE`;
+    if (!workspaces.length) throw new Error('Credential lifecycle workspace unavailable');
+    const canonicalId = workspaces[0].id;
+    const users = await tx`SELECT "workspaceId" FROM users WHERE "clerkId" = ${userId} FOR UPDATE`;
+    if (users.length !== 1 || users[0].workspaceId !== canonicalId) throw new Error('Credential lifecycle association unavailable');
+    if (projectId) {
+      const projects = await tx`SELECT project_id FROM marcom_projects WHERE project_id = ${projectId} AND user_id = ${userId} FOR UPDATE`;
+      if (projects.length !== 1) throw new Error('Credential lifecycle association unavailable');
+    }
+    return operation(tx, canonicalId);
+  });
+}
+
+// Only callers already holding lifecycle/authority locks may inject a client.
+export async function saveCredentialInTransaction(sql, userId, { projectId, platform, accessToken, refreshToken, accountId, scopes, expiresAt, metadata }) {
 
   const accessEnc  = accessToken  ? encrypt(accessToken)  : null;
   const refreshEnc = refreshToken ? encrypt(refreshToken) : null;

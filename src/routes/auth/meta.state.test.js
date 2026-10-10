@@ -16,32 +16,32 @@ process.env.OAUTH_STATE_SECRET = TEST_STATE_SECRET;
 
 // Re-sign a state with a chosen timestamp (buildState always uses Date.now()).
 function signedState(userId, projectId, returnTo, ts) {
-  const rt = Buffer.from(returnTo || '').toString('base64url');
-  const payload = `${userId}:${projectId}:${rt}:${ts}`;
+  const payload = 'v2.' + Buffer.from(JSON.stringify({ userId, projectId, workspaceId: 'ws1', returnTo: returnTo || '/app/settings', issuedAt: ts })).toString('base64url');
   const mac = createHmac('sha256', process.env.OAUTH_STATE_SECRET).update(payload).digest('hex');
-  return Buffer.from(`${payload}:${mac}`).toString('base64url');
+  return `${payload}.${mac}`;
 }
 
 describe('meta OAuth state — returnTo threading (PR#266)', () => {
   it('round-trips userId/projectId/returnTo through build → parse', () => {
-    const s = buildState('uid_1', 'proj_1', '/onboarding?step=connect');
+    const s = buildState('uid_1', 'proj_1', '/onboarding?step=connect', 'ws1');
     expect(parseState(s)).toMatchObject({
       userId: 'uid_1',
       projectId: 'proj_1',
       returnTo: '/onboarding?step=connect',
+      workspaceId: 'ws1',
     });
   });
 
   it('preserves query chars + slashes in returnTo', () => {
     const rt = '/app/campaigns?x=1&y=2';
-    expect(parseState(buildState('u', 'p', rt)).returnTo).toBe(rt);
+    expect(parseState(buildState('u', 'p', rt, 'ws1')).returnTo).toBe(rt);
   });
 
-  it('a missing returnTo parses back as null (userId/projectId intact)', () => {
-    const parsed = parseState(buildState('u', 'p'));
+  it('a missing returnTo signs the safe default (identity/workspace intact)', () => {
+    const parsed = parseState(buildState('u', 'p', undefined, 'ws1'));
     expect(parsed.userId).toBe('u');
     expect(parsed.projectId).toBe('p');
-    expect(parsed.returnTo).toBeNull();
+    expect(parsed.returnTo).toBe('/app/settings');
   });
 
   it('a forged state (bad MAC) → null', () => {
@@ -60,6 +60,24 @@ describe('meta OAuth state — returnTo threading (PR#266)', () => {
 
   it('garbage → null', () => {
     expect(parseState('not-a-real-state')).toBeNull();
+  });
+
+  it.each(['u:p', 'u:p:L2FwcC94'])('PO-approved rejection of signed unbound legacy %s state', (prefix) => {
+    const payload = `${prefix}:${Date.now()}`;
+    const mac = createHmac('sha256', TEST_STATE_SECRET).update(payload).digest('hex');
+    expect(parseState(Buffer.from(`${payload}:${mac}`).toString('base64url'))).toBeNull();
+  });
+  it('rejects future/non-numeric time and missing workspace instead of granting context', () => {
+    expect(parseState(signedState('u', 'p', '/app/x', Date.now() + 10000))).toBeNull();
+    expect(parseState(signedState('u', 'p', '/app/x', 'not-a-number'))).toBeNull();
+    expect(() => buildState('u', 'p', '/app/x')).toThrow(/workspace/);
+  });
+  it('tampering with bound workspace invalidates the signature', () => {
+    const parts = buildState('u', 'p', '/app/x', 'ws1').split('.');
+    const data = JSON.parse(Buffer.from(parts[1], 'base64url'));
+    data.workspaceId = 'ws2';
+    parts[1] = Buffer.from(JSON.stringify(data)).toString('base64url');
+    expect(parseState(parts.join('.'))).toBeNull();
   });
 });
 

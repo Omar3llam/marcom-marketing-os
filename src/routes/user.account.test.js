@@ -43,6 +43,8 @@ vi.mock('./campaigns/context.js', () => ({
 // unit test does not need a raw Postgres pool.
 vi.mock('../services/connectors/credentialStore.js', () => ({
   deleteWorkspaceCredentials: vi.fn().mockResolvedValue(0),
+  deleteLegacyOwnerCredentials: vi.fn().mockResolvedValue(0),
+  withWorkspaceCredentialTransaction: vi.fn(async (client, _id, operation) => operation(client)),
 }));
 
 import { deleteWorkspaceCredentials } from '../services/connectors/credentialStore.js';
@@ -105,7 +107,7 @@ describe('DELETE /api/user/account — shared-workspace guard', () => {
 
     await request(app).delete('/api/user/account').expect(200);
 
-    expect(deleteWorkspaceCredentials).toHaveBeenCalledWith(WS);
+    expect(deleteWorkspaceCredentials).toHaveBeenCalledWith(WS, prisma);
     // Ordered first: a failure to purge must refuse the deletion rather than
     // orphan the credentials it was meant to remove.
     expect(deleteWorkspaceCredentials.mock.invocationCallOrder[0])

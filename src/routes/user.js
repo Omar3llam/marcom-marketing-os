@@ -11,7 +11,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireCollabRole } from '../middleware/requireCollabRole.js';
 import { workspaceColumnsFromContext } from './campaigns/context.js';
 // R11 (F15): marcom_credentials has no FK to workspaces, so it does not cascade.
-import { deleteWorkspaceCredentials } from '../services/connectors/credentialStore.js';
+import { deleteWorkspaceCredentials, deleteLegacyOwnerCredentials, withWorkspaceCredentialTransaction } from '../services/connectors/credentialStore.js';
 
 const getAuth = () => requireFirebaseAdminReady().auth();
 // NOTE: This project uses Prisma/PostgreSQL — do NOT add admin.firestore() here.
@@ -281,54 +281,55 @@ userRouter.delete('/account', async (req, res) => {
     //   - users, auditLogs, decisions, executionRequests, accounts, campaign
     //     entities and their snapshots, artifacts, approvals, loop runs
     if (workspaceId) {
-      const memberCount = await prisma.user.count({ where: { workspaceId } });
-
-      if (memberCount === 1) {
-        // R11 (F15) — purge the credential vault BEFORE the cascade.
-        //
-        // `marcom_credentials` is a raw-SQL table with NO foreign key to
-        // workspaces, so Prisma's onDelete: Cascade does not reach it. This
-        // handler's own docblock claimed the account deletion removed OAuth
-        // tokens; it did not, and a deleted account left live encrypted Meta
-        // and Google tokens behind indefinitely. The ADMIN delete path already
-        // called this helper and documented exactly this reason — the
-        // self-serve path simply never did.
-        //
-        // Ordered before the workspace delete so a failure here refuses the
-        // whole deletion rather than orphaning the credentials it was meant to
-        // remove.
-        const credentialsDeleted = await deleteWorkspaceCredentials(workspaceId);
-
-        await prisma.workspace.delete({
-          where: { id: workspaceId },
+      const result = await withWorkspaceCredentialTransaction(prisma, workspaceId, async (tx) => {
+        // Recheck identity and membership under the lock that also blocks new joins.
+        const current = await tx.user.findFirst({
+          where: { clerkId: uid }, select: { id: true, workspaceId: true, email: true },
         });
-        logger.info('[userRouter] Workspace deleted (sole member, with CASCADE):', { workspaceId, credentialsDeleted });
-      } else {
-        // Multi-member workspace: never cascade it away on a member's account
-        // deletion. Guard the roster first — the workspace must not be left
-        // without a strategist (null collabRole ⇒ STRATEGIST, same effective-
-        // role rule as countEffectiveStrategists in routes/team/index.js).
-        const otherStrategists = await prisma.user.count({
-          where: {
-            workspaceId,
-            id: { not: user.id },
-            OR: [{ collabRole: 'STRATEGIST' }, { collabRole: null }],
-          },
-        });
+        if (!current) return { missing: true };
+        if (current.workspaceId !== workspaceId) throw new Error('Account membership changed; retry deletion');
+        const memberCount = await tx.user.count({ where: { workspaceId } });
 
-        if (otherStrategists === 0) {
-          return res.status(409).json({
-            error: 'LastStrategist',
-            message: 'You are the last strategist in this workspace. Transfer the strategist role to another member before deleting your account.',
+        if (memberCount === 1) {
+          // Raw vault has no FK: purge and Prisma cascade must share this transaction.
+          const credentialsDeleted = await deleteWorkspaceCredentials(workspaceId, tx);
+
+          await tx.workspace.delete({
+            where: { id: workspaceId },
           });
-        }
+          return { workspaceDeleted: true, credentialsDeleted };
+        } else {
+          // Multi-member workspace: never cascade it away on a member's account
+          // deletion. Guard the roster first — the workspace must not be left
+          // without a strategist (null collabRole ⇒ STRATEGIST, same effective-
+          // role rule as countEffectiveStrategists in routes/team/index.js).
+          const otherStrategists = await tx.user.count({
+            where: {
+              workspaceId,
+              id: { not: current.id },
+              OR: [{ collabRole: 'STRATEGIST' }, { collabRole: null }],
+            },
+          });
 
-        // Delete ONLY this member. The rows it owns cascade via their FKs;
-        // the workspace and every other member's data stay intact.
-        await prisma.user.delete({ where: { id: user.id } });
-        logger.info('[userRouter] User deleted (multi-member workspace kept):', {
-          userId: user.id, workspaceId, memberCount,
-        });
+          if (otherStrategists === 0) {
+            return { lastStrategist: true };
+          }
+
+          // Delete ONLY this member. The rows it owns cascade via their FKs;
+          // the workspace and every other member's data stay intact.
+          await deleteLegacyOwnerCredentials(uid, workspaceId, tx);
+          await tx.user.delete({ where: { id: current.id } });
+          return { memberCount };
+        }
+      });
+      if (result.lastStrategist) return res.status(409).json({
+        error: 'LastStrategist',
+        message: 'You are the last strategist in this workspace. Transfer the strategist role to another member before deleting your account.',
+      });
+      if (result.workspaceDeleted) {
+        logger.info('[userRouter] Workspace deleted (sole member, with CASCADE):', { workspaceId, credentialsDeleted: result.credentialsDeleted });
+      } else if (!result.missing) {
+        logger.info('[userRouter] User deleted (multi-member workspace kept):', { userId: user.id, workspaceId, memberCount: result.memberCount });
       }
     } else {
       // No workspace — delete user record directly
