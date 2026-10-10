@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
 import { startConnect } from '@/features/connectors/startConnect.js';
@@ -123,9 +123,9 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
         className={`${PRIMARY_BTN} mb-3`}
       >
         {projectLoading
-          ? <><Loader2 className="w-4 h-4 animate-spin" /> Preparing…</>
+          ? 'Preparing…'
           : status === 'connecting'
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting to Meta…</>
+            ? 'Redirecting to Meta…'
             : <>Connect Meta <ArrowRight className="w-4 h-4" strokeWidth={2} /></>}
       </button>
 

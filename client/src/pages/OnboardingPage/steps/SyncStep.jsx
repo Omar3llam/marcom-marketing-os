@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { PRIMARY_BTN, GHOST_BTN } from './onboardingStyles.js';
 import { syncFailureState } from './syncFailureState.js';
@@ -112,7 +111,6 @@ export function SyncStep({ onComplete }) {
 
       {status === 'running' ? (
         <div role="status" className="flex items-center gap-3 text-sm font-medium text-lumi-text">
-          <Loader2 className="w-[18px] h-[18px] text-lumi-accent animate-spin flex-shrink-0" strokeWidth={2} aria-hidden="true" />
           Syncing your workspace…
         </div>
       ) : (status === 'finishing' || status === 'complete') && (

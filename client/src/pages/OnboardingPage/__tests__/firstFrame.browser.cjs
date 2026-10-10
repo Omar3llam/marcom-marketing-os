@@ -56,6 +56,10 @@ function snapshot(config) {
     if (['present', 'empty'].includes(config.variant)) targets.chips = ready.lastElementChild;
     targets.heading = root.querySelector('h1');
   } else if (config.step === 'name') targets.heading = root.querySelector('h1');
+  if (config.step === 'ready' && config.variant === 'pending') {
+    targets.heading = root.querySelector('h1');
+    targets.status = root.querySelector('[role="status"]');
+  }
   const measured = {};
   for (const [name, element] of Object.entries(targets)) {
     if (!element) continue;
@@ -68,6 +72,13 @@ function snapshot(config) {
     measured[name] = { text: element.textContent.trim(), chain };
   }
   return { at: performance.now(), measured, text: subject.innerText,
+    headings: [...root.querySelectorAll('h1')].map(element => element.textContent.trim()),
+    statuses: [...root.querySelectorAll('[role="status"]')].map(element => element.textContent.trim()),
+    animations: [...root.querySelectorAll('*')].map(element => {
+      const s = getComputedStyle(element);
+      return { name: s.animationName, duration: s.animationDuration, iterations: s.animationIterationCount,
+        running: element.getAnimations().some(animation => animation.playState === 'running') };
+    }).filter(animation => animation.name !== 'none'),
     overflow: document.documentElement.scrollWidth > innerWidth,
     buttons: [...root.querySelectorAll('button')].map(button => button.textContent.trim()),
     alerts: [...root.querySelectorAll('[role="alert"]')].map(element => element.textContent.trim()) };
@@ -76,14 +87,20 @@ function snapshot(config) {
 function checkVisibility(record, frame) {
   const failures = [];
   for (const [name, value] of Object.entries(frame.measured)) {
-    // Pending skeleton internals retain their existing pulse; only the step
-    // container is checked there. State absence must never fabricate a result.
+    // Required headings/status and their ancestors must be visible immediately.
     if (value.chain.some(style => style.opacity !== '1' || style.transform !== 'none'
       || style.display === 'none' || style.visibility === 'hidden' || style.animation !== 'none')) {
       failures.push(`${name} entrance conceals/displaces required content`);
     }
   }
   if (frame.overflow) failures.push('horizontal overflow');
+  if (record.step === 'ready') {
+    if (frame.headings.length !== 1 || !frame.headings[0]) failures.push('Ready requires exactly one meaningful h1');
+    if (frame.animations.length) failures.push('Ready must not spin/pulse or replace it with animation');
+    if (record.variant === 'pending' && (frame.statuses.length !== 1
+      || frame.statuses[0] !== 'Waiting for campaign and verdict results.')) failures.push('pending Ready requires one truthful waiting status');
+    if (record.variant !== 'pending' && frame.statuses.length) failures.push('settled Ready must not announce the full verdict');
+  }
   record.failures.push(...failures);
 }
 

@@ -32,14 +32,12 @@ function Chip({ done, children }) {
   );
 }
 
-// Skeleton, not a spinner — it keeps the card's shape so the layout doesn't jump
-// when the verdict lands.
-function Skeleton() {
+// A pending read is waiting, not a preview of a verdict that has not arrived.
+function PendingResults() {
   return (
     <div>
-      <div className="h-3 w-24 rounded bg-lumi-border/40 animate-pulse mb-4" />
-      <div className="h-44 w-full rounded-2xl bg-lumi-border/20 animate-pulse mb-5" />
-      <div className="h-11 w-full rounded-xl bg-lumi-border/20 animate-pulse" />
+      <h1 className="decision-title text-lumi-text mb-2">Your results</h1>
+      <p role="status" className="text-sm text-lumi-muted">Waiting for campaign and verdict results.</p>
     </div>
   );
 }
@@ -49,7 +47,7 @@ export function ReadyStep({ onEnterApp }) {
   const { campaigns, loading: cLoading, error: campaignError } = useConnectorCampaigns();
   const { data: connections, loading: connectionsLoading, error: connectionsError } = useConnections();
 
-  if (vLoading || cLoading) return <Skeleton />;
+  if (vLoading || cLoading) return <PendingResults />;
 
   // Neither cleared arrays nor retained data can certify a failed combined read.
   if (campaignError || verdictError) {
@@ -85,14 +83,15 @@ export function ReadyStep({ onEnterApp }) {
       .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))[0] ?? null;
 
   const isKill = topVerdict?.verdict === 'KILL';
+  const Heading = topVerdict ? 'h1' : 'p';
 
   return (
     <div>
       {/* lumi-gold is 1.34:1 on the light surface — the eyebrow reads as an
           eyebrow through size and tracking, not colour. */}
-      <p className="text-[11px] font-semibold text-lumi-muted uppercase tracking-widest mb-4">
+      <Heading className="text-[11px] font-semibold text-lumi-muted uppercase tracking-widest mb-4">
         {topVerdict ? 'Your first verdict' : 'Analysis complete'}
-      </p>
+      </Heading>
 
       {topVerdict ? (
         <div
