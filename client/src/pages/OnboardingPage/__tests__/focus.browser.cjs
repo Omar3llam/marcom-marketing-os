@@ -15,15 +15,16 @@ const overrides = {
     if (url !== '/api/lumi/connections/sync') throw new Error('Unexpected synthetic operation');
     const f = window.__onboardingFixture; f.calls.sync++;
     if (f.calls.sync > 1 || f.sync === 'sync-pending') return new Promise(() => {});
+    if (f.sync === 'sync-success') return Promise.resolve({ data: { ok: true, synced: 1, results: [{ status: 'success' }] } });
     if (f.sync === 'sync-partial') return Promise.resolve({ data: { ok: true, synced: 1, results: [{ status: 'success' }, { status: 'error' }] } });
     return Promise.reject(f.sync === 'sync-refused' ? { httpStatus: 403 } : new Error('Synthetic read failure'));
   } };`,
 };
 const states = ['name-present', 'name-empty', 'connect-idle', 'connect-failed', 'connect-loading',
   'connect-missing', 'connect-saving', 'connect-failed-saving', 'connect-connecting', 'sync-failed',
-  'sync-partial', 'sync-pending', 'sync-refused', 'ready-present', 'ready-empty', 'ready-failed', 'ready-pending'];
+  'sync-partial', 'sync-pending', 'sync-refused', 'ready-present', 'ready-empty', 'ready-failed', 'ready-pending', 'sync-success'];
 const disabled = ['name-empty', 'connect-loading', 'connect-missing', 'connect-saving', 'connect-failed-saving', 'connect-connecting'];
-const absent = ['sync-pending', 'sync-refused', 'ready-pending'];
+const absent = ['sync-pending', 'sync-refused', 'ready-pending', 'sync-success'];
 
 function snapshot(element) {
   const s = getComputedStyle(element), r = element.getBoundingClientRect();
@@ -98,6 +99,32 @@ async function mount(page, state) {
   }
   if (state === 'connect-failed-saving') await page.evaluate(() => window.setFocusSaving());
 }
+async function checkPendingSemantics(page, record) {
+  record.semantics = await page.locator('#subject').evaluate(subject => ({
+    text: subject.innerText,
+    headings: [...subject.querySelectorAll('h1')].map(el => el.textContent.trim()),
+    statuses: [...subject.querySelectorAll('[role="status"]')].map(el => el.textContent.trim()),
+    liveRegions: [...subject.querySelectorAll('[aria-live]')].map(el => el.textContent.trim()),
+    animations: [...subject.querySelectorAll('*')].map(el => {
+      const s = getComputedStyle(el);
+      return { name: s.animationName, duration: s.animationDuration, iterations: s.animationIterationCount,
+        running: el.getAnimations().some(animation => animation.playState === 'running') };
+    }).filter(value => value.name !== 'none'),
+    focus: document.activeElement.tagName,
+  }));
+  try {
+    assert.deepEqual(record.semantics.animations, [], 'actual compiled onboarding state must have no animation');
+    if (record.state.startsWith('ready')) {
+      assert.equal(record.semantics.headings.length, 1, 'Ready must have exactly one meaningful h1');
+      assert.ok(record.semantics.headings[0]);
+      assert.equal(record.semantics.focus, 'BODY', 'read state must not move focus');
+      assert.deepEqual(record.semantics.liveRegions, [], 'do not make verdict content a live region');
+      assert.deepEqual(record.semantics.statuses, record.state === 'ready-pending'
+        ? ['Waiting for campaign and verdict results.'] : []);
+    }
+  } catch (error) { record.failures.push(`pending/semantics: ${error.message}`); }
+  await page.screenshot({ path: path.join(output, `${record.width}-${record.motion}-${record.state}-semantics.png`), fullPage: true });
+}
 async function run(browser, base, config) {
   const page = await browser.newPage({ viewport: { width: config.width, height: 1000 }, reducedMotion: config.motion });
   const record = { ...config, failures: [] }; result.cases.push(record);
@@ -109,11 +136,18 @@ async function run(browser, base, config) {
     await page.evaluate(() => document.fonts.ready); await mount(page, config.state);
     // Identify the real shared-class control, never supply a synthetic button.
     const primary = page.locator('#subject button.bg-lumi-gold');
+    if (config.state === 'connect-connecting') { await primary.click(); await page.getByText('Redirecting to Meta…').waitFor(); }
+    await checkPendingSemantics(page, record);
     if (absent.includes(config.state)) {
-      await page.getByRole(config.state === 'sync-refused' ? 'alert' : config.state === 'sync-pending' ? 'status' : 'note').waitFor();
+      await page.getByRole(config.state === 'sync-refused' ? 'alert' : config.state.startsWith('sync') ? 'status' : 'note').waitFor();
+      if (config.state === 'sync-success') {
+        await page.waitForFunction(() => window.__onboardingFixture.calls.next === 1);
+        const calls = await page.evaluate(() => window.__onboardingFixture.calls);
+        assert.equal(calls.sync, 1); assert.equal(calls.next, 1);
+        record.completion = calls;
+      }
       assert.equal(await primary.count(), 0); record.controlAbsent = true; return;
     }
-    if (config.state === 'connect-connecting') { await primary.click(); await page.getByText('Redirecting to Meta…').waitFor(); }
     record.before = await primary.evaluate(snapshot);
     checkShadow(record.before, record, disabled.includes(config.state) ? 'disabled-default' : 'default');
     assert.equal(record.before.overflow, false);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { StrictMode } from 'react';
 
 const { useConnectionsMock, useProjectIdMock, startConnectMock } = vi.hoisted(() => ({
@@ -26,6 +26,45 @@ beforeEach(() => {
 });
 
 describe('ConnectStep', () => {
+  it('a late redirect result after unmount cannot change a new connection instance', async () => {
+    let resolveEarlier;
+    startConnectMock.mockReturnValue(new Promise(resolve => { resolveEarlier = resolve; }));
+    const previous = vi.fn(); const current = vi.fn();
+    const first = render(<ConnectStep onConnected={previous} onSkip={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /connect meta/i }));
+    first.unmount();
+    render(<ConnectStep onConnected={current} onSkip={vi.fn()} />);
+    await act(async () => resolveEarlier(false));
+    expect(screen.getByRole('button', { name: /connect meta/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+    expect(previous).not.toHaveBeenCalled(); expect(current).not.toHaveBeenCalled();
+    expect(startConnectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('project preparation is static waiting, disabled and never connection success', () => {
+    useProjectIdMock.mockReturnValue({ projectId: null, loading: true });
+    const onConnected = vi.fn();
+    const { container } = render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Preparing…' })).toBeDisabled();
+    expect(container.querySelector('.animate-spin, .animate-pulse')).toBeNull();
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(startConnectMock).not.toHaveBeenCalled();
+  });
+
+  it('an unresolved redirect is static waiting without OAuth completion or duplicate calls', () => {
+    startConnectMock.mockReturnValue(new Promise(() => {}));
+    const onConnected = vi.fn();
+    const { container } = render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /connect meta/i }));
+    const waiting = screen.getByRole('button', { name: 'Redirecting to Meta…' });
+    expect(waiting).toBeDisabled();
+    expect(container.querySelector('.animate-spin, .animate-pulse')).toBeNull();
+    fireEvent.click(waiting);
+    expect(startConnectMock).toHaveBeenCalledTimes(1);
+    expect(startConnectMock).toHaveBeenCalledWith('META', 'proj_1', '/onboarding?step=connect');
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
   it('a callback error blocks cached connected data and conflicting success flags', () => {
     setUrl('?step=connect&meta_error=server_error&meta_connected=1');
     useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });

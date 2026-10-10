@@ -89,13 +89,45 @@ describe('ReadyStep — read and connection truth', () => {
 });
 
 describe('ReadyStep — verdict-first', () => {
-  it('while loading, renders a skeleton (not a spinner or the real content)', () => {
+  it('while loading, renders a meaningful heading and one static waiting status, never invented content', () => {
     verdictsMock.mockReturnValue({ verdicts: [], loading: true });
     campaignsMock.mockReturnValue({ campaigns: [], loading: true });
     const { container } = render(<ReadyStep onEnterApp={vi.fn()} />);
-    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Your results' })).toBeInTheDocument();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent('Waiting for campaign and verdict results.');
+    expect(container.querySelector('.animate-pulse, .animate-spin')).toBeNull();
+    expect(container.querySelector('[aria-live]')).toBeNull();
+    expect(screen.queryByText(/recommendation|confidence|analysis complete|\d+ campaigns/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/your first verdict/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each(['KILL', 'SCALE'])('populated %s promotes its existing label to the only h1 without a verdict live region', (verdict) => {
+    verdictsMock.mockReturnValue({ verdicts: [{ verdict, name: 'Supplied campaign', confidence: 0.8 }], loading: false });
+    const { container } = render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Your first verdict' })).toBeInTheDocument();
+    expect(screen.getByText(verdict)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(container.querySelector('[aria-live]')).toBeNull();
+  });
+
+  it.each(['campaigns', 'verdicts'])('pending %s keeps one h1/status and does not move focus when data arrives', (pending) => {
+    campaignsMock.mockReturnValue({ campaigns: [], loading: pending === 'campaigns' });
+    verdictsMock.mockReturnValue({ verdicts: [], loading: pending === 'verdicts' });
+    const view = render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(document.activeElement).toBe(document.body);
+    campaignsMock.mockReturnValue({ campaigns: [], loading: false });
+    verdictsMock.mockReturnValue({ verdicts: [], loading: false });
+    view.rerender(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'No campaigns found yet.' })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('leads with the verdict: eyebrow → verdict → CTA → status chips', () => {

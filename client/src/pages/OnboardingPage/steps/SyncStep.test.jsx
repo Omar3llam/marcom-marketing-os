@@ -11,6 +11,38 @@ beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('SyncStep — pending progress truth', () => {
+  it('successful results wait for the existing 700ms completion callback without repeating the request', async () => {
+    api.post.mockResolvedValue(success);
+    const onComplete = vi.fn();
+    render(<SyncStep onComplete={onComplete} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('status')).toHaveTextContent('Sync results received.');
+    await act(async () => vi.advanceTimersByTimeAsync(699));
+    expect(onComplete).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('an unresolved request stays static through both elapsed-wait hints without advancing', async () => {
+    api.post.mockReturnValue(new Promise(() => {}));
+    const onComplete = vi.fn();
+    const { container } = render(<SyncStep onComplete={onComplete} />);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent('Syncing your workspace…');
+    expect(container.querySelector('.animate-spin, .animate-pulse')).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(screen.getByText('Large accounts may take longer. Waiting for sync results.')).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(screen.getByText('Still waiting for sync results. Keep this page open.')).toBeInTheDocument();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(container.querySelector('.animate-spin, .animate-pulse')).toBeNull();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/api/lumi/connections/sync', { datePreset: 'maximum' });
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
   it.each(['success', 'failure', 'partial', 'refusal'])('queued hint callbacks cannot republish waiting copy after %s', async (outcome) => {
     const timeout = vi.spyOn(globalThis, 'setTimeout');
     let resolve; let reject;
