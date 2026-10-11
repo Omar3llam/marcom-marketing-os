@@ -3,6 +3,7 @@ import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { PRIMARY_BTN } from './onboardingStyles.js';
+import { hasConfirmedMetaConnection, readyEvidenceState } from './onboardingEvidence.js';
 
 // The payoff of the whole flow: the verdict IS the page. The status counts are
 // demoted to chips under the CTA.
@@ -43,9 +44,9 @@ function PendingResults() {
 }
 
 export function ReadyStep({ onEnterApp }) {
-  const { verdicts, loading: vLoading, error: verdictError } = useConnectorVerdicts();
+  const { verdicts, status, gatedOut, loading: vLoading, error: verdictError } = useConnectorVerdicts();
   const { campaigns, loading: cLoading, error: campaignError } = useConnectorCampaigns();
-  const { data: connections, loading: connectionsLoading, error: connectionsError } = useConnections();
+  const connectionRead = useConnections();
 
   if (vLoading || cLoading) return <PendingResults />;
 
@@ -68,17 +69,17 @@ export function ReadyStep({ onEnterApp }) {
   }
 
   // Connection evidence is independent of the campaign/verdict population.
-  const metaConnected = !connectionsLoading && !connectionsError
-    && connections?.connections?.some((connection) => connection.platform === 'META' && connection.connected === true);
+  const metaConnected = hasConfirmedMetaConnection(connectionRead);
+  const evidence = readyEvidenceState(status, gatedOut);
 
-  const total  = campaigns?.length ?? 0;
-  const scored = verdicts?.length ?? 0;
+  const total = campaigns.length;
+  const scored = verdicts.length;
 
   // "First verdict" = the highest-stakes actionable call. There is no impact
   // score, so rank the KILL/SCALE verdicts by spend — the most money on the line
   // surfaces first.
   const topVerdict =
-    [...(verdicts ?? [])]
+    [...verdicts]
       .filter((v) => v.verdict === 'KILL' || v.verdict === 'SCALE')
       .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))[0] ?? null;
 
@@ -90,7 +91,7 @@ export function ReadyStep({ onEnterApp }) {
       {/* lumi-gold is 1.34:1 on the light surface — the eyebrow reads as an
           eyebrow through size and tracking, not colour. */}
       <Heading className="text-[11px] font-semibold text-lumi-muted uppercase tracking-widest mb-4">
-        {topVerdict ? 'Your first verdict' : 'Analysis complete'}
+        {topVerdict ? 'Your first verdict' : 'Your results'}
       </Heading>
 
       {topVerdict ? (
@@ -129,16 +130,25 @@ export function ReadyStep({ onEnterApp }) {
       ) : (
         <div className="mb-6">
           <h1 className="decision-title text-lumi-text mb-2">
-            {total > 0 ? 'No verdicts requiring immediate action.' : 'No campaigns found yet.'}
+            {evidence.heading}
           </h1>
           <p className="text-sm text-lumi-muted">
-            {total === 0
-              ? 'Verdicts appear after your first sync.'
-              : scored > 0
-                ? `Lumi scored ${scored} campaign${scored === 1 ? '' : 's'} — none returned a kill or scale call.`
-                : 'Verdicts appear once your campaigns have revenue data.'}
+            {evidence.message}
           </p>
         </div>
+      )}
+
+      {topVerdict && status !== 'OK' && <p className="text-sm text-lumi-muted mb-4">{evidence.message}</p>}
+      {evidence.gates.length > 0 && (
+        <ul className="mb-6 space-y-3" aria-label="Campaign assessment prerequisites">
+          {evidence.gates.map((gate, index) => (
+            <li key={`${gate.row.id}-${index}`} data-assessment-state={gate.state} className="text-sm text-lumi-muted">
+              <p className="font-medium text-lumi-text">{gate.row.name ?? gate.row.id}</p>
+              <p>{gate.message}</p>
+              {gate.prerequisite && <p>{gate.prerequisite}</p>}
+            </li>
+          ))}
+        </ul>
       )}
 
       <button
@@ -152,8 +162,8 @@ export function ReadyStep({ onEnterApp }) {
 
       <div className="flex items-center justify-center gap-2 flex-wrap">
         {metaConnected && <Chip done>Meta</Chip>}
-        <Chip done={total > 0}>{`${total} Campaign${total === 1 ? '' : 's'}`}</Chip>
-        <Chip done={scored > 0}>{`${scored} Verdict${scored === 1 ? '' : 's'}`}</Chip>
+        {total > 0 && <Chip>{`${total} returned campaign${total === 1 ? '' : 's'}`}</Chip>}
+        {scored > 0 && <Chip>{`${scored} returned verdict${scored === 1 ? '' : 's'}`}</Chip>}
       </div>
     </div>
   );

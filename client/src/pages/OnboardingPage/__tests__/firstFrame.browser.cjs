@@ -136,9 +136,10 @@ async function runCase(browser, baseURL, config) {
       if (config.variant === 'present') {
         assert.ok(text.includes('Synthetic highest spend') && !text.includes('Synthetic lower spend'));
         assert.ok(text.includes('Synthetic supplied recommendation.') && text.includes('80% confidence'));
-        assert.ok(text.includes('2 Campaigns') && text.includes('2 Verdicts') && text.includes('Meta'));
+        assert.ok(text.includes('2 returned campaigns') && text.includes('2 returned verdicts') && text.includes('Meta'));
       } else if (config.variant === 'empty') {
-        assert.ok(text.includes('No campaigns found yet.') && text.includes('0 Campaigns') && text.includes('0 Verdicts'));
+        assert.ok(text.includes('No campaigns in the assessment result.'));
+        assert.ok(!text.includes('0 Campaigns') && !text.includes('0 Verdicts') && !text.includes('after your first sync'));
         assert.ok(!text.includes('Synthetic highest spend'));
       } else if (config.variant === 'failed') {
         assert.equal(frames[0].alerts.length, 1);

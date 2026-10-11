@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { GATING_REASONS } from '@marcom/runtime-contracts';
 
 const { verdictsMock, campaignsMock, connectionsMock } = vi.hoisted(() => ({
   verdictsMock: vi.fn(),
@@ -15,9 +16,9 @@ import { ReadyStep } from './ReadyStep.jsx';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  verdictsMock.mockReturnValue({ verdicts: [], loading: false });
+  verdictsMock.mockReturnValue({ verdicts: [], gatedOut: [], status: 'NO_CAMPAIGNS', loading: false });
   campaignsMock.mockReturnValue({ campaigns: [], loading: false });
-  connectionsMock.mockReturnValue({ data: { connections: [] }, loading: false, error: null });
+  connectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [] }, loading: false, error: null });
 });
 
 describe('ReadyStep — read and connection truth', () => {
@@ -62,15 +63,15 @@ describe('ReadyStep — read and connection truth', () => {
     connectionsMock.mockReturnValue(connectionRead);
     render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.queryByText('Meta')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /no campaigns found yet/i })).toBeInTheDocument();
-    expect(screen.getByText('0 Campaigns')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /no campaigns in the assessment result/i })).toBeInTheDocument();
+    expect(screen.queryByText(/0.*campaign/i)).not.toBeInTheDocument();
   });
 
   it('a successful connection read certifies only a connected Meta entry', () => {
-    connectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
+    connectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
     render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.getByText('Meta').querySelector('svg')).toHaveClass('lucide-circle-check');
-    expect(screen.getByText('0 Campaigns')).toBeInTheDocument();
+    expect(screen.queryByText(/0.*campaign/i)).not.toBeInTheDocument();
   });
 
   it('a recovered required read replaces the error with the successful verdict summary', () => {
@@ -83,8 +84,8 @@ describe('ReadyStep — read and connection truth', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByText('SCALE')).toBeInTheDocument();
     expect(screen.getByText('Recovered')).toBeInTheDocument();
-    expect(screen.getByText('1 Campaign')).toBeInTheDocument();
-    expect(screen.getByText('1 Verdict')).toBeInTheDocument();
+    expect(screen.getByText('1 returned campaign')).toBeInTheDocument();
+    expect(screen.getByText('1 returned verdict')).toBeInTheDocument();
   });
 });
 
@@ -122,10 +123,10 @@ describe('ReadyStep — verdict-first', () => {
     expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(document.activeElement).toBe(document.body);
     campaignsMock.mockReturnValue({ campaigns: [], loading: false });
-    verdictsMock.mockReturnValue({ verdicts: [], loading: false });
+    verdictsMock.mockReturnValue({ verdicts: [], gatedOut: [], status: 'NO_CAMPAIGNS', loading: false });
     view.rerender(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole('heading', { level: 1, name: 'No campaigns found yet.' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'No campaigns in the assessment result.' })).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(document.activeElement).toBe(document.body);
   });
@@ -143,7 +144,7 @@ describe('ReadyStep — verdict-first', () => {
 
     expect(screen.getByText(/your first verdict/i)).toBeInTheDocument();
     const verdictHero = screen.getByText('KILL');
-    const chip = screen.getByText('3 Campaigns');
+    const chip = screen.getByText('3 returned campaigns');
     // The verdict precedes the status chips in document order.
     expect(verdictHero.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('Alexandria Villas')).toBeInTheDocument();
@@ -194,23 +195,25 @@ describe('ReadyStep — verdict-first', () => {
 
   it('no KILL/SCALE → honest copy, no claim that campaigns are healthy', () => {
     campaignsMock.mockReturnValue({ campaigns: [{ entityId: 'a' }], loading: false });
-    verdictsMock.mockReturnValue({ verdicts: [{ verdict: 'HOLD', name: 'a' }], loading: false });
+    verdictsMock.mockReturnValue({ verdicts: [{ verdict: 'HOLD', name: 'a' }], gatedOut: [], status: 'OK', loading: false });
     render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.queryByText(/recommendation/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /no verdicts requiring immediate action/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /no KILL or SCALE call returned/i })).toBeInTheDocument();
     expect(screen.queryByText(/healthy parameters/i)).not.toBeInTheDocument();
   });
 
-  it('campaigns but 0 verdicts → says verdicts need revenue data', () => {
+  it('campaign rows without a published status do not prove missing revenue', () => {
     campaignsMock.mockReturnValue({ campaigns: [{ entityId: 'a' }], loading: false });
+    verdictsMock.mockReturnValue({ verdicts: [], gatedOut: [], loading: false });
     render(<ReadyStep onEnterApp={vi.fn()} />);
-    expect(screen.getByText(/verdicts appear once your campaigns have revenue data/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /assessment availability is unknown/i })).toBeInTheDocument();
+    expect(screen.queryByText(/revenue data|after your first sync|analysis complete/i)).not.toBeInTheDocument();
   });
 
-  it('0 campaigns → honest "No campaigns found yet" (never an error)', () => {
+  it('published NO_CAMPAIGNS states the assessment population without zero chips', () => {
     render(<ReadyStep onEnterApp={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /no campaigns found yet/i })).toBeInTheDocument();
-    expect(screen.getByText('0 Campaigns')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /no campaigns in the assessment result/i })).toBeInTheDocument();
+    expect(screen.queryByText(/0.*campaign|0.*verdict/i)).not.toBeInTheDocument();
   });
 
   it('CTA says "See all verdicts" when there are verdicts', () => {
