@@ -25,6 +25,8 @@ const cases = [
   { name: 'sync-partial', step: 'sync', sync: 'partial' },
   { name: 'ready-kill', step: 'ready', verdicts: { ...blank, status: 'OK', verdicts: [verdict] }, winner: 'KILL' },
   { name: 'ready-scale', step: 'ready', verdicts: { ...blank, status: 'OK', verdicts: [{ ...verdict, verdict: 'SCALE' }] }, winner: 'SCALE' },
+  { name: 'ready-no-reason', step: 'ready', verdicts: { ...blank, status: 'OK', verdicts: [{ ...verdict, rationale: null }] }, winner: 'KILL', omitReason: true },
+  { name: 'ready-no-eligible', step: 'ready', verdicts: { ...blank, status: 'OK', verdicts: [{ ...verdict, verdict: 'HOLD' }] } },
   { name: 'ready-mixed', step: 'ready', verdicts: { ...blank, status: 'OK', verdicts: [verdict], gatedOut: [gate] }, winner: 'KILL' },
   { name: 'ready-pending', step: 'ready', verdicts: { ...blank, loading: true } },
   { name: 'ready-failed', step: 'ready', verdicts: { ...blank, error: { message: 'Synthetic read failed' }, verdicts: [verdict] } },
@@ -51,13 +53,35 @@ function measure() {
   const text = [...subject.querySelectorAll('*')].filter(e => e.childNodes.length && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
   const inspect = e => {
     const s = getComputedStyle(e), r = e.getBoundingClientRect();
+    const directText = [...e.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+    const range = document.createRange();
+    if (directText) range.selectNodeContents(directText);
     let ground = e;
     while (ground.parentElement && getComputedStyle(ground).backgroundColor === 'rgba(0, 0, 0, 0)') ground = ground.parentElement;
     return { tag: e.tagName, text: e.textContent.trim(), color: s.color, background: getComputedStyle(ground).backgroundColor,
       font: s.fontFamily, size: parseFloat(s.fontSize), weight: s.fontWeight, radius: s.borderRadius,
-      x: r.x, y: r.y, width: r.width, height: r.height, transition: s.transitionProperty, animation: s.animationName };
+      x: r.x, textX: directText ? range.getBoundingClientRect().x : r.x + parseFloat(s.paddingLeft) + parseFloat(s.borderLeftWidth), y: r.y, width: r.width, height: r.height, transition: s.transitionProperty, animation: s.animationName };
   };
+  const assessment = subject.querySelector('[aria-label="Current campaign assessment"]');
+  const reason = [...subject.querySelectorAll('h2')].find(e => e.textContent === 'Reason');
+  const recommendation = [...subject.querySelectorAll('h2')].find(e => e.textContent.trim() === 'Recommendation');
+  const region = selector => subject.querySelector(selector) ? inspect(subject.querySelector(selector)) : null;
+  // Measure the old unwrapped content as well: RED must fail real geometry,
+  // not the absence of the candidate's grouping attributes.
+  const union = elements => {
+    if (!elements.length) return null;
+    const rects = elements.map(e => e.getBoundingClientRect());
+    const x = Math.min(...rects.map(r => r.x)), y = Math.min(...rects.map(r => r.y));
+    return { x, y, width: Math.max(...rects.map(r => r.right)) - x, height: Math.max(...rects.map(r => r.bottom)) - y };
+  };
+  const originalClaim = assessment ? [...assessment.children].filter(e => e.tagName === 'P' || e.tagName === 'H1') : [];
+  const originalGrounds = [reason?.parentElement,recommendation?.parentElement].filter(Boolean);
   return { text: subject.innerText, headings: [...subject.querySelectorAll('h1')].map(inspect),
+    relationship: { assessment: assessment ? inspect(assessment) : null,
+      claim: region('[data-assessment-claim]') || union(originalClaim), grounds: region('[data-assessment-grounds]') || union(originalGrounds),
+      reason: reason ? inspect(reason) : null, recommendation: recommendation ? inspect(recommendation) : null,
+      campaign: region('[data-assessment-campaign]') || (assessment?.querySelector('h1')?.nextElementSibling ? inspect(assessment.querySelector('h1').nextElementSibling) : null), prerequisites: region('[aria-label="Campaign assessment prerequisites"]'),
+      navigation: region('[data-assessment-navigation]') || region('button') },
     textNodes: text.map(inspect), boxes: [...subject.querySelectorAll('section,ol,li,h1,h2,p,button,input,ul')].map(inspect),
     progress: [...subject.querySelectorAll('[aria-current="step"]')].map(e => e.textContent.trim()),
     mark: subject.querySelector('[data-verdict-mark]') ? inspect(subject.querySelector('[data-verdict-mark]')) : null,
@@ -111,6 +135,7 @@ async function identity(page, variant) {
         await page.goto(base); await page.waitForFunction(() => window.mountComposition); await page.evaluate(() => document.fonts.ready);
         record.first = await page.evaluate(c => { window.mountComposition(c); return document.querySelector('#subject h1')?.textContent; }, mount);
         if (config.name === 'sync-failed' || config.name === 'sync-partial') await page.getByRole('alert').waitFor();
+        await page.evaluate(() => document.fonts.ready);
         record.view = await page.evaluate(measure);
         const check = (name, fn) => { try { fn(); } catch(e) { record.failures.push(name + ': ' + e.message); } };
         check('first-frame/reflow', () => { assert.ok(record.first); assert.equal(record.view.overflow,false); assert.equal(record.view.headings.length,1); assert.equal(record.view.running,0); });
@@ -125,11 +150,34 @@ async function identity(page, variant) {
             assert.ok(!record.view.text.includes('AT DECISION')); assert.ok(record.view.mark,'mark beside neutral word');
             assert.ok(contrast(record.view.mark.background,record.view.main.background) >= 3, 'semantic mark contrast');
             assert.ok(h.size >= Math.max(...record.view.textNodes.map(n => n.size))); });
-          check('grounds', () => { assert.ok(record.view.text.includes(verdict.rationale)); assert.ok(record.view.text.includes('80% confidence'));
+          check('grounds', () => { assert.equal(record.view.text.includes(verdict.rationale),!config.omitReason); assert.ok(record.view.text.includes('80% confidence'));
             assert.ok(record.view.text.includes(verdict.recommendation)); assert.ok(!/Record decision|Execute|Outcome|Memory/.test(record.view.text)); });
+          check('claim to grounds geometry', () => {
+            const { assessment, claim, grounds, reason, recommendation, campaign, prerequisites, navigation } = record.view.relationship;
+            assert.ok(claim && grounds && recommendation && campaign && navigation, 'real claim and grounds regions');
+            assert.ok(claim.width <= 640 && grounds.width <= 640, 'readable claim-width ceiling before columns fit');
+            if (config.omitReason) assert.equal(reason,null,'no empty Reason');
+            else { assert.ok(reason); assert.ok(recommendation.y > reason.y, 'read-only recommendation follows reason'); }
+            assert.ok(navigation.y >= assessment.y + assessment.height, 'navigation is subordinate');
+            if (width >= 1144) {
+              assert.ok(assessment.width > 640, 'Ready leaves the narrow setup column');
+              assert.ok(grounds.x >= claim.x + claim.width + 31, 'grounds beside claim, section gap');
+              assert.ok(Math.abs(claim.y - grounds.y) <= 1, 'shared assessment alignment');
+              assert.ok(claim.width <= 360 && grounds.width <= 640, 'existing width boundaries');
+            } else {
+              assert.ok(grounds.y >= claim.y + claim.height, 'contiguous claim then grounds');
+              assert.ok(Math.abs((reason || recommendation).textX - campaign.textX) <= 1, 'mobile/tablet shared reading axis');
+              assert.ok(Math.abs(record.view.headings[0].textX - campaign.textX) <= 1, 'verdict word shares campaign/grounds axis');
+            }
+            if (prerequisites) assert.ok(prerequisites.y >= assessment.y + assessment.height + 31, 'separate published prerequisite group');
+          });
         } else if (config.step === 'ready') check('no invented verdict', () => { assert.ok(!/\b(KILL|SCALE)\b/.test(record.view.headings[0].text) || record.view.headings[0].text.startsWith('No ')); assert.equal(record.view.mark,null); });
+        if (config.step === 'ready' && !config.winner) check('no empty assessment axis', () => {
+          assert.equal(record.view.relationship.claim,null); assert.equal(record.view.relationship.grounds,null);
+          assert.equal(record.view.relationship.reason,null); assert.equal(record.view.relationship.recommendation,null);
+        });
         for (const variant of ['original','logo-neutral','grayscale','copy-neutral','structure']) {
-          if (variant !== 'original') { await page.evaluate(c => window.mountComposition(c), mount); if (config.name.startsWith('sync-') && config.sync !== 'pending') await page.getByRole('alert').waitFor(); await identity(page,variant); }
+          if (variant !== 'original') { await page.evaluate(c => window.mountComposition(c), mount); if (config.name.startsWith('sync-') && config.sync !== 'pending') await page.getByRole('alert').waitFor(); await page.evaluate(() => document.fonts.ready); await identity(page,variant); }
           await page.screenshot({ path: path.join(output, `${width}-${motion}-${config.name}-${variant}.png`), fullPage: true });
         }
       } catch(e) { record.failures.push(e.message); } finally { await page.close(); }

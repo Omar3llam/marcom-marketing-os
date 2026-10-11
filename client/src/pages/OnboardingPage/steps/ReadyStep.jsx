@@ -34,7 +34,7 @@ function Chip({ done, children }) {
 // A pending read is waiting, not a preview of a verdict that has not arrived.
 function PendingResults() {
   return (
-    <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+    <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)] max-w-[var(--lumi-layout-width-claim)]">
       <h1 className="decision-title text-[var(--lumi-color-text-claim)] mb-2">Your results</h1>
       <p role="status" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)]">Waiting for campaign and verdict results.</p>
     </div>
@@ -51,7 +51,7 @@ export function ReadyStep({ onEnterApp }) {
   // Neither cleared arrays nor retained data can certify a failed combined read.
   if (campaignError || verdictError) {
     return (
-      <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+      <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)] max-w-[var(--lumi-layout-width-claim)]">
         <div role="alert" className="mb-6">
           <h1 className="decision-title text-[var(--lumi-color-text-claim)] mb-2">Your results couldn&apos;t be loaded.</h1>
           <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)]">
@@ -84,39 +84,45 @@ export function ReadyStep({ onEnterApp }) {
   const isKill = topVerdict?.verdict === 'KILL';
 
   return (
-    <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+    <div data-lumi-env="product" className={`bg-[var(--lumi-color-surface-base)] ${topVerdict ? '' : 'max-w-[var(--lumi-layout-width-claim)]'}`}>
       <p className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-4">
         {topVerdict ? 'Your first verdict' : 'Your results'}
       </p>
 
       {topVerdict ? (
-        <section aria-label="Current campaign assessment" className="mb-8">
-          <p className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-3">NOW · Current assessment</p>
-          <h1 data-assessment-verdict className="font-body text-[length:var(--lumi-type-heading-surface-size)] leading-[var(--lumi-type-heading-surface-line-height)] font-semibold text-[var(--lumi-color-text-claim)] flex items-center gap-3 mb-4">
-            <span data-verdict-mark aria-hidden="true" className={`w-1.5 h-6 shrink-0 ${isKill ? 'bg-[var(--lumi-color-verdict-kill-mark)]' : 'bg-[var(--lumi-color-verdict-scale-mark)]'}`} />
-            {topVerdict.verdict}
-          </h1>
-          <p className="text-[length:var(--lumi-type-body-claim-size)] font-semibold text-[var(--lumi-color-text-claim)] mb-2 break-words">{topVerdict.name}</p>
-          {topVerdict.confidence != null && (
-            <p className="font-mono text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-6">
-              <span>{Math.round(topVerdict.confidence * 100)}% confidence</span>{' · Published assessment'}
-            </p>
-          )}
+        // Alignment relates a real NOW call to its supplied grounds. This is
+        // not a Decision lifecycle axis; no missing stage receives a rail.
+        <section aria-label="Current campaign assessment" className="grid max-w-[var(--lumi-layout-width-claim)] min-[1144px]:max-w-none min-[1144px]:grid-cols-[minmax(0,var(--lumi-layout-width-evidence))_minmax(0,var(--lumi-layout-width-claim))] gap-[var(--lumi-space-section)] border-t border-[var(--lumi-color-border-divider)] pt-[var(--lumi-space-section)] mb-[var(--lumi-space-section)]">
+          <div data-assessment-claim className="min-w-0">
+            <p className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] pl-[var(--lumi-space-meta)] mb-[var(--lumi-space-object)]">NOW · Current assessment</p>
+            <h1 data-assessment-verdict className="font-body text-[length:var(--lumi-type-heading-surface-size)] leading-[var(--lumi-type-heading-surface-line-height)] font-semibold text-[var(--lumi-color-text-claim)] flex items-center gap-[var(--lumi-space-inline)] mb-[var(--lumi-space-object)]">
+              <span data-verdict-mark aria-hidden="true" className={`w-[var(--lumi-space-inline)] h-6 shrink-0 ${isKill ? 'bg-[var(--lumi-color-verdict-kill-mark)]' : 'bg-[var(--lumi-color-verdict-scale-mark)]'}`} />
+              {topVerdict.verdict}
+            </h1>
+            <p data-assessment-campaign className="text-[length:var(--lumi-type-body-claim-size)] font-semibold text-[var(--lumi-color-text-claim)] pl-[var(--lumi-space-meta)] mb-[var(--lumi-space-meta)] break-words">{topVerdict.name}</p>
+            {topVerdict.confidence != null && (
+              <p className="font-mono text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] pl-[var(--lumi-space-meta)]">
+                <span>{Math.round(topVerdict.confidence * 100)}% confidence</span>{' · Published assessment'}
+              </p>
+            )}
+          </div>
 
-          {topVerdict.rationale && (
-            <div className="mb-6">
-              <h2 className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-2">Reason</h2>
-              <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)] leading-relaxed break-words">{topVerdict.rationale}</p>
+          <div data-assessment-grounds className="min-w-0 border-l border-[var(--lumi-color-border-divider)] pl-[calc(var(--lumi-space-meta)-var(--lumi-border-width-hairline))] min-[1144px]:pl-[var(--lumi-space-section)]">
+            {topVerdict.rationale && (
+              <div className="mb-[var(--lumi-space-section)]">
+                <h2 className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-[var(--lumi-space-meta)]">Reason</h2>
+                <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)] leading-relaxed break-words">{topVerdict.rationale}</p>
+              </div>
+            )}
+
+            <div className="border-t border-[var(--lumi-color-border-divider)] pt-[var(--lumi-space-object)]">
+              <h2 className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-[var(--lumi-space-meta)]">
+                Recommendation
+              </h2>
+              <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)] break-words">
+                {topVerdict.recommendation ?? RECOMMENDATION[topVerdict.verdict]}
+              </p>
             </div>
-          )}
-
-          <div className="border-t border-[var(--lumi-color-border-divider)] pt-4">
-            <h2 className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] mb-2">
-              Recommendation
-            </h2>
-            <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)] break-words">
-              {topVerdict.recommendation ?? RECOMMENDATION[topVerdict.verdict]}
-            </p>
           </div>
         </section>
       ) : (
@@ -132,7 +138,7 @@ export function ReadyStep({ onEnterApp }) {
 
       {topVerdict && status !== 'OK' && <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)] mb-4">{evidence.message}</p>}
       {evidence.gates.length > 0 && (
-        <ul className="mb-8 space-y-4 border-t border-[var(--lumi-color-border-divider)] pt-4" aria-label="Campaign assessment prerequisites">
+        <ul className="mt-[var(--lumi-space-macro)] mb-[var(--lumi-space-section)] space-y-[var(--lumi-space-object)] border-t border-[var(--lumi-color-border-divider)] pt-[var(--lumi-space-object)]" aria-label="Campaign assessment prerequisites">
           {evidence.gates.map((gate, index) => (
             <li key={`${gate.row.id}-${index}`} data-assessment-state={gate.state} className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-body)] break-words">
               <p className="font-medium text-[var(--lumi-color-text-claim)] mb-1">{gate.row.name ?? gate.row.id}</p>
@@ -143,19 +149,21 @@ export function ReadyStep({ onEnterApp }) {
         </ul>
       )}
 
-      <button
-        type="button"
-        onClick={onEnterApp}
-        className={`${PRIMARY_BTN} mb-5`}
-      >
-        {scored > 0 ? 'See all verdicts' : 'Open Campaigns'}
-        <ArrowRight className="w-4 h-4" strokeWidth={2} />
-      </button>
+      <div data-assessment-navigation className="max-w-[var(--lumi-layout-width-evidence)] mt-[var(--lumi-space-macro)]">
+        <button
+          type="button"
+          onClick={onEnterApp}
+          className={`${PRIMARY_BTN} mb-5`}
+        >
+          {scored > 0 ? 'See all verdicts' : 'Open Campaigns'}
+          <ArrowRight className="w-4 h-4" strokeWidth={2} />
+        </button>
 
-      <div aria-label="Returned result scope" className="flex items-center gap-x-4 gap-y-2 flex-wrap">
-        {metaConnected && <Chip done>Meta</Chip>}
-        {total > 0 && <Chip>{`${total} returned campaign${total === 1 ? '' : 's'}`}</Chip>}
-        {scored > 0 && <Chip>{`${scored} returned verdict${scored === 1 ? '' : 's'}`}</Chip>}
+        <div aria-label="Returned result scope" className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+          {metaConnected && <Chip done>Meta</Chip>}
+          {total > 0 && <Chip>{`${total} returned campaign${total === 1 ? '' : 's'}`}</Chip>}
+          {scored > 0 && <Chip>{`${scored} returned verdict${scored === 1 ? '' : 's'}`}</Chip>}
+        </div>
       </div>
     </div>
   );

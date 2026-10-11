@@ -109,8 +109,12 @@ export default function OnboardingPage() {
     <main data-lumi-env="product" className={`min-h-screen flex items-center justify-center px-4 sm:px-6 py-8 font-body ${PAGE}`}>
       {/* px-8 applied at every width, so a 375px phone lost 64px of an already
           narrow column for nothing. */}
-      <div className="w-full max-w-[var(--lumi-layout-width-claim)] px-0 sm:px-8">
-        <div className="mb-10">
+      {/* Only Ready needs room for its published claim and grounds. 1144px
+          fits 640 + 360 + 32, inner gutters 64 and outer gutters 48. */}
+      <div className={`w-full px-0 sm:px-8 ${step === 'ready'
+        ? 'max-w-[calc(var(--lumi-layout-width-claim)+var(--lumi-layout-width-evidence)+var(--lumi-space-section)+2*var(--lumi-layout-gutter-desktop))]'
+        : 'max-w-[var(--lumi-layout-width-claim)]'}`}>
+        <div className={`mb-10 ${step === 'ready' ? 'max-w-[var(--lumi-layout-width-claim)]' : ''}`}>
           <div className="flex gap-1.5 mb-2" aria-hidden="true">
             {STEPS.map((s, i) => (
               <div
