@@ -11,21 +11,26 @@ export const PAGE = 'bg-lumi-bg';
 
 // An outline survives the legacy shadow cascade. Keep keyboard focus neutral
 // and immediate; the gold glow must not carry or obscure the indicator.
+// Feedback is static in both motion modes (MO-2/MO-5/MO-7). No transition,
+// press transform or new FC-20 exception is needed for these native controls.
+const KEYBOARD_FOCUS =
+  'focus-visible:outline focus-visible:outline-dark-base ' +
+  'focus-visible:outline-offset-4 focus-visible:shadow-none';
+
 export const PRIMARY_BTN =
   'w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-lumi-gold px-6 py-3 ' +
-  'font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] ' +
-  'transition-all focus-visible:outline focus-visible:outline-2 ' +
-  'focus-visible:outline-dark-base focus-visible:outline-offset-2 focus-visible:shadow-none ' +
-  'focus-visible:[transition-property:background-color,transform] disabled:opacity-50 disabled:cursor-not-allowed';
+  'font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:bg-lumi-deep ' +
+  `transition-none shadow-none ${KEYBOARD_FOCUS} disabled:opacity-50 disabled:cursor-not-allowed`;
 
 export const GHOST_BTN =
   'w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-lumi-border ' +
-  'bg-lumi-surface px-6 py-3 font-display text-sm text-lumi-text hover:bg-lumi-elevated transition-colors';
+  'bg-lumi-surface px-6 py-3 font-display text-sm text-lumi-text hover:bg-lumi-elevated active:bg-lumi-elevated ' +
+  `transition-none shadow-none ${KEYBOARD_FOCUS}`;
 
 export const INPUT =
   'w-full rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-sm text-lumi-text ' +
-  'placeholder:text-lumi-muted focus:border-lumi-accent focus:outline-none focus:ring-2 ' +
-  'focus:ring-lumi-accent/20 transition-colors';
+  'placeholder:text-lumi-muted transition-none shadow-none focus:outline ' +
+  'focus:outline-dark-base focus:outline-offset-4 focus:shadow-none';
 
 // The name typed in step 1 must survive the OAuth full-page redirect, so it lives
 // in localStorage — NOT in the backend context, which is written only after

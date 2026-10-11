@@ -140,6 +140,15 @@ describe('OnboardingPage — persistence owns advancement', () => {
 });
 
 describe('OnboardingPage — connect-first flow', () => {
+  it.each(['name', 'connect', 'sync', 'ready'])('names the four ordered steps and identifies only the current %s step', (step) => {
+    mountAt(`?step=${step}`);
+    const progress = screen.getByRole('list', { name: 'Onboarding steps' });
+    expect(progress.tagName).toBe('OL');
+    expect([...progress.children].map(item => item.textContent)).toEqual(['Workspace', 'Connect', 'Analyze', 'Verdict']);
+    expect([...progress.children].filter(item => item.getAttribute('aria-current') === 'step').map(item => item.textContent))
+      .toEqual([{ name: 'Workspace', connect: 'Connect', sync: 'Analyze', ready: 'Verdict' }[step]]);
+  });
+
   it('defaults to the name step when no ?step is present', () => {
     mountAt('');
     expect(screen.getByText('go-connect')).toBeInTheDocument();
