@@ -67,7 +67,7 @@ describe('ConnectStep', () => {
 
   it('a callback error blocks cached connected data and conflicting success flags', () => {
     setUrl('?step=connect&meta_error=server_error&meta_connected=1');
-    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });
+    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true, isActive: true }] } });
     const onConnected = vi.fn(); render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
     expect(onConnected).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
@@ -78,12 +78,12 @@ describe('ConnectStep', () => {
   it('callback and reader success together advance once, including StrictMode replay', () => {
     setUrl('?step=connect&meta_connected=1');
     const refetch = vi.fn();
-    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null, refetch });
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null, refetch });
     const onConnected = vi.fn();
     const view = render(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
     expect(onConnected).not.toHaveBeenCalled();
     expect(refetch).toHaveBeenCalledTimes(1);
-    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null, refetch });
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null, refetch });
     view.rerender(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
@@ -115,7 +115,7 @@ describe('ConnectStep', () => {
   });
 
   it('an already-connected channel → onConnected', () => {
-    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null });
     const onConnected = vi.fn();
     render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
     expect(onConnected).toHaveBeenCalled();

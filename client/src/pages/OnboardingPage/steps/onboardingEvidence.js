@@ -5,8 +5,10 @@ import { absenceState } from '@/design-system/states/absence.js';
 export function hasConfirmedMetaConnection({ data, loading, error }) {
   if (loading !== false || error || typeof data?.workspaceId !== 'string' || !data.workspaceId.trim()) return false;
   if (!Array.isArray(data.connections)) return false;
-  const meta = data.connections.filter((row) => row.platform === 'META');
-  return meta?.length === 1 && meta[0].connected === true && meta[0].isActive !== false
+  // The reader includes inactive credential history. Only active rows compete
+  // for current authority; history cannot create ambiguity or certify a source.
+  const meta = data.connections.filter((row) => row.platform === 'META' && row.isActive === true);
+  return meta.length === 1 && meta[0].connected === true
     && (meta[0].connection == null || meta[0].connection === 'CONNECTED');
 }
 

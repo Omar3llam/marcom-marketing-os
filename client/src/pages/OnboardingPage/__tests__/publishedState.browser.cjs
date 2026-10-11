@@ -8,6 +8,8 @@ const { chromium } = require('@playwright/test');
 const { buildFixture } = require('./firstFrame.browser.cjs');
 const output = process.env.P9_06_EVIDENCE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'lumi-p9-06-'));
 const confirmed = { workspaceId: 'synthetic-workspace', connections: [{ platform: 'META', connected: true, isActive: true }] };
+const historical = { platform: 'META', connected: false, isActive: false, connection: 'DISCONNECTED' };
+const withHistory = { ...confirmed, connections: [historical, ...confirmed.connections] };
 const emptyRead = { data: { workspaceId: 'synthetic-workspace', connections: [] }, loading: false, error: null };
 // Synthetic wire tuples from gatingReason.js; production uses the real registry.
 const tuples = {
@@ -46,11 +48,18 @@ cases.push(
   { name: 'callback-no-workspace', step: 'connect', query: '&meta_connected=1', connections: emptyRead, publish: { ...emptyRead, data: { ...confirmed, workspaceId: null } } },
   { name: 'callback-confirmed', step: 'connect', query: '&meta_connected=1', connections: emptyRead, publish: { ...emptyRead, data: confirmed }, advances: true },
   { name: 'reader-confirmed', step: 'connect', connections: { ...emptyRead, data: confirmed }, advances: true },
+  { name: 'reader-active-with-history', step: 'connect', connections: { ...emptyRead, data: withHistory }, advances: true },
+  { name: 'reader-two-active', step: 'connect', connections: { ...emptyRead, data: { ...confirmed, connections: [...confirmed.connections, { ...confirmed.connections[0], accountId: 'other' }] } } },
+  { name: 'reader-no-active', step: 'connect', connections: { ...emptyRead, data: { ...confirmed, connections: [historical] } } },
+  { name: 'reader-contradictory-active', step: 'connect', connections: { ...emptyRead, data: { ...confirmed, connections: [{ ...confirmed.connections[0], connection: 'DISCONNECTED' }, historical] } } },
+  { name: 'callback-active-with-history', step: 'connect', query: '&meta_connected=1', connections: { ...emptyRead, data: withHistory }, publish: { ...emptyRead, data: withHistory }, advances: true },
 );
 for (const status of [401, 403, 503]) cases.push({ name: 'start-' + status, step: 'connect', connections: emptyRead, startError: { httpStatus: status }, refusal: true });
 for (const status of ['NO_WORKSPACE', 'NO_CAMPAIGNS', 'NO_ELIGIBLE_CAMPAIGNS', 'OK', null, 'FUTURE']) {
   cases.push({ name: 'ready-' + status, step: 'ready', connections: emptyRead, verdicts: { verdicts: [], gatedOut: [], status, loading: false }, campaigns: { campaigns: [], loading: false } });
 }
+cases.push({ name: 'ready-active-with-history', step: 'ready', connections: { ...emptyRead, data: withHistory }, expectedMeta: true,
+  verdicts: { verdicts: [], gatedOut: [], status: 'NO_CAMPAIGNS', loading: false }, campaigns: { campaigns: [], loading: false } });
 for (const reason of ['NO_MEASURABLE_DELIVERY', 'NO_CANONICAL_WINDOW', 'CANONICAL_EVIDENCE_STALE']) {
   cases.push({ name: 'gate-' + reason, step: 'ready', connections: emptyRead, verdicts: { verdicts: [], gatedOut: [gate(reason)], status: 'NO_ELIGIBLE_CAMPAIGNS', loading: false }, campaigns: { campaigns: [], loading: false } });
 }
@@ -103,15 +112,15 @@ function snapshot() {
           assert.equal(record.view.calls.next, config.advances ? 1 : 0);
           if (config.query?.includes('meta_connected') && !config.refusal) assert.equal(record.view.calls.checks, 1);
           if (config.refusal) assert.equal(record.view.alerts.length, 1);
-          if (config.name === 'callback-confirmed') {
-            await page.evaluate(value => window.publishConnection(value), { ...emptyRead, data: confirmed });
+          if (config.query?.includes('meta_connected') && config.advances) {
+            await page.evaluate(value => window.publishConnection(value), config.publish);
             assert.equal(await page.evaluate(() => window.__published.calls.next), 1);
           }
         } else {
           assert.ok(!/analysis complete|after your first sync|once your campaigns have revenue data|0 (?:returned )?(campaign|verdict)/i.test(record.view.text));
           if (['ready-failed', 'ready-pending'].includes(config.name)) assert.ok(!record.view.text.includes('Synthetic supplied winner'));
           if (config.name === 'ready-unknown-gate') assert.ok(record.view.text.includes('could not be confirmed'));
-          assert.ok(!record.view.text.split('\n').includes('Meta'));
+          assert.equal(record.view.text.split('\n').includes('Meta'), config.expectedMeta === true);
         }
         const enabled = page.locator('#subject button:not(:disabled)').first();
         if (await enabled.count()) {

@@ -19,15 +19,18 @@ beforeEach(() => {
 });
 
 describe('P9-06 — real connection hook ownership with synthetic API responses', () => {
-  it('StrictMode callback refresh cancels old reads and advances only once on the latest parsed response', async () => {
+  it.each([
+    confirmed,
+    { ...confirmed, connections: [...confirmed.connections, { platform: 'META', isActive: false, connected: false, stale: false, connection: 'DISCONNECTED' }] },
+  ])('StrictMode callback refresh cancels old reads and advances only once on the latest parsed response: %j', async (response) => {
     const onConnected = vi.fn();
     render(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
     expect(reads.length).toBeGreaterThan(1);
     expect(getMock.mock.calls.every(([url]) => url === '/api/lumi/connections')).toBe(true);
     expect(onConnected).not.toHaveBeenCalled();
-    await act(async () => reads.slice(0, -1).forEach(read => read.resolve({ data: confirmed })));
+    await act(async () => reads.slice(0, -1).forEach(read => read.resolve({ data: response })));
     expect(onConnected).not.toHaveBeenCalled();
-    await act(async () => reads.at(-1).resolve({ data: confirmed }));
+    await act(async () => reads.at(-1).resolve({ data: response }));
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
 

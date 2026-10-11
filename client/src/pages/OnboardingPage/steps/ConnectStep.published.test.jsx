@@ -26,14 +26,14 @@ beforeEach(() => {
 });
 
 describe('P9-06 — published connection evidence', () => {
-  const connected = { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }] };
+  const connected = { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] };
   it.each([
     ['Google only', { workspaceId: 'ws_1', connections: [{ platform: 'GOOGLE', connected: true }] }, false, null],
     ['unresolved workspace', { ...connected, workspaceId: null }, false, null],
     ['blank workspace', { ...connected, workspaceId: ' ' }, false, null],
     ['pending retained data', connected, true, null],
     ['failed retained data', connected, false, new Error('reader failed')],
-    ['conflicting META rows', { ...connected, connections: [...connected.connections, { platform: 'META', connected: false }] }, false, null],
+    ['two active META rows', { ...connected, connections: [...connected.connections, { platform: 'META', connected: true, isActive: true }] }, false, null],
   ])('%s never advances with or without a callback flag', (_name, data, loading, error) => {
     const refetch = vi.fn();
     useConnectionsMock.mockReturnValue({ data, loading, error, refetch });
@@ -60,6 +60,17 @@ describe('P9-06 — published connection evidence', () => {
     useConnectionsMock.mockReturnValue({ data: { ...connected }, loading: false, error: null, refetch });
     view.rerender(<ConnectStep onConnected={onConnected} onSkip={onSkip} />);
     view.rerender(<ConnectStep onConnected={onConnected} onSkip={onSkip} />);
+    expect(onConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('one active META plus inactive historical rows advances once', () => {
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [
+      { platform: 'META', connected: false, isActive: false, connection: 'DISCONNECTED' },
+      { platform: 'META', connected: true, isActive: true, connection: 'CONNECTED' },
+    ] }, loading: false, error: null });
+    const onConnected = vi.fn();
+    const view = render(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
+    view.rerender(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
 

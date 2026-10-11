@@ -57,8 +57,8 @@ describe('ReadyStep — read and connection truth', () => {
     ['no connections', { data: { connections: [] }, loading: false, error: null }],
     ['Meta disconnected', { data: { connections: [{ platform: 'META', connected: false }] }, loading: false, error: null }],
     ['different provider connected', { data: { connections: [{ platform: 'GOOGLE', connected: true }] }, loading: false, error: null }],
-    ['connection read pending with old Meta data', { data: { connections: [{ platform: 'META', connected: true }] }, loading: true, error: null }],
-    ['connection read failed with old Meta data', { data: { connections: [{ platform: 'META', connected: true }] }, loading: false, error: new Error('connections') }],
+    ['connection read pending with old Meta data', { data: { connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: true, error: null }],
+    ['connection read failed with old Meta data', { data: { connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: new Error('connections') }],
   ])('%s does not certify Meta or block valid campaign results', (_name, connectionRead) => {
     connectionsMock.mockReturnValue(connectionRead);
     render(<ReadyStep onEnterApp={vi.fn()} />);
@@ -68,7 +68,7 @@ describe('ReadyStep — read and connection truth', () => {
   });
 
   it('a successful connection read certifies only a connected Meta entry', () => {
-    connectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
+    connectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null });
     render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.getByText('Meta').querySelector('svg')).toHaveClass('lucide-circle-check');
     expect(screen.queryByText(/0.*campaign/i)).not.toBeInTheDocument();

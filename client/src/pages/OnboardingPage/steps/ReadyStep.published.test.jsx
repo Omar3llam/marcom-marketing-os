@@ -74,13 +74,22 @@ describe('P9-06 — published Ready states', () => {
   });
 
   it.each([
-    { data: { workspaceId: null, connections: [{ platform: 'META', connected: true }] }, loading: false, error: null },
-    { data: { workspaceId: ' ', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null },
-    { data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true }, { platform: 'META', connected: false }] }, loading: false, error: null },
+    { data: { workspaceId: null, connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null },
+    { data: { workspaceId: ' ', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null },
+    { data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }, { platform: 'META', connected: true, isActive: true }] }, loading: false, error: null },
   ])('unresolved or ambiguous connection evidence never certifies META: %j', (read) => {
     connectionsMock.mockReturnValue(read); render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.queryByText('Meta')).not.toBeInTheDocument();
     expect(screen.queryByText(/not connected|connect a channel/i)).not.toBeInTheDocument();
+  });
+
+  it('one active META plus inactive historical rows certifies only the current source', () => {
+    connectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [
+      { platform: 'META', connected: true, isActive: true, connection: 'CONNECTED' },
+      { platform: 'META', connected: false, isActive: false, connection: 'DISCONNECTED' },
+    ] }, loading: false, error: null });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getByText('Meta').querySelector('svg')).toHaveClass('lucide-circle-check');
   });
 
   it.each(['loading', 'failed'])('%s takes precedence over retained verdicts, gates and published OK', (state) => {

@@ -28,7 +28,7 @@ window.mountFirstFrameFixture = ({ step = 'ready', variant = 'present', isolated
   window.__onboardingFixture = {
     verdicts: { verdicts: values.verdicts, gatedOut: [], status: variant === 'empty' ? 'NO_CAMPAIGNS' : 'OK', loading: pending, error: null },
     campaigns: { campaigns: values.campaigns, loading: pending, error: failed ? new Error('Synthetic read failure') : null },
-    connections: { data: { workspaceId: 'synthetic-workspace', connections: [{ platform: 'META', connected: true }] }, loading: false, error: null },
+    connections: { data: { workspaceId: 'synthetic-workspace', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null },
     activations: 0,
   };
   window.history.replaceState({}, '', `/onboarding?step=${step}`);
