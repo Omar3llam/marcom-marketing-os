@@ -85,9 +85,9 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
   if (status === 'failed') {
     const refusal = connectionRefusal(errorCode);
     return (
-      <div>
-        <h1 className="decision-title text-lumi-text mb-2">Connect wasn&apos;t completed.</h1>
-        <p role="alert" className="text-sm text-lumi-muted mb-6">
+      <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+        <h1 className="decision-title text-[var(--lumi-color-text-claim)] mb-2">Connect wasn&apos;t completed.</h1>
+        <p role="alert" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-6">
           {refusal.message}{' '}
           You can continue and review the connection later from Settings.
         </p>
@@ -118,9 +118,9 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
   const projectUnavailable = !projectLoading && !projectId;
 
   return (
-    <div>
-      <h1 className="decision-title text-lumi-text mb-2">Connect your Meta account</h1>
-      <p className="text-sm text-lumi-muted mb-6">
+    <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+      <h1 className="decision-title text-[var(--lumi-color-text-claim)] mb-2">Connect your Meta account</h1>
+      <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-6">
         Lumi scans your campaigns and delivers your first verdict in minutes.
       </p>
       <button
@@ -138,10 +138,10 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
             : <>Connect Meta <ArrowRight className="w-4 h-4" strokeWidth={2} /></>}
       </button>
 
-      {checkingCallback && <p role="status" className="text-sm text-lumi-muted mb-3">Waiting for current connection evidence.</p>}
+      {checkingCallback && <p role="status" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-3">Waiting for current connection evidence.</p>}
       {callbackSuccess && (checkingCallback || !hasConfirmedMetaConnection(connectionRead)) && (
         <div className="mb-3">
-          {!checkingCallback && <p role="alert" className="text-sm text-lumi-muted mb-3">
+          {!checkingCallback && <p role="alert" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-3">
             {connectionError ? 'We couldn’t verify the Meta connection.' : !data?.workspaceId?.trim()
               ? 'Your workspace could not be confirmed for this connection.' : 'A current Meta connection has not been confirmed.'}
           </p>}
@@ -152,7 +152,7 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
 
       {projectUnavailable ? (
         <>
-          <p className="text-xs text-signal-kill text-center mb-3">
+          <p className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-state-failed-foreground)] text-center mb-3">
             We couldn&apos;t prepare the connection.{' '}
             <button type="button" onClick={refetchProject} disabled={saving} className="underline font-medium">
               Retry
@@ -163,7 +163,7 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
           </button>}
         </>
       ) : (
-        <p className="text-xs text-lumi-muted text-center inline-flex items-center justify-center gap-1.5 w-full">
+        <p className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] text-center inline-flex items-center justify-center gap-1.5 w-full">
           <ShieldCheck className="w-3.5 h-3.5" strokeWidth={1.5} /> OAuth · Read-only · No changes to your campaigns
         </p>
       )}

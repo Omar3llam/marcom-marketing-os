@@ -106,21 +106,18 @@ export default function OnboardingPage() {
   const idx = STEPS.indexOf(step);
 
   return (
-    <div className={`min-h-screen flex items-center justify-center px-4 sm:px-6 ${PAGE}`}>
+    <main data-lumi-env="product" className={`min-h-screen flex items-center justify-center px-4 sm:px-6 py-8 font-body ${PAGE}`}>
       {/* px-8 applied at every width, so a 375px phone lost 64px of an already
           narrow column for nothing. */}
-      <div className="w-full max-w-[580px] px-0 sm:px-8">
+      <div className="w-full max-w-[var(--lumi-layout-width-claim)] px-0 sm:px-8">
         <div className="mb-10">
           <div className="flex gap-1.5 mb-2" aria-hidden="true">
             {STEPS.map((s, i) => (
               <div
                 key={s}
-                // On the light surface the track needs border-strong: plain
-                // lumi-border (#EDEAE4) against bg-lumi-bg (#F8F6F2) is a ghost.
-                // The fill is lumi-accent, not lumi-gold — #F6C945 on a
-                // near-white page is 1.34:1 and effectively disappears.
-                className={`h-1 flex-1 rounded-full transition-none ${
-                  i <= idx ? 'bg-lumi-accent' : 'bg-lumi-border-strong'
+                // Route-stage structure, never a processing measurement.
+                className={`h-1 flex-1 transition-none ${
+                  i <= idx ? 'bg-[var(--lumi-color-interaction-active-indicator)]' : 'bg-[var(--lumi-color-border-strong)]'
                 }`}
               />
             ))}
@@ -132,8 +129,8 @@ export default function OnboardingPage() {
                 aria-current={i === idx ? 'step' : undefined}
                 // Readable labels stay static. Weight, underline and native
                 // current-step semantics distinguish the current route stage.
-                className={`flex-1 text-sm font-body transition-none ${
-                  i === idx ? 'text-lumi-text font-semibold underline underline-offset-4' : 'text-lumi-muted'
+                className={`flex-1 text-[length:var(--lumi-type-caption-default-size)] font-body transition-none ${
+                  i === idx ? 'text-[var(--lumi-color-text-claim)] font-semibold underline underline-offset-4' : 'text-[var(--lumi-color-text-meta)]'
                 }`}
               >
                 {label}
@@ -150,10 +147,10 @@ export default function OnboardingPage() {
           {step === 'sync' && <SyncStep onComplete={handleSyncDone} />}
           {step === 'ready' && <ReadyStep onEnterApp={handleEnterApp} />}
         </div>
-        {saving && <p role="status" className="text-sm text-lumi-muted mt-4">Saving your workspace…</p>}
+        {saving && <p role="status" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mt-4">Saving your workspace…</p>}
         {saveError && (
           <div className="mt-4">
-            <p role="alert" className="text-sm text-signal-kill mb-3">{saveError}</p>
+            <p role="alert" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-state-failed-foreground)] mb-3">{saveError}</p>
             <button type="button" className={GHOST_BTN} disabled={saving}
               onClick={() => workspaceName ? persistAndAdvance(operation.current.action) : goTo('name')}>
               {workspaceName ? 'Retry saving workspace' : 'Return to Workspace'}
@@ -161,6 +158,6 @@ export default function OnboardingPage() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }

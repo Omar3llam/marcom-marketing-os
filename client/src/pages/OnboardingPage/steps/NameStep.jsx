@@ -22,9 +22,9 @@ export function NameStep({ onNext }) {
   };
 
   return (
-    <div>
-      <h1 className="decision-title text-lumi-text mb-2">What&apos;s your workspace called?</h1>
-      <p className="text-sm text-lumi-muted mb-6">This is how Lumi identifies your account.</p>
+    <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+      <h1 className="decision-title text-[var(--lumi-color-text-claim)] mb-2">What&apos;s your workspace called?</h1>
+      <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-6">This is how Lumi identifies your account.</p>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -37,7 +37,7 @@ export function NameStep({ onNext }) {
       <button type="button" onClick={advance} disabled={!name.trim()} className={PRIMARY_BTN}>
         Continue <ArrowRight className="w-4 h-4" strokeWidth={2} />
       </button>
-      {error && <p role="alert" className="text-sm text-signal-kill mt-3">We couldn’t keep your workspace name for the connection step. Check browser storage and try Continue again.</p>}
+      {error && <p role="alert" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-state-failed-foreground)] mt-3">We couldn’t keep your workspace name for the connection step. Check browser storage and try Continue again.</p>}
     </div>
   );
 }

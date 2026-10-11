@@ -105,30 +105,30 @@ export function SyncStep({ onComplete }) {
   };
 
   return (
-    <div>
-      <h1 className="decision-title text-lumi-text mb-2">Analyzing your account</h1>
-      <p className="text-sm text-lumi-muted mb-8">Sync results will appear when the request finishes.</p>
+    <div data-lumi-env="product" className="bg-[var(--lumi-color-surface-base)]">
+      <h1 className="decision-title text-[var(--lumi-color-text-claim)] mb-2">Analyzing your account</h1>
+      <p className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-8">Sync results will appear when the request finishes.</p>
 
       {status === 'running' ? (
-        <div role="status" className="flex items-center gap-3 text-sm font-medium text-lumi-text">
+        <div role="status" className="flex items-center gap-3 text-[length:var(--lumi-type-body-default-size)] font-medium text-[var(--lumi-color-text-claim)]">
           Syncing your workspace…
         </div>
       ) : (status === 'finishing' || status === 'complete') && (
-        <p role="status" className="text-sm text-lumi-text">Sync results received.</p>
+        <p role="status" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-claim)]">Sync results received.</p>
       )}
 
       {hint && (
-        <p className="text-xs text-lumi-muted text-center mt-6">{HINTS[hint]}</p>
+        <p className="text-[length:var(--lumi-type-caption-default-size)] text-[var(--lumi-color-text-meta)] text-center mt-6">{HINTS[hint]}</p>
       )}
       {status === 'failed' && (
         <div className="mt-6">
-          <p role="alert" className="text-sm text-signal-kill mb-3">{FAILURE_COPY[failure?.kind]}</p>
+          <p role="alert" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-state-failed-foreground)] mb-3">{FAILURE_COPY[failure?.kind]}</p>
           {failure?.retryable && <button type="button" onClick={retry} className={PRIMARY_BTN}>Retry sync</button>}
         </div>
       )}
       {status === 'partial' && (
         <div className="mt-6">
-          <p role="alert" className="text-sm text-lumi-muted mb-3">Some connections were analyzed; others failed or were skipped. You can retry or continue with the available results.</p>
+          <p role="alert" className="text-[length:var(--lumi-type-body-default-size)] text-[var(--lumi-color-text-meta)] mb-3">Some connections were analyzed; others failed or were skipped. You can retry or continue with the available results.</p>
           <button type="button" onClick={retry} className={`${PRIMARY_BTN} mb-3`}>Retry sync</button>
           <button type="button" onClick={() => finishRef.current?.()} className={GHOST_BTN}>Continue with available results</button>
         </div>

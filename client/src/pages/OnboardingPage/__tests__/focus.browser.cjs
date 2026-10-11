@@ -31,7 +31,8 @@ function snapshot(element) {
   const surfaces = [];
   for (let p = element.parentElement; p; p = p.parentElement) {
     const color = getComputedStyle(p).backgroundColor;
-    if (color !== 'rgba(0, 0, 0, 0)') surfaces.push(color);
+    // A nearer opaque surface covers the outer legacy body.
+    if (color !== 'rgba(0, 0, 0, 0)') { surfaces.push(color); break; }
   }
   return { text: element.textContent.trim(), focused: document.activeElement === element,
     visible: element.matches(':focus-visible'), outline: s.outline, style: s.outlineStyle,
@@ -78,7 +79,7 @@ function checkIndicator(value, record) {
     assert.equal(value.style, 'solid', 'focus outline must actually render');
     assert.ok(parseFloat(value.width) >= 2 && parseFloat(value.offset) >= 2);
     const channels = rgb(value.color);
-    assert.equal(Math.max(...channels), Math.min(...channels), 'indicator must be neutral');
+    assert.ok(Math.max(...channels) - Math.min(...channels) <= 4, 'approved Off White neutral indicator');
     const shadowColors = [...value.shadow.matchAll(/rgba?\(([^)]+)\)/g)];
     assert.ok(value.shadow === 'none' || (shadowColors.length > 0 && shadowColors.every(([, color]) => {
       const channels = color.split(',').map(Number);
@@ -135,7 +136,8 @@ async function run(browser, base, config) {
     await page.goto(base); await page.waitForFunction(() => window.mountFocusFixture);
     await page.evaluate(() => document.fonts.ready); await mount(page, config.state);
     // Identify the real shared-class control, never supply a synthetic button.
-    const primary = page.locator('#subject button.bg-lumi-gold');
+    // Identify native actions by names, not the obsolete gold appearance.
+    const primary = page.locator('#subject button').filter({ hasText: /^\s*(Continue|Connect Meta|Preparing…|Redirecting to Meta…|Checking Meta connection…|Try again|Retry sync|See all verdicts|Open Campaigns)\s*$/ });
     if (config.state === 'connect-connecting') { await primary.click(); await page.getByText('Redirecting to Meta…').waitFor(); }
     await checkPendingSemantics(page, record);
     if (absent.includes(config.state)) {
