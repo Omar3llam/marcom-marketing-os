@@ -20,7 +20,7 @@ function setUrl(search) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useConnectionsMock.mockReturnValue({ data: { connections: [] } });
+  useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [] }, loading: false, error: null, refetch: vi.fn() });
   useProjectIdMock.mockReturnValue({ projectId: 'proj_1' });
   setUrl('?step=connect');
 });
@@ -67,7 +67,7 @@ describe('ConnectStep', () => {
 
   it('a callback error blocks cached connected data and conflicting success flags', () => {
     setUrl('?step=connect&meta_error=server_error&meta_connected=1');
-    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });
+    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true, isActive: true }] } });
     const onConnected = vi.fn(); render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
     expect(onConnected).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
@@ -77,9 +77,13 @@ describe('ConnectStep', () => {
   });
   it('callback and reader success together advance once, including StrictMode replay', () => {
     setUrl('?step=connect&meta_connected=1');
-    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });
+    const refetch = vi.fn();
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null, refetch });
     const onConnected = vi.fn();
     const view = render(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(refetch).toHaveBeenCalledTimes(1);
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null, refetch });
     view.rerender(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
@@ -103,15 +107,15 @@ describe('ConnectStep', () => {
     expect(startConnectMock).toHaveBeenCalledWith('META', 'proj_1', '/onboarding?step=connect');
   });
 
-  it('?meta_connected=1 on return → onConnected', () => {
+  it('a bare success flag cannot certify an empty reader', () => {
     setUrl('?step=connect&meta_connected=1');
     const onConnected = vi.fn();
     render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
-    expect(onConnected).toHaveBeenCalled();
+    expect(onConnected).not.toHaveBeenCalled();
   });
 
   it('an already-connected channel → onConnected', () => {
-    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });
+    useConnectionsMock.mockReturnValue({ data: { workspaceId: 'ws_1', connections: [{ platform: 'META', connected: true, isActive: true }] }, loading: false, error: null });
     const onConnected = vi.fn();
     render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
     expect(onConnected).toHaveBeenCalled();
@@ -145,7 +149,7 @@ describe('ConnectStep — the connect call can fail', () => {
 
     expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument();
     expect(screen.queryByText(/redirecting to meta/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/couldn.t reach Meta/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/couldn.t reach the connection service/i);
   });
 
   // A response with no oauthUrl is a silent no-op — the redirect never happens.
@@ -177,14 +181,14 @@ describe('ConnectStep — the failure message matches the failure', () => {
   const messageFor = (code) => {
     setUrl(`?step=connect&meta_error=${code}`);
     render(<ConnectStep onConnected={vi.fn()} onSkip={vi.fn()} />);
-    return screen.getByText(/Try again, or continue/).textContent;
+    return screen.getByRole('alert').textContent;
   };
 
   it.each([
     ['denied', /permissions weren.t granted/i],
     ['access_denied', /permissions weren.t granted/i],
     ['server_error', /wrong on our end/i],
-    ['project_not_found', /couldn.t find your workspace/i],
+    ['project_not_found', /couldn.t find the project/i],
     ['invalid_state', /session expired/i],
   ])('%s → its own message', (code, expected) => {
     expect(messageFor(code)).toMatch(expected);

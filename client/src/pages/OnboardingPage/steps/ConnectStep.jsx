@@ -4,31 +4,23 @@ import { useConnections } from '@/hooks/useConnections.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
 import { startConnect } from '@/features/connectors/startConnect.js';
 import { PRIMARY_BTN, GHOST_BTN } from './onboardingStyles.js';
+import { hasConfirmedMetaConnection, connectionRefusal, connectStartFailure } from './onboardingEvidence.js';
 
 // The OAuth callback returns the browser here (full-page load) with a
 // ?meta_connected=1 or ?meta_error= flag, so the connect step is its own return
 // target — a signed returnTo (see meta.js) brings us straight back to it.
 const RETURN_TO = '/onboarding?step=connect';
 
-// The callback redirects with a SPECIFIC failure code. Reporting all of them as
-// "permissions weren't granted" told the user they refused something they never
-// saw — server_error and project_not_found happen after consent was given.
-const ERROR_MESSAGES = {
-  denied:            'Meta permissions weren’t granted.',
-  access_denied:     'Meta permissions weren’t granted.',
-  server_error:      'Something went wrong on our end.',
-  project_not_found: 'We couldn’t find your workspace.',
-  invalid_state:     'The connection session expired.',
-  // Not from the callback: the connect request itself never got us to Meta.
-  start_failed:      'We couldn’t reach Meta to start the connection.',
-};
-const DEFAULT_ERROR = 'The connection didn’t complete.';
-
 export function ConnectStep({ onConnected, onSkip, saving = false }) {
-  const { data } = useConnections();
+  const connectionRead = useConnections();
+  const { data, loading: connectionLoading, error: connectionError, refetch: refetchConnections } = connectionRead;
   const { projectId, loading: projectLoading, refetch: refetchProject } = useProjectId();
-  const [status, setStatus] = useState('idle'); // idle | connecting | failed
-  const [errorCode, setErrorCode] = useState(null);
+  const callbackError = new URLSearchParams(window.location.search).get('meta_error');
+  const callbackSuccess = new URLSearchParams(window.location.search).get('meta_connected') === '1';
+  const [status, setStatus] = useState(callbackError ? 'failed' : 'idle');
+  const [errorCode, setErrorCode] = useState(callbackError);
+  const [checkingCallback, setCheckingCallback] = useState(callbackSuccess && !callbackError);
+  const callbackRead = useRef({ requested: false, data: null, error: null });
   const notified = useRef(false);
   const readerEligible = useRef(!new URLSearchParams(window.location.search).has('meta_error'));
   const request = useRef({ id: 0, locked: false, active: true });
@@ -38,18 +30,32 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
     return () => { current.active = false; current.id += 1; };
   }, []);
 
-  // A failed callback outranks even cached connection data. Re-entry without a
-  // callback outcome still uses the existing authoritative connection reader.
+  const refreshConnection = () => {
+    if (saving || !request.current.active || typeof refetchConnections !== 'function') return;
+    callbackRead.current = { requested: true, data, error: connectionError };
+    setCheckingCallback(true);
+    refetchConnections();
+  };
+
+  // Callback success requests verification; it is never credential evidence.
+  // A new settled hook result must replace the exact pre-refresh data/error.
   useEffect(() => {
     if (saving || notified.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const err = params.get('meta_error');
-    if (err) { setErrorCode(err); setStatus('failed'); return; }
-    if (params.get('meta_connected') === '1' || (readerEligible.current && status === 'idle' && data?.connections?.some((c) => c.connected))) {
+    if (callbackError) { setErrorCode(callbackError); setStatus('failed'); return; }
+    if (callbackSuccess) {
+      if (!callbackRead.current.requested) {
+        callbackRead.current = { requested: true, data, error: connectionError };
+        if (typeof refetchConnections === 'function') refetchConnections();
+        return;
+      }
+      if (connectionLoading !== false || (data === callbackRead.current.data && connectionError === callbackRead.current.error)) return;
+      setCheckingCallback(false);
+    }
+    if (readerEligible.current && status === 'idle' && hasConfirmedMetaConnection({ data, loading: connectionLoading, error: connectionError })) {
       notified.current = true;
       onConnected();
     }
-  }, [data, onConnected, saving, status]);
+  }, [data, connectionLoading, connectionError, refetchConnections, callbackError, callbackSuccess, onConnected, saving, status]);
 
   const handleConnect = async () => {
     if (saving || request.current.locked || notified.current) return;
@@ -68,23 +74,24 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
       if (!redirecting) request.current.locked = false;
       // On success the browser is already navigating away — leave the button in
       // its 'connecting' state rather than flashing a failure during unload.
-    } catch {
+    } catch (error) {
       if (!request.current.active || request.current.id !== id) return;
       request.current.locked = false;
-      setErrorCode('start_failed');
+      setErrorCode(connectStartFailure(error));
       setStatus('failed');
     }
   };
 
   if (status === 'failed') {
+    const refusal = connectionRefusal(errorCode);
     return (
       <div>
         <h1 className="decision-title text-lumi-text mb-2">Connect wasn&apos;t completed.</h1>
-        <p className="text-sm text-lumi-muted mb-6">
-          {ERROR_MESSAGES[errorCode] ?? DEFAULT_ERROR}{' '}
-          Try again, or continue and connect later from Settings.
+        <p role="alert" className="text-sm text-lumi-muted mb-6">
+          {refusal.message}{' '}
+          You can continue and review the connection later from Settings.
         </p>
-        <button
+        {refusal.retryable && <button
           type="button"
           disabled={saving}
           onClick={() => {
@@ -97,7 +104,7 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
           className={`${PRIMARY_BTN} mb-3`}
         >
           Try again
-        </button>
+        </button>}
         <button type="button" onClick={onSkip} disabled={saving} className={GHOST_BTN}>
           Continue without connecting
         </button>
@@ -119,15 +126,29 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
       <button
         type="button"
         onClick={handleConnect}
-        disabled={saving || status === 'connecting' || projectLoading || !projectId}
+        disabled={saving || checkingCallback || status === 'connecting' || projectLoading || !projectId}
         className={`${PRIMARY_BTN} mb-3`}
       >
-        {projectLoading
+        {checkingCallback
+          ? 'Checking Meta connection…'
+          : projectLoading
           ? 'Preparing…'
           : status === 'connecting'
             ? 'Redirecting to Meta…'
             : <>Connect Meta <ArrowRight className="w-4 h-4" strokeWidth={2} /></>}
       </button>
+
+      {checkingCallback && <p role="status" className="text-sm text-lumi-muted mb-3">Waiting for current connection evidence.</p>}
+      {callbackSuccess && (checkingCallback || !hasConfirmedMetaConnection(connectionRead)) && (
+        <div className="mb-3">
+          {!checkingCallback && <p role="alert" className="text-sm text-lumi-muted mb-3">
+            {connectionError ? 'We couldn’t verify the Meta connection.' : !data?.workspaceId?.trim()
+              ? 'Your workspace could not be confirmed for this connection.' : 'A current Meta connection has not been confirmed.'}
+          </p>}
+          {!checkingCallback && <button type="button" onClick={refreshConnection} disabled={saving || connectionLoading} className={`${PRIMARY_BTN} mb-3`}>Retry connection check</button>}
+          <button type="button" onClick={onSkip} disabled={saving} className={GHOST_BTN}>Continue without connecting</button>
+        </div>
+      )}
 
       {projectUnavailable ? (
         <>
@@ -137,9 +158,9 @@ export function ConnectStep({ onConnected, onSkip, saving = false }) {
               Retry
             </button>
           </p>
-          <button type="button" onClick={onSkip} disabled={saving} className={GHOST_BTN}>
+          {!callbackSuccess && <button type="button" onClick={onSkip} disabled={saving} className={GHOST_BTN}>
             Continue without connecting
-          </button>
+          </button>}
         </>
       ) : (
         <p className="text-xs text-lumi-muted text-center inline-flex items-center justify-center gap-1.5 w-full">
