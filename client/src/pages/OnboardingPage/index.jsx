@@ -119,27 +119,27 @@ export default function OnboardingPage() {
                 // lumi-border (#EDEAE4) against bg-lumi-bg (#F8F6F2) is a ghost.
                 // The fill is lumi-accent, not lumi-gold — #F6C945 on a
                 // near-white page is 1.34:1 and effectively disappears.
-                className={`h-1 flex-1 rounded-full transition-all duration-500 ease-out ${
+                className={`h-1 flex-1 rounded-full transition-none ${
                   i <= idx ? 'bg-lumi-accent' : 'bg-lumi-border-strong'
                 }`}
               />
             ))}
           </div>
-          <div className="flex gap-1.5">
+          <ol className="flex gap-1.5" aria-label="Onboarding steps">
             {STEP_LABELS.map((label, i) => (
-              <span
+              <li
                 key={label}
-                // Opacity-dimmed variants (text-lumi-text/50, text-lumi-muted/40)
-                // fall under the AA floor on either surface — the de-emphasis is
-                // carried by the token itself instead.
-                className={`flex-1 text-[10px] font-medium transition-colors duration-300 ${
-                  i === idx ? 'text-lumi-text font-semibold' : i < idx ? 'text-lumi-muted' : 'text-lumi-subtle'
+                aria-current={i === idx ? 'step' : undefined}
+                // Readable labels stay static. Weight, underline and native
+                // current-step semantics distinguish the current route stage.
+                className={`flex-1 text-sm font-body transition-none ${
+                  i === idx ? 'text-lumi-text font-semibold underline underline-offset-4' : 'text-lumi-muted'
                 }`}
               >
                 {label}
-              </span>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
 
         {/* Preserve each step's keyed lifecycle without delaying its content
