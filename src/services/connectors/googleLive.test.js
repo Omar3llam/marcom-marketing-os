@@ -61,9 +61,15 @@ vi.mock('../../utils/db.js', () => ({ getDb: () => sqlMock }));
 
 // authenticate() now reads Workspace.currency via prisma — mock it (the test
 // workspace id 'ws-1' is not a UUID, so a real query would throw).
-vi.mock('../../lib/prisma.js', () => ({
-  prisma: { workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })), update: vi.fn(async () => ({})) } },
-}));
+vi.mock('../../lib/prisma.js', () => {
+  const prisma = {
+    workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })), update: vi.fn(async () => ({})) },
+    $queryRaw: vi.fn(async () => [{ id: 'ws-1', health: null }]),
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (operation) => operation(prisma));
+  return { prisma };
+});
 
 // Mock the sink (DB write) and the live Google network call.
 vi.mock('./snapshotSink.js', () => ({ landSnapshots: vi.fn(async () => ({ entities: 2, snapshots: 2 })) }));
@@ -86,15 +92,13 @@ describe('Real Credential Smoke Test — the whole chain wires', () => {
     fetchRawSpy = vi.spyOn(googleAdsConnector, 'fetchRaw');
   });
 
-  it('resolveCredential → sync picks it up → fetchRaw invoked → landSnapshots → recordSync', async () => {
+  it('resolveCredential → sync picks it up → fetchRaw invoked → landSnapshots → committed health', async () => {
     const encAccess = enc(GOOGLE_TOKEN);
     const encRefresh = enc(GOOGLE_REFRESH);
     // Queue the rows each query returns, in execution order:
     dbQueue.push(
       [{ workspace_id: 'ws-1', platform: 'google_ads', access_token_enc: encAccess, refresh_token_enc: encRefresh, account_id: '123-456', health: null }], // listActiveSyncable
       [{ access_token_enc: encAccess, refresh_token_enc: encRefresh, account_id: '123-456', expires_at: null }], // resolveCredential (authenticate)
-      [{ health: null }], // recordSync SELECT
-      [],                 // recordSync UPDATE
     );
 
     const result = await runConnectorSync('ws-1', { now: new Date('2026-06-10') });

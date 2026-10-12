@@ -56,10 +56,17 @@ vi.mock('../../utils/db.js', () => ({ getDb: () => sqlMock }));
 
 // authenticate() now reads Workspace.currency via prisma — mock it (the test
 // workspace ids are not UUIDs). 'USD' keeps the bridge focused on routing, not
-// currency. The whole prisma layer is otherwise unused here (sink is mocked).
-vi.mock('../../lib/prisma.js', () => ({
-  prisma: { workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })), update: vi.fn(async () => ({})) } },
-}));
+// currency. The final health transaction is mocked; its real locking is tested
+// by runtimeWorkspaceLiveness.integration.test.js.
+vi.mock('../../lib/prisma.js', () => {
+  const prisma = {
+    workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })), update: vi.fn(async () => ({})) },
+    $queryRaw: vi.fn(async () => [{ id: WS, health: null }]),
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (operation) => operation(prisma));
+  return { prisma };
+});
 
 // Mock the sink (DB write) and BOTH live network calls — keep the pure seams real.
 vi.mock('./snapshotSink.js', () => ({ landSnapshots: vi.fn(async () => ({ entities: 2, snapshots: 2 })) }));

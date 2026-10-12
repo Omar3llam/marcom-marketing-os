@@ -12,9 +12,33 @@ import { logger } from '../../utils/logger.js';
 import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
 import { landDailySnapshots } from './dailySnapshotSink.js';
-import { listActiveSyncable, recordSync } from './credentialStore.js';
+import { listActiveSyncable, recordSync, PLATFORM_DB } from './credentialStore.js';
+import { nextHealth } from './connectorHealth.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled, DAILY_STATE } from './connectorConfig.js';
 import { CAPABILITY } from './connectorReadiness.js';
+import { prisma } from '../../lib/prisma.js';
+import { assertWorkspaceLive, isWorkspaceScopeError, withLiveWorkspace } from '../../lib/workspaceLiveness.js';
+
+/** Success linearizes at COMMIT of this DB-only receipt transaction. Parent
+ * lock and metadata UPDATE use the SAME client; never call the raw-pool writer
+ * under this lock. Lifecycle deletion locks workspace before credentials too.
+ * Reuse the existing platform mapping/fold and update only existing health rows.
+ */
+async function commitSyncSuccess(workspaceId, channel, result) {
+  const platform = PLATFORM_DB[String(channel || '').toUpperCase()];
+  if (!platform) throw new Error('Sync success could not be recorded');
+  return withLiveWorkspace(prisma, workspaceId, async (tx) => {
+    const current = await tx.$queryRaw`SELECT health FROM marcom_credentials
+      WHERE workspace_id = ${workspaceId} AND platform = ${platform} LIMIT 1`;
+    if (!current.length) throw new Error('Sync success could not be recorded');
+    const health = nextHealth(current[0].health ?? {}, { ...result, platform });
+    const updated = await tx.$executeRaw`UPDATE marcom_credentials
+      SET health = ${JSON.stringify(health)}::jsonb, last_synced_at = ${result.now}, updated_at = NOW()
+      WHERE workspace_id = ${workspaceId} AND platform = ${platform}`;
+    if (!updated) throw new Error('Sync success could not be recorded');
+    return health;
+  }, { timeout: 5000 });
+}
 
 /**
  * Run the connector sync.
@@ -26,6 +50,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
   const syncable = connections.filter((c) => isSyncable(c.channel));
 
   if (syncable.length === 0) {
+    if (workspaceId) await assertWorkspaceLive(prisma, workspaceId);
     logger.info({ workspaceId }, '[connectorSync] no active syncable credentials');
     return { synced: 0, failed: 0, results: [] };
   }
@@ -35,6 +60,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
     const { workspaceId: wsId, channel } = conn;
     // Per-channel isolation: a throw here is caught, recorded, and the loop continues.
     try {
+      await assertWorkspaceLive(prisma, wsId);
       const connector = resolve(channel);
       const auth = await connector.authenticate(wsId);
       if (!auth.ok) {
@@ -78,6 +104,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
             '[connectorSync] canonical 30d refresh landed',
           );
         } catch (err) {
+          if (isWorkspaceScopeError(err)) throw err;
           logger.warn(
             { workspaceId: wsId, platform: channel, err: err.message },
             '[connectorSync] canonical 30d refresh failed — verdict rows not refreshed this run',
@@ -164,6 +191,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
             '[connectorSync] daily additive observations landed',
           );
         } catch (err) {
+          if (isWorkspaceScopeError(err)) throw err;
           // FAILED, never folded into NO_DATA. "We could not look" and "we looked
           // and there was nothing" are different facts with different fixes.
           dailyState = DAILY_STATE.FAILED;
@@ -197,7 +225,8 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       // Only this call site passes it, and deliberately: the two failure paths
       // above and below never reached the daily branch, so they have no outcome
       // to report and must not overwrite the last one that did.
-      await recordSync(wsId, channel, {
+      // Await the protected metadata commit before emitting channel success.
+      await commitSyncSuccess(wsId, channel, {
         ok: true, records: landed.snapshots, warning, now,
         capabilities: { [CAPABILITY.DAILY_OBSERVATIONS]: dailyState },
       });
@@ -228,6 +257,13 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         ...(warning ? { warning } : {}),
       });
     } catch (err) {
+      if (isWorkspaceScopeError(err)) {
+        await recordSync(wsId, channel, { ok: false, error: err.message, now })
+          .catch(() => logger.warn({ code: err.code, platform: channel }, '[connectorSync] refusal health unavailable'));
+        logger.warn({ code: err.code, platform: channel }, '[connectorSync] workspace scope refused');
+        results.push({ workspaceId: wsId, platform: channel, status: 'error', code: err.code, error: err.message });
+        continue;
+      }
       await recordSync(wsId, channel, { ok: false, error: err.message, now })
         .catch((recordErr) => logger.warn({
           workspaceId: wsId,

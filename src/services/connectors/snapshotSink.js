@@ -14,6 +14,7 @@
 // ============================================================
 import { currencyWithProvenance } from '../../lib/currencyProvenance.js';
 import { prisma } from '../../lib/prisma.js';
+import { assertWorkspaceLive, withLiveWorkspace } from '../../lib/workspaceLiveness.js';
 import { upsertNonDailyMetricSnapshot } from './nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
 import { detId, ENTITY_LEVEL, PARENT_LEVEL } from './connectorTypes.js';
@@ -339,6 +340,7 @@ async function guardZeroShadows(workspaceId, rows) {
  */
 export async function landSnapshots(workspaceId, channel, normalized = []) {
   if (!workspaceId) throw new Error('landSnapshots: workspaceId required');
+  await assertWorkspaceLive(prisma, workspaceId);
   if (!normalized.length) return { entities: 0, snapshots: 0 };
 
   const allOps = toEntityOps(workspaceId, channel, normalized);
@@ -346,9 +348,9 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
   // violation, and every op shares ONE transaction — so one orphan ad would cost
   // this sync its campaigns too.
   const entityOps = dropOrphans(allOps, await resolveKnownParents(allOps));
-  await prisma.$transaction(
+  await withLiveWorkspace(prisma, workspaceId, (tx) => Promise.all(
     entityOps.map((op) =>
-      prisma[op.model].upsert({
+      tx[op.model].upsert({
         where: { id: op.id },
         create: { id: op.id, ...op.data },
         // Only overwrite objective/status when the new value is KNOWN — a later
@@ -367,7 +369,7 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
         },
       }),
     ),
-  );
+  ));
 
   // Snapshots only for entities that actually landed. `metric_snapshots.entityId`
   // carries no FK, so an orphan's snapshot would NOT fail — it would silently
@@ -389,7 +391,7 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
   // run stamps ONE `date`, so a canonical 30-day row and the operational rolling
   // row beside it match on every other column, and without it the second would
   // silently overwrite the first.
-  await prisma.$transaction(rows.map((r) => upsertNonDailyMetricSnapshot(prisma, r)));
+  await withLiveWorkspace(prisma, workspaceId, (tx) => Promise.all(rows.map((r) => upsertNonDailyMetricSnapshot(tx, r))));
 
   logger.info({ workspaceId, channel, entities: entityOps.length, snapshots: rows.length }, '[snapshotSink] landed');
   return { entities: entityOps.length, snapshots: rows.length };

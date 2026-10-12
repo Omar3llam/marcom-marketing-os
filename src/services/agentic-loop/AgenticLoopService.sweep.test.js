@@ -59,6 +59,8 @@ const ORIGINAL_AI = process.env.AI_AUTOMATIC_ENABLED;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.$queryRaw = vi.fn(async () => [{ id: WS }]);
+  prisma.$transaction = vi.fn(async (operation) => operation(prisma));
   delete process.env.AI_AUTOMATIC_ENABLED; // default: automatic AI OFF (manual-only)
   for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'incrementalityTest', 'plan', 'allocationPlan',
     'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {

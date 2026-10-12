@@ -12,6 +12,15 @@
 //     able to tell "off" from "zero days landed".
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../../lib/prisma.js', () => {
+  const prisma = {
+    workspace: { findUnique: vi.fn(async () => ({ id: 'ws-1' })) },
+    $queryRaw: vi.fn(async () => [{ id: 'ws-1', health: null }]),
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (operation) => operation(prisma));
+  return { prisma };
+});
 
 const {
   resolve, isSyncable, landSnapshots, landDailySnapshots, listActiveSyncable, recordSync,
@@ -24,12 +33,13 @@ const {
 vi.mock('./connectorRegistry.js', () => ({ resolve, isSyncable }));
 vi.mock('./snapshotSink.js', () => ({ landSnapshots }));
 vi.mock('./dailySnapshotSink.js', () => ({ landDailySnapshots }));
-vi.mock('./credentialStore.js', () => ({ listActiveSyncable, recordSync }));
+vi.mock('./credentialStore.js', async (original) => ({ ...(await original()), listActiveSyncable, recordSync }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import { runConnectorSync } from './ConnectorSyncService.js';
+import { prisma } from '../../lib/prisma.js';
 import { dailyIngestionDays, isDailyIngestionEnabled, DAILY_INGESTION_MAX_DAYS } from './connectorConfig.js';
 
 const dailyConnector = (over = {}) => ({
@@ -111,7 +121,7 @@ describe('R8 — a daily failure costs only daily rows', () => {
     expect(res.synced).toBe(1);
     expect(res.failed).toBe(0);
     expect(res.results[0]).toMatchObject({ status: 'success', snapshots: 2, dailyObservations: null });
-    expect(recordSync.mock.calls.at(-1)[2]).toMatchObject({ ok: true, records: 2 });
+    expect(JSON.parse(prisma.$executeRaw.mock.calls.at(-1)[1])).toMatchObject({ lastError: null, recordsImported: 2 });
   });
 
   it('a sink that refuses a bad row does not fail the sync either', async () => {
