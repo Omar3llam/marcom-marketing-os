@@ -12,11 +12,33 @@ import { logger } from '../../utils/logger.js';
 import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
 import { landDailySnapshots } from './dailySnapshotSink.js';
-import { listActiveSyncable, recordSync } from './credentialStore.js';
+import { listActiveSyncable, recordSync, PLATFORM_DB } from './credentialStore.js';
+import { nextHealth } from './connectorHealth.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled, DAILY_STATE } from './connectorConfig.js';
 import { CAPABILITY } from './connectorReadiness.js';
 import { prisma } from '../../lib/prisma.js';
-import { assertWorkspaceLive, isWorkspaceScopeError } from '../../lib/workspaceLiveness.js';
+import { assertWorkspaceLive, isWorkspaceScopeError, withLiveWorkspace } from '../../lib/workspaceLiveness.js';
+
+/** Success linearizes at COMMIT of this DB-only receipt transaction. Parent
+ * lock and metadata UPDATE use the SAME client; never call the raw-pool writer
+ * under this lock. Lifecycle deletion locks workspace before credentials too.
+ * Reuse the existing platform mapping/fold and update only existing health rows.
+ */
+async function commitSyncSuccess(workspaceId, channel, result) {
+  const platform = PLATFORM_DB[String(channel || '').toUpperCase()];
+  if (!platform) throw new Error('Sync success could not be recorded');
+  return withLiveWorkspace(prisma, workspaceId, async (tx) => {
+    const current = await tx.$queryRaw`SELECT health FROM marcom_credentials
+      WHERE workspace_id = ${workspaceId} AND platform = ${platform} LIMIT 1`;
+    if (!current.length) throw new Error('Sync success could not be recorded');
+    const health = nextHealth(current[0].health ?? {}, { ...result, platform });
+    const updated = await tx.$executeRaw`UPDATE marcom_credentials
+      SET health = ${JSON.stringify(health)}::jsonb, last_synced_at = ${result.now}, updated_at = NOW()
+      WHERE workspace_id = ${workspaceId} AND platform = ${platform}`;
+    if (!updated) throw new Error('Sync success could not be recorded');
+    return health;
+  }, { timeout: 5000 });
+}
 
 /**
  * Run the connector sync.
@@ -203,9 +225,8 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       // Only this call site passes it, and deliberately: the two failure paths
       // above and below never reached the daily branch, so they have no outcome
       // to report and must not overwrite the last one that did.
-      // Populations are best effort, but loss of the parent is never success.
-      await assertWorkspaceLive(prisma, wsId);
-      await recordSync(wsId, channel, {
+      // Await the protected metadata commit before emitting channel success.
+      await commitSyncSuccess(wsId, channel, {
         ok: true, records: landed.snapshots, warning, now,
         capabilities: { [CAPABILITY.DAILY_OBSERVATIONS]: dailyState },
       });

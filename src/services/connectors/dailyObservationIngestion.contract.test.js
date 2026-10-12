@@ -44,12 +44,12 @@ const {
 vi.mock('./snapshotSink.js', async (orig) => ({ ...(await orig()), landSnapshots }));
 vi.mock('./dailySnapshotSink.js', async (orig) => ({ ...(await orig()), landDailySnapshots }));
 vi.mock('./connectorRegistry.js', () => ({ resolve, isSyncable }));
-vi.mock('./credentialStore.js', () => ({ listActiveSyncable, recordSync }));
+vi.mock('./credentialStore.js', async (original) => ({ ...(await original()), listActiveSyncable, recordSync }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock('../../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../../lib/prisma.js', () => {
+  const prisma = {
     workspace: { findUnique: vi.fn(async () => ({ id: 'ws-b4d' })) },
     campaign:       { findMany: vi.fn(async () => []) },
     metricSnapshot: { findMany: vi.fn(async () => []), create: vi.fn(), update: vi.fn() },
@@ -58,9 +58,12 @@ vi.mock('../../lib/prisma.js', () => ({
     // block's own try/catch and reported as FAILED, which is not the assertion
     // we want to be making.
     outcomeSnapshot: { create: vi.fn(), createMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), upsert: vi.fn() },
-    $transaction:   vi.fn(async () => []),
-  },
-}));
+    $queryRaw: vi.fn(async () => [{ id: 'ws-b4d', health: null }]),
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (operation) => Array.isArray(operation) ? Promise.all(operation) : operation(prisma));
+  return { prisma };
+});
 
 import { prisma } from '../../lib/prisma.js';
 import { runConnectorSync } from './ConnectorSyncService.js';

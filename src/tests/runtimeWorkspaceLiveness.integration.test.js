@@ -226,6 +226,57 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
     expect(await prisma.ad.findUnique({ where: { id: detId(id, 'META', 'AD', 'synthetic-ad') } })).toMatchObject({ workspaceId: id, adSetId: adset });
   });
 
+  it('F-1: deletion-first blocks the receipt before any health write, then refuses without deadlock', async () => {
+    const id = await fixture({ credential: true }), entered = deferred(), release = deferred();
+    let deletion;
+    control.beforeTx = async (n) => {
+      if (n === 3) {
+        deletion = deleteLifecycle(id, async () => { entered.resolve(); await release.promise; });
+        await entered.promise;
+      }
+    };
+    const sync = runConnectorSync(id, { now: NOW });
+    let blocked = false;
+    try {
+      expect(await within(entered.promise)).toBe(true);
+      const until = Date.now() + 1000;
+      while (Date.now() < until) {
+        const found = await control.sql`SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+          AND query LIKE '%workspaces%FOR KEY SHARE%' AND cardinality(pg_blocking_pids(pid)) > 0`;
+        if (found[0].n) { blocked = true; break; }
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(await health(id)).toBeNull(); // pending receipt has written nothing
+    } finally { release.resolve(); }
+    const result = await sync; await deletion;
+    expect(blocked).toBe(true);
+    expect(result).toMatchObject({ synced: 0, failed: 1, results: [{ code: 'NoWorkspace' }] });
+    await emptyWrites(id);
+  });
+
+  it('F-1: rolled-back success receipt never advances persisted freshness or emits success', async () => {
+    const id = await fixture({ credential: true });
+    control.beforeCommit = async (n) => { if (n === 3) throw new Error('synthetic receipt rollback'); };
+    const result = await runConnectorSync(id, { now: NOW });
+    expect(result).toMatchObject({ synced: 0, failed: 1 });
+    expect((await health(id)).lastSuccessfulSync).toBeNull();
+    expect(await prisma.metricSnapshot.count({ where: { workspaceId: id } })).toBe(1); // earlier transaction remains valid
+  });
+
+  it('F-1: a zero-row health UPDATE is refused even with a live parent and recipient', async () => {
+    const id = await fixture({ credential: true });
+    await control.sql`CREATE FUNCTION synthetic_no_health_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`;
+    await control.sql`CREATE TRIGGER synthetic_no_health_update BEFORE UPDATE ON marcom_credentials FOR EACH ROW EXECUTE FUNCTION synthetic_no_health_update()`;
+    let result;
+    try { result = await runConnectorSync(id, { now: NOW }); }
+    finally { await control.sql`DROP TRIGGER synthetic_no_health_update ON marcom_credentials`; await control.sql`DROP FUNCTION synthetic_no_health_update()`; }
+    expect(result).toMatchObject({ synced: 0, failed: 1 });
+    expect(result.results[0].code).toBeUndefined(); // never relabel this as a missing parent
+    expect(await health(id)).toBeNull();
+    expect(await prisma.workspace.count({ where: { id } })).toBe(1);
+  });
+
   it('F-2: a late Ad write failure rolls back all previously written hierarchy parents', async () => {
     const id = await fixture();
     await control.sql`CREATE FUNCTION synthetic_hierarchy_fail() RETURNS trigger LANGUAGE plpgsql AS $$

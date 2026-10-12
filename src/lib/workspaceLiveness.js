@@ -26,7 +26,7 @@ export async function assertWorkspaceLive(client, workspaceId) {
  * lock, while allowing concurrent parent readers and ordinary non-key updates.
  * Read errors are distinct from a successful miss; operation errors propagate.
  */
-export function withLiveWorkspace(client, workspaceId, operation) {
+export function withLiveWorkspace(client, workspaceId, operation, { timeout = 60_000 } = {}) {
   return client.$transaction(async (tx) => {
     let parent;
     try {
@@ -36,5 +36,5 @@ export function withLiveWorkspace(client, workspaceId, operation) {
     }
     if (!parent.length) throw new WorkspaceScopeError('NoWorkspace');
     return operation(tx);
-  }, { timeout: 60_000 }); // bounded DB batch; interactive default 5s would truncate large existing batches
+  }, { timeout }); // bounded DB batch; callers can narrow short metadata receipts
 }

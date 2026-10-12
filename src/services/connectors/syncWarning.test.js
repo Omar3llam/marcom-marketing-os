@@ -9,7 +9,15 @@
 // surfaces in the admin drill-down beside lastError.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-vi.mock('../../lib/prisma.js', () => ({ prisma: { workspace: { findUnique: vi.fn(async () => ({ id: 'ws-1' })) } } }));
+vi.mock('../../lib/prisma.js', () => {
+  const prisma = {
+    workspace: { findUnique: vi.fn(async () => ({ id: 'ws-1' })) },
+    $queryRaw: vi.fn(async () => [{ id: 'ws-1', health: null }]),
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (operation) => operation(prisma));
+  return { prisma };
+});
 
 const { resolve, isSyncable, landSnapshots, listActiveSyncable, recordSync } = vi.hoisted(() => ({
   resolve: vi.fn(), isSyncable: vi.fn(() => true),
@@ -18,12 +26,13 @@ const { resolve, isSyncable, landSnapshots, listActiveSyncable, recordSync } = v
 
 vi.mock('./connectorRegistry.js', () => ({ resolve, isSyncable }));
 vi.mock('./snapshotSink.js', () => ({ landSnapshots }));
-vi.mock('./credentialStore.js', () => ({ listActiveSyncable, recordSync }));
+vi.mock('./credentialStore.js', async (original) => ({ ...(await original()), listActiveSyncable, recordSync }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import { runConnectorSync } from './ConnectorSyncService.js';
+import { prisma } from '../../lib/prisma.js';
 
 /** A connector whose fetchRaw returns rows carrying (or not) fetchMeta. */
 const connectorReturning = (rows, fetchMeta) => {
@@ -36,7 +45,7 @@ const connectorReturning = (rows, fetchMeta) => {
   };
 };
 
-const recorded = () => recordSync.mock.calls.at(-1)[2];
+const recorded = () => JSON.parse(prisma.$executeRaw.mock.calls.at(-1)[1]);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -53,7 +62,7 @@ describe('a complete sync', () => {
     const res = await runConnectorSync('ws-1');
 
     expect(res.synced).toBe(1);
-    expect(recorded()).toMatchObject({ ok: true, records: 2, warning: null });
+    expect(recorded()).toMatchObject({ lastError: null, recordsImported: 2, lastWarning: null });
     expect(res.results[0].warning).toBeUndefined();
   });
 
@@ -62,7 +71,7 @@ describe('a complete sync', () => {
 
     await runConnectorSync('ws-1');
 
-    expect(recorded()).toMatchObject({ ok: true, warning: null });
+    expect(recorded()).toMatchObject({ lastError: null, lastWarning: null });
   });
 });
 
@@ -77,14 +86,14 @@ describe('a truncated sync', () => {
 
     expect(res.synced).toBe(1);
     expect(res.failed).toBe(0);
-    expect(recorded().ok).toBe(true);
+    expect(recorded().lastSuccessfulSync).toBeTruthy();
   });
 
   it('records a warning that names the incompleteness', async () => {
     await runConnectorSync('ws-1');
 
-    expect(recorded().warning).toMatch(/incomplete/i);
-    expect(recorded().warning).toMatch(/ad set/i);
+    expect(recorded().lastWarning).toMatch(/incomplete/i);
+    expect(recorded().lastWarning).toMatch(/ad set/i);
   });
 
   it('surfaces the warning in the sync result too', async () => {
