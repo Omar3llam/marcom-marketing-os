@@ -32,7 +32,7 @@ window.mountFocusFixture = (state) => {
   flushSync(() => root.render(
     <div key={state}>
       <p role="note">SYNTHETIC COMPONENT TEST — controlled reads and callbacks; no live session, OAuth or backend.</p>
-      <main className={`min-h-screen flex items-center justify-center px-4 sm:px-6 ${PAGE}`}>
+      <main data-lumi-env="product" className={`min-h-screen flex items-center justify-center px-4 sm:px-6 ${PAGE}`}>
         <div id="subject" className="w-full max-w-[580px] px-0 sm:px-8">{component}</div>
       </main>
     </div>,

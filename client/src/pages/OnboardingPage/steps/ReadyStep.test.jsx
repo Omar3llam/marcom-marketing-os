@@ -105,14 +105,25 @@ describe('ReadyStep — verdict-first', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it.each(['KILL', 'SCALE'])('populated %s promotes its existing label to the only h1 without a verdict live region', (verdict) => {
+  it.each(['KILL', 'SCALE'])('populated %s makes the supplied call the only h1 without a verdict live region', (verdict) => {
     verdictsMock.mockReturnValue({ verdicts: [{ verdict, name: 'Supplied campaign', confidence: 0.8 }], loading: false });
     const { container } = render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole('heading', { level: 1, name: 'Your first verdict' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: verdict })).toBeInTheDocument();
     expect(screen.getByText(verdict)).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(container.querySelector('[aria-live]')).toBeNull();
+  });
+
+  it('names the current assessment tense without creating a stored Decision or executable action', () => {
+    verdictsMock.mockReturnValue({ verdicts: [{ verdict: 'KILL', name: 'Supplied', confidence: 0.8,
+      rationale: 'Supplied grounds.', recommendation: 'Supplied recommendation.' }], loading: false, status: 'OK', gatedOut: [] });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getByText(/NOW.*Current assessment/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Reason', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Recommendation', level: 2 })).toBeInTheDocument();
+    expect(screen.queryByText(/AT DECISION|Record decision|Execute|Outcome|Memory/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
   it.each(['campaigns', 'verdicts'])('pending %s keeps one h1/status and does not move focus when data arrives', (pending) => {

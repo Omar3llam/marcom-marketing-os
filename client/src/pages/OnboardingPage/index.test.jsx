@@ -164,11 +164,11 @@ describe('OnboardingPage — connect-first flow', () => {
     ['Workspace', 'Connect', 'Analyze', 'Verdict'].forEach((label) => {
       expect(screen.getByText(label)).toBeInTheDocument();
     });
-    // Emphasis is weight + the darkest text token, not lumi-gold — gold is
-    // 1.34:1 on the light surface, i.e. no highlight at all.
-    expect(screen.getByText('Analyze').className).toMatch(/text-lumi-text/);
+    // Native current-step identity and a static non-color distinction survive.
+    expect(screen.getByText('Analyze')).toHaveAttribute('aria-current', 'step');
     expect(screen.getByText('Analyze').className).toMatch(/font-semibold/);
-    expect(screen.getByText('Verdict').className).not.toMatch(/text-lumi-text\b/);
+    expect(screen.getByText('Analyze').className).toMatch(/underline/);
+    expect(screen.getByText('Verdict')).not.toHaveAttribute('aria-current');
   });
 
   it('advances name → connect → sync → ready and never writes context before sync', async () => {
@@ -202,22 +202,22 @@ describe('OnboardingPage — connect-first flow', () => {
   });
 });
 
-// The flow rendered on bg-dark-base — which is colors.text.base (#2B2B2B), a
-// TEXT token — while styling its copy with lumi-*, whose text token is also
-// #2B2B2B. Every heading was #2B2B2B on #2B2B2B: a 1:1 ratio, i.e. invisible.
-// Unit tests can't see colour, so this pins the SURFACE the tokens assume.
+// PR-9 / Article 13: authenticated Onboarding uses the existing product scope.
+// Browser tests measure the actual resolved ground, contrast and reflow.
 describe('OnboardingPage — renders on the app surface', () => {
-  it('uses the light page background, never the text token', () => {
+  it('uses the approved product surface, never a text token as ground', () => {
     const { container } = mountAt('');
     const page = container.firstChild;
-    expect(page.className).toMatch(/bg-lumi-bg/);
+    expect(page.tagName).toBe('MAIN');
+    expect(page).toHaveAttribute('data-lumi-env', 'product');
+    expect(page.className).toContain('bg-[var(--lumi-color-surface-base)]');
     expect(page.className).not.toMatch(/bg-dark-base/);
   });
 
   it('drops the fixed px-8 gutter on small screens', () => {
     const { container } = mountAt('');
-    const column = container.firstChild.firstChild; // the 580px content column
-    expect(column.className).toMatch(/max-w-\[580px\]/);
+    const column = container.firstChild.firstChild;
+    expect(column.className).toContain('max-w-[var(--lumi-layout-width-claim)]');
     expect(column.className).toMatch(/sm:px-8/);
     expect(column.className).not.toMatch(/(^|\s)px-8/);
   });

@@ -50,7 +50,9 @@ function snapshot(element) {
   const surfaces = [];
   for (let p = element.parentElement; p; p = p.parentElement) {
     const color = getComputedStyle(p).backgroundColor;
-    if (color !== 'rgba(0, 0, 0, 0)') surfaces.push(color);
+    // The nearest opaque ancestor is the adjacent surface. Earlier ancestors
+    // are covered by it (e.g. the legacy body outside the product main).
+    if (color !== 'rgba(0, 0, 0, 0)') { surfaces.push(color); break; }
   }
   if (background === 'rgba(0, 0, 0, 0)') background = surfaces[0];
   return { focused: document.activeElement === element, focusVisible: element.matches(':focus-visible'),
@@ -87,7 +89,8 @@ function focusIndicator(record, value, state) {
     assert.equal(value.outlineStyle, 'solid');
     assert.ok(parseFloat(value.outlineWidth) >= 2 && parseFloat(value.outlineOffset) >= 2, '2px outline and separation');
     const channels = value.outlineColor.match(/[\d.]+/g).slice(0, 3).map(Number);
-    assert.equal(Math.max(...channels), Math.min(...channels), 'neutral outline');
+    // Approved Off White is a warm neutral, not an equal-RGB grey.
+    assert.ok(Math.max(...channels) - Math.min(...channels) <= 4, 'approved neutral outline');
     const alpha = value.outlineColor.match(/[\d.]+/g).map(Number)[3];
     assert.ok(alpha == null || alpha === 1, 'opaque indicator; transparent outline cannot certify focus');
     assert.ok(pairs.length && pairs.every(pair => pair.ratio >= 3), '3:1 against control and adjacent surfaces');

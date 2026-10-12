@@ -13,7 +13,7 @@ window.mountPublishedFixture = (config) => {
   flushSync(() => root.render(
     <StrictMode key={config.name}>
       <p role="note">SYNTHETIC P9-06 — published-shape reads and local callbacks; no live auth, OAuth or backend.</p>
-      <main className={`min-h-screen flex items-center justify-center px-4 sm:px-6 ${PAGE}`}>
+      <main data-lumi-env="product" className={`min-h-screen flex items-center justify-center px-4 sm:px-6 ${PAGE}`}>
         <div id="subject" className="w-full max-w-[580px] px-0 sm:px-8">
           {config.step === 'connect'
             ? <ConnectStep onConnected={count('next')} onSkip={count('skip')} />

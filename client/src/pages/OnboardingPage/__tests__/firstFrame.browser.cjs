@@ -52,7 +52,7 @@ function snapshot(config) {
   const targets = { stepBody: root };
   if (config.step === 'ready' && config.variant !== 'pending') {
     targets.cta = root.querySelector('button');
-    if (config.variant === 'present') targets.verdict = root.querySelector('p.text-4xl').parentElement;
+    if (config.variant === 'present') targets.verdict = root.querySelector('[data-assessment-verdict]').parentElement;
     if (['present', 'empty'].includes(config.variant)) targets.chips = ready.lastElementChild;
     targets.heading = root.querySelector('h1');
   } else if (config.step === 'name') targets.heading = root.querySelector('h1');
