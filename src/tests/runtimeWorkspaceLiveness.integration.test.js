@@ -7,8 +7,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { dbAvailable } from '../tests/dbProbe.js';
 
 const control = vi.hoisted(() => ({ sql: null, processor: null, beforeTx: null, afterLock: null,
+  beforeSuccess: null, beforeCommit: null, healthWrites: [],
   txCount: 0, auth: vi.fn(), fetch: vi.fn(), guardrails: vi.fn(), fatigue: vi.fn(), persist: vi.fn(), evaluate: vi.fn() }));
 vi.mock('../utils/db.js', () => ({ getDb: () => control.sql }));
+vi.mock('../services/connectors/credentialStore.js', async (original) => {
+  const store = await original();
+  return { ...store, recordSync: async (...args) => {
+    if (args[2]?.ok && control.beforeSuccess) await control.beforeSuccess();
+    return store.recordSync(...args);
+  } };
+});
 vi.mock('../utils/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('../queues/connection.js', () => ({ bullConnection: {}, QUEUE_PREFIX: 'synthetic' }));
 vi.mock('../queues/index.js', () => ({ SYNC_QUEUE_NAME: 'synthetic-sync' }));
@@ -30,6 +38,9 @@ vi.mock('../services/planning/PlanService.js', () => ({ trackPlan: vi.fn() }));
 
 import { prisma } from '../lib/prisma.js';
 import { ensureCredentialSchema } from '../models/credential.js';
+import { ensureProjectSchema } from '../models/project.js';
+import { deleteWorkspaceCredentials, withWorkspaceCredentialTransaction } from '../services/connectors/credentialStore.js';
+import { detId } from '../services/connectors/connectorTypes.js';
 import { runConnectorSync } from '../services/connectors/ConnectorSyncService.js';
 import { landSnapshots } from '../services/connectors/snapshotSink.js';
 import { runSweep } from '../services/agentic-loop/AgenticLoopService.js';
@@ -52,6 +63,18 @@ async function fixture({ missing = false, credential = false } = {}) {
   return id;
 }
 async function health(id) { return (await control.sql`SELECT health FROM marcom_credentials WHERE workspace_id = ${id}`)[0]?.health; }
+async function deleteLifecycle(id, beforePurge = async () => {}) {
+  return withWorkspaceCredentialTransaction(deleter, id, async (tx) => {
+    await beforePurge(tx);
+    const purged = await deleteWorkspaceCredentials(id, tx);
+    await tx.workspace.delete({ where: { id } });
+    return purged;
+  });
+}
+const hierarchy = () => ['AD', 'ADSET', 'CAMPAIGN', 'ACCOUNT'].map((entityLevel) => ({
+  ...rows()[0], entityLevel, externalId: `synthetic-${entityLevel.toLowerCase()}`,
+  parentExternalId: { CAMPAIGN: 'synthetic-account', ADSET: 'synthetic-campaign', AD: 'synthetic-adset' }[entityLevel],
+}));
 async function emptyWrites(id) {
   expect(await prisma.account.count({ where: { workspaceId: id } })).toBe(0);
   expect(await prisma.metricSnapshot.count({ where: { workspaceId: id } })).toBe(0);
@@ -71,15 +94,26 @@ async function blockedDelete() {
 
 describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundaries', () => {
   beforeAll(async () => {
-    control.sql = postgres(process.env.DATABASE_URL, { max: 4 });
+    const sql = postgres(process.env.DATABASE_URL, { max: 4 });
+    control.sql = (strings, ...values) => {
+      const query = sql(strings, ...values);
+      // Keep SQL fragments lazy; only observe executed health UPDATE statements.
+      if (strings.join(' ').includes('UPDATE marcom_credentials')) return query.then((result) => {
+        control.healthWrites.push(result.count); return result;
+      });
+      return query;
+    };
+    control.sql.json = sql.json.bind(sql); control.sql.end = sql.end.bind(sql);
     deleter = new PrismaClient();
     await ensureCredentialSchema();
+    await ensureProjectSchema();
     originalTransaction = prisma.$transaction.bind(prisma);
     vi.spyOn(prisma, '$transaction').mockImplementation(async (operation, options) => {
       const boundary = ++control.txCount;
       if (control.beforeTx) await control.beforeTx(boundary);
       if (Array.isArray(operation)) return originalTransaction(operation, options);
-      return originalTransaction(async (tx) => operation(new Proxy(tx, { get(target, key) {
+      return originalTransaction(async (tx) => {
+        const result = await operation(new Proxy(tx, { get(target, key) {
         if (key !== '$queryRaw') return target[key];
         return async (...args) => {
           const result = await target.$queryRaw(...args);
@@ -88,12 +122,16 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
           }
           return result;
         };
-      } })), options);
+        } }));
+        if (control.beforeCommit) await control.beforeCommit(boundary);
+        return result;
+      }, options);
     });
   });
   beforeEach(async () => {
     vi.clearAllMocks();
     control.beforeTx = null; control.afterLock = null; control.txCount = 0;
+    control.beforeSuccess = null; control.beforeCommit = null; control.healthWrites = [];
     control.auth.mockImplementation(async (workspaceId) => ({ ok: true, workspaceId }));
     control.fetch.mockResolvedValue(rows());
     control.evaluate.mockResolvedValue({ campaigns: [], gatedOut: [] });
@@ -105,7 +143,7 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
     await control.sql`DELETE FROM marcom_credentials WHERE user_id = 'synthetic-owner'`;
   });
   afterAll(async () => {
-    control.beforeTx = null; control.afterLock = null;
+    control.beforeTx = null; control.afterLock = null; control.beforeSuccess = null; control.beforeCommit = null;
     await control.sql`DELETE FROM marcom_credentials WHERE user_id = 'synthetic-owner'`;
     await prisma.workspace.deleteMany({ where: { id: { in: spaces } } });
     vi.restoreAllMocks(); vi.unstubAllEnvs();
@@ -128,6 +166,83 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
     expect(result.results[0]).toMatchObject({ status: 'error', code: 'NoWorkspace' });
     expect(control.auth).toHaveBeenCalledTimes(1); expect((await health(id)).lastSuccessfulSync).toBeNull();
     await emptyWrites(id);
+  });
+
+  it('F-1: deletion and credential purge in the final-read/health-write window cannot emit success', async () => {
+    const id = await fixture({ credential: true }); let purged, deleted = false;
+    const deleteOnce = async () => {
+      if (deleted) return;
+      deleted = true;
+      expect(await prisma.metricSnapshot.count({ where: { workspaceId: id } })).toBe(1);
+      purged = await deleteLifecycle(id);
+    };
+    // Baseline: immediately after final assert, before the raw-pool success writer.
+    control.beforeSuccess = deleteOnce;
+    // Repaired path: same window, before the final receipt transaction acquires its parent.
+    control.beforeTx = async (n) => { if (n === 3) await deleteOnce(); };
+    const result = await runConnectorSync(id, { now: NOW });
+    expect(deleted).toBe(true); expect(purged).toBe(1);
+    expect(control.healthWrites).toContain(0); // old success or repaired failure writer has no recipient
+    expect(result).toMatchObject({ synced: 0, failed: 1, results: [{ status: 'error', code: 'NoWorkspace' }] });
+    expect(await health(id)).toBeUndefined(); await emptyWrites(id);
+  });
+
+  it('F-1: success-first orders the real lifecycle delete after committed health without deadlock', async () => {
+    const id = await fixture({ credential: true }), entered = deferred(), release = deferred();
+    control.afterLock = async (n) => { if (n === 3) { entered.resolve(); await release.promise; } };
+    const success = runConnectorSync(id, { now: NOW });
+    const locked = await within(entered.promise);
+    let deletion, receipt, blocked = false;
+    try {
+      if (locked) {
+        deletion = deleteLifecycle(id, async (tx) => {
+          receipt = (await tx.$queryRaw`SELECT health FROM marcom_credentials WHERE workspace_id = ${id}`)[0]?.health;
+        });
+        const until = Date.now() + 1000;
+        while (Date.now() < until) {
+          const found = await control.sql`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE '%workspaces%FOR UPDATE%' AND cardinality(pg_blocking_pids(pid)) > 0`;
+          if (found[0].n) { blocked = true; break; }
+          await new Promise((r) => setTimeout(r, 10));
+        }
+      }
+    } finally { release.resolve(); }
+    const result = await success; if (deletion) await deletion;
+    expect(locked).toBe(true); expect(blocked).toBe(true);
+    expect(result).toMatchObject({ synced: 1, failed: 0 });
+    expect(receipt).toMatchObject({ lastSuccessfulSync: NOW.toISOString(), recordsImported: 1 });
+    await emptyWrites(id); // valid commit, then lifecycle purge/cascade
+  });
+
+  it('F-2: reversed Account/Campaign/AdSet/Ad input lands parents before children on PostgreSQL', async () => {
+    const id = await fixture();
+    expect(await landSnapshots(id, 'META', hierarchy())).toEqual({ entities: 4, snapshots: 4 });
+    const account = detId(id, 'META', 'ACCOUNT', 'synthetic-account');
+    const campaign = detId(id, 'META', 'CAMPAIGN', 'synthetic-campaign');
+    const adset = detId(id, 'META', 'ADSET', 'synthetic-adset');
+    expect(await prisma.campaign.findUnique({ where: { id: campaign } })).toMatchObject({ workspaceId: id, accountId: account });
+    expect(await prisma.adSet.findUnique({ where: { id: adset } })).toMatchObject({ workspaceId: id, campaignId: campaign });
+    expect(await prisma.ad.findUnique({ where: { id: detId(id, 'META', 'AD', 'synthetic-ad') } })).toMatchObject({ workspaceId: id, adSetId: adset });
+  });
+
+  it('F-2: a late Ad write failure rolls back all previously written hierarchy parents', async () => {
+    const id = await fixture();
+    await control.sql`CREATE FUNCTION synthetic_hierarchy_fail() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM accounts WHERE "workspaceId" = NEW."workspaceId")
+          OR NOT EXISTS (SELECT 1 FROM campaign_entities WHERE "workspaceId" = NEW."workspaceId")
+          OR NOT EXISTS (SELECT 1 FROM ad_sets WHERE id = NEW."adSetId")
+        THEN RAISE EXCEPTION 'synthetic hierarchy order violation'; END IF;
+        RAISE EXCEPTION 'synthetic late Ad refusal' USING ERRCODE = '23514';
+      END $$`;
+    await control.sql`CREATE TRIGGER synthetic_hierarchy_fail BEFORE INSERT ON ads FOR EACH ROW EXECUTE FUNCTION synthetic_hierarchy_fail()`;
+    try { await expect(landSnapshots(id, 'META', hierarchy())).rejects.toThrow('synthetic late Ad refusal'); }
+    finally { await control.sql`DROP TRIGGER synthetic_hierarchy_fail ON ads`; await control.sql`DROP FUNCTION synthetic_hierarchy_fail()`; }
+    for (const model of ['account', 'campaign', 'adSet', 'ad', 'metricSnapshot']) {
+      expect(await prisma[model].count({ where: { workspaceId: id } })).toBe(0);
+    }
+    expect(await prisma.workspace.count({ where: { id } })).toBe(1);
   });
 
   it('deletion between graph and metrics refuses instead of reporting partial success', async () => {
