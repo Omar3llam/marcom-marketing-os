@@ -372,9 +372,8 @@ describe('buildLoopInputs — onboarding objective wiring', () => {
     expect(planAgenda(inputs).summary).not.toMatch(/optimizing for/i);
   });
 
-  it('never crashes when the workspace row is missing entirely', async () => {
+  it('a missing workspace is an OBJECTIVE failure, distinct from a null objective', async () => {
     prisma.workspace.findUnique.mockResolvedValue(null);
-    const inputs = await buildLoopInputs(WS, { now });
-    expect(inputs.objective).toBeNull();
+    await expect(buildLoopInputs(WS, { now })).rejects.toMatchObject({ source: 'OBJECTIVE', cause: { code: 'NoWorkspace' } });
   });
 });

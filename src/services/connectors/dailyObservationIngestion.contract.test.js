@@ -50,6 +50,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
+    workspace: { findUnique: vi.fn(async () => ({ id: 'ws-b4d' })) },
     campaign:       { findMany: vi.fn(async () => []) },
     metricSnapshot: { findMany: vi.fn(async () => []), create: vi.fn(), update: vi.fn() },
     // T7's tripwire. Present so a wiring mistake CALLS something rather than

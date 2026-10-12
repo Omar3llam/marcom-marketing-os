@@ -25,6 +25,8 @@ import { runConnectorSync } from '../services/connectors/ConnectorSyncService.js
 import { sweepGuardrails } from '../services/guardrail-engine/GuardrailSweepService.js';
 import { runSweep } from '../services/agentic-loop/AgenticLoopService.js';
 import { DEFAULT_CRON_SYNC_DATE_PRESET } from '../services/connectors/connectorConfig.js';
+import { prisma } from '../lib/prisma.js';
+import { assertWorkspaceLive, isWorkspaceScopeError } from '../lib/workspaceLiveness.js';
 
 // ── Worker Job Handler ────────────────────────────────────────
 async function processSyncJob(job) {
@@ -52,6 +54,14 @@ async function processSyncJob(job) {
     logger.info({ jobId: job.id }, '[syncWorker] post-sync sweep disabled (SYNC_TRIGGERS_SWEEP=false)');
   }
   for (const wsId of workspaceIds) {
+    // Failed/skipped live connections still sweep; scope liveness is independent.
+    try {
+      await assertWorkspaceLive(prisma, wsId);
+    } catch (err) {
+      if (!isWorkspaceScopeError(err)) throw err;
+      logger.warn({ code: err.code }, '[syncWorker] workspace scope refused before sweeps');
+      continue;
+    }
     try {
       const g = await sweepGuardrails(wsId);
       guardrailHits += g.hits ?? 0;

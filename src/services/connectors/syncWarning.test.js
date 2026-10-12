@@ -9,6 +9,7 @@
 // surfaces in the admin drill-down beside lastError.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../../lib/prisma.js', () => ({ prisma: { workspace: { findUnique: vi.fn(async () => ({ id: 'ws-1' })) } } }));
 
 const { resolve, isSyncable, landSnapshots, listActiveSyncable, recordSync } = vi.hoisted(() => ({
   resolve: vi.fn(), isSyncable: vi.fn(() => true),

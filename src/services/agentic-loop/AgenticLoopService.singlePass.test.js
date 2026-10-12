@@ -89,6 +89,8 @@ const camp = (over = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.$queryRaw = vi.fn(async () => [{ id: WS }]);
+  prisma.$transaction = vi.fn(async (operation) => operation(prisma));
   delete process.env.AI_AUTOMATIC_ENABLED;
 
   getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: [camp()], noCanonicalWindow: [] });

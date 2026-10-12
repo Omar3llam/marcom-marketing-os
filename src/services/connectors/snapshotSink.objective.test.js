@@ -16,18 +16,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../lib/prisma.js', () => {
   const model = () => ({ upsert: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) });
-  return {
-    prisma: {
+  const prisma = {
+      workspace: { findUnique: vi.fn(async () => ({ id: 'ws-1' })) },
       account: model(), campaign: model(), adSet: model(), ad: model(), creative: model(),
       metricSnapshot: model(),
-      // The two sink transactions just await the array of upsert promises.
-      $transaction: vi.fn((arr) => Promise.all(arr)),
+      // Execute the DB-only transaction callback with a live parent fixture.
+      $transaction: vi.fn((operation) => operation(prisma)),
+      $queryRaw: vi.fn(async () => [{ id: 'ws-1' }]),
       // B4-E4: snapshots are written through a raw predicated upsert now. These
       // suites are about the ENTITY ops above and do not inspect it, but the
       // mock has to answer the call the code makes.
       $executeRaw: vi.fn().mockResolvedValue(1),
-    },
   };
+  return { prisma };
 });
 
 vi.mock('../../utils/logger.js', () => ({

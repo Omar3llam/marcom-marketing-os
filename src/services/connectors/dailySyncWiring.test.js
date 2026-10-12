@@ -12,6 +12,7 @@
 //     able to tell "off" from "zero days landed".
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../../lib/prisma.js', () => ({ prisma: { workspace: { findUnique: vi.fn(async () => ({ id: 'ws-1' })) } } }));
 
 const {
   resolve, isSyncable, landSnapshots, landDailySnapshots, listActiveSyncable, recordSync,

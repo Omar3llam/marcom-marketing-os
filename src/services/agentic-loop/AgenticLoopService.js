@@ -15,6 +15,7 @@
 // memory rows. No new execution path.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { assertWorkspaceLive, withLiveWorkspace, WorkspaceScopeError } from '../../lib/workspaceLiveness.js';
 import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { planAgenda } from './agenticPlanner.js';
@@ -288,7 +289,11 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     readRequiredLoopSource('PORTFOLIO_PACING', () => getPortfolio(workspaceId, { strictBudgetRead: true })),
     readRequiredLoopSource('BLENDED_TRUTH', () => getBlendedTruth(workspaceId)),
     readRequiredLoopSource('TEST_AGENDA', async () => (await getWeeklyAgenda(workspaceId)).slice(0, 5)),
-    readRequiredLoopSource('OBJECTIVE', async () => (await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }))?.objective ?? null),
+    readRequiredLoopSource('OBJECTIVE', async () => {
+      const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } });
+      if (!workspace) throw new WorkspaceScopeError('NoWorkspace');
+      return workspace.objective ?? null;
+    }),
     readRequiredLoopSource('IMPACT_PRIORITY', () => loadImpactById(workspaceId, evaluation, memory)),
   ]);
   // One population again, but assembled from two reads that each kept their own
@@ -322,6 +327,7 @@ function countByType(agenda) {
  */
 export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date(), force = false } = {}) {
   if (!workspaceId) throw new Error('runSweep: workspaceId required');
+  await assertWorkspaceLive(prisma, workspaceId);
 
   // Idempotency: reuse a very recent sweep unless forced.
   if (!force) {
@@ -390,7 +396,7 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   //    loop_runs.ai_insight does not exist") — which is exactly what the manual
   //    "Run sweep" button surfaces as "Request failed". The reads (getLoopState,
   //    getHome) were already hardened this way; this closes the write path too.
-  const loopRun = await prisma.loopRun.create({
+  const loopRun = await withLiveWorkspace(prisma, workspaceId, (tx) => tx.loopRun.create({
     data: {
       workspaceId, trigger, startedAt, finishedAt: new Date(),
       proposalsByType: countByType(agenda),
@@ -414,7 +420,7 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
       staleStages: true,
       createdAt: true,
     },
-  });
+  }));
 
   logger.info({ workspaceId, trigger, loopHealth: agenda.loopHealth, buyer: agenda.buyerBand.length, strategist: agenda.strategistBand.length }, '[AgenticLoop] sweep complete');
 

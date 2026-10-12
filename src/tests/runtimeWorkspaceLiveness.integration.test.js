@@ -147,7 +147,7 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
     let enteredLock = false, blocked = false;
     try {
       enteredLock = await within(entered.promise);
-      if (enteredLock) { deletion = deleter.workspace.delete({ where: { id } }); blocked = await blockedDelete(); }
+      if (enteredLock) { deletion = deleter.workspace.delete({ where: { id } }).then((value) => value); blocked = await blockedDelete(); }
     } finally { release.resolve(); }
     const outcome = await landing; if (deletion) await deletion;
     expect(enteredLock).toBe(true); expect(blocked).toBe(true);
@@ -185,6 +185,37 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
     expect(await prisma.loopRun.count({ where: { workspaceId: id } })).toBe(1);
   });
 
+  it('the LoopRun transaction holds its parent until the audit commits', async () => {
+    const id = await fixture(), entered = deferred(), release = deferred();
+    control.afterLock = async () => { entered.resolve(); await release.promise; };
+    const sweep = runSweep(id, { trigger: 'SCHEDULED', force: true });
+    expect(await within(entered.promise)).toBe(true);
+    const deletion = deleter.workspace.delete({ where: { id } }).then((value) => value);
+    let blocked;
+    try { blocked = await blockedDelete(); } finally { release.resolve(); }
+    const result = await sweep; await deletion;
+    expect(blocked).toBe(true); expect(result.loopRun.workspaceId).toBe(id);
+    await emptyWrites(id); // subsequent deletion legitimately cascades the committed audit
+  });
+
+  it('provider work is outside all workspace-lock transactions', async () => {
+    const id = await fixture({ credential: true });
+    control.fetch.mockImplementationOnce(async () => {
+      const found = await control.sql`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND state = 'idle in transaction'`;
+      expect(found[0].n).toBe(0);
+      return rows();
+    });
+    expect(await runConnectorSync(id, { now: NOW })).toMatchObject({ synced: 1, failed: 0 });
+  });
+
+  it('empty landing and a scoped sync without credentials still refuse a missing parent', async () => {
+    const id = await fixture({ missing: true });
+    await expect(landSnapshots(id, 'META', [])).rejects.toMatchObject({ code: 'NoWorkspace' });
+    await expect(runConnectorSync(id)).rejects.toMatchObject({ code: 'NoWorkspace' });
+    expect(control.auth).not.toHaveBeenCalled();
+  });
+
   it('DB lookup failure is distinct from a successful missing-parent read', async () => {
     const id = await fixture({ credential: true });
     const spy = vi.spyOn(prisma.workspace, 'findUnique').mockRejectedValueOnce(new Error('synthetic DB outage'));
@@ -209,6 +240,18 @@ describe.skipIf(!DB_OK)('workspace liveness — real PostgreSQL runtime boundari
     expect(control.guardrails.mock.calls.some(([id]) => id === absent)).toBe(false);
     for (const id of [live, failed, skipped]) expect(await prisma.loopRun.count({ where: { workspaceId: id } })).toBe(1);
     await emptyWrites(absent);
+  });
+
+  it('worker retains a parent-read refusal even if the next lookup would recover', async () => {
+    const id = await fixture({ credential: true });
+    const spy = vi.spyOn(prisma.workspace, 'findUnique').mockRejectedValueOnce(new Error('synthetic parent-read outage'));
+    try {
+      startSyncWorker(); const result = await control.processor({ id: 'synthetic-job', data: {} });
+      expect(result.results[0]).toMatchObject({ status: 'error', code: 'WorkspaceUnavailable' });
+      expect(control.guardrails).not.toHaveBeenCalled(); expect(control.evaluate).not.toHaveBeenCalled();
+      expect(result.swept).toBe(0);
+    } finally { spy.mockRestore(); }
+    await emptyWrites(id);
   });
 
   it('unrelated write FK failure is propagated, never relabelled as missing workspace', async () => {

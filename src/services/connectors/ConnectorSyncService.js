@@ -15,6 +15,8 @@ import { landDailySnapshots } from './dailySnapshotSink.js';
 import { listActiveSyncable, recordSync } from './credentialStore.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled, DAILY_STATE } from './connectorConfig.js';
 import { CAPABILITY } from './connectorReadiness.js';
+import { prisma } from '../../lib/prisma.js';
+import { assertWorkspaceLive, isWorkspaceScopeError } from '../../lib/workspaceLiveness.js';
 
 /**
  * Run the connector sync.
@@ -26,6 +28,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
   const syncable = connections.filter((c) => isSyncable(c.channel));
 
   if (syncable.length === 0) {
+    if (workspaceId) await assertWorkspaceLive(prisma, workspaceId);
     logger.info({ workspaceId }, '[connectorSync] no active syncable credentials');
     return { synced: 0, failed: 0, results: [] };
   }
@@ -35,6 +38,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
     const { workspaceId: wsId, channel } = conn;
     // Per-channel isolation: a throw here is caught, recorded, and the loop continues.
     try {
+      await assertWorkspaceLive(prisma, wsId);
       const connector = resolve(channel);
       const auth = await connector.authenticate(wsId);
       if (!auth.ok) {
@@ -78,6 +82,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
             '[connectorSync] canonical 30d refresh landed',
           );
         } catch (err) {
+          if (isWorkspaceScopeError(err)) throw err;
           logger.warn(
             { workspaceId: wsId, platform: channel, err: err.message },
             '[connectorSync] canonical 30d refresh failed — verdict rows not refreshed this run',
@@ -164,6 +169,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
             '[connectorSync] daily additive observations landed',
           );
         } catch (err) {
+          if (isWorkspaceScopeError(err)) throw err;
           // FAILED, never folded into NO_DATA. "We could not look" and "we looked
           // and there was nothing" are different facts with different fixes.
           dailyState = DAILY_STATE.FAILED;
@@ -197,6 +203,8 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       // Only this call site passes it, and deliberately: the two failure paths
       // above and below never reached the daily branch, so they have no outcome
       // to report and must not overwrite the last one that did.
+      // Populations are best effort, but loss of the parent is never success.
+      await assertWorkspaceLive(prisma, wsId);
       await recordSync(wsId, channel, {
         ok: true, records: landed.snapshots, warning, now,
         capabilities: { [CAPABILITY.DAILY_OBSERVATIONS]: dailyState },
@@ -228,6 +236,13 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         ...(warning ? { warning } : {}),
       });
     } catch (err) {
+      if (isWorkspaceScopeError(err)) {
+        await recordSync(wsId, channel, { ok: false, error: err.message, now })
+          .catch(() => logger.warn({ code: err.code, platform: channel }, '[connectorSync] refusal health unavailable'));
+        logger.warn({ code: err.code, platform: channel }, '[connectorSync] workspace scope refused');
+        results.push({ workspaceId: wsId, platform: channel, status: 'error', code: err.code, error: err.message });
+        continue;
+      }
       await recordSync(wsId, channel, { ok: false, error: err.message, now })
         .catch((recordErr) => logger.warn({
           workspaceId: wsId,
