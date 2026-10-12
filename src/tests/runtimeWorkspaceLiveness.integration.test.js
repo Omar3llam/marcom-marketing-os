@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dbAvailable } from './dbProbe.js';
+import { dbAvailable } from '../tests/dbProbe.js';
 
 const control = vi.hoisted(() => ({ sql: null, processor: null, beforeTx: null, afterLock: null,
   txCount: 0, auth: vi.fn(), fetch: vi.fn(), guardrails: vi.fn(), fatigue: vi.fn(), persist: vi.fn(), evaluate: vi.fn() }));

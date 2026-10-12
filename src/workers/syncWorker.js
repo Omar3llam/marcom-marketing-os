@@ -42,6 +42,11 @@ async function processSyncJob(job) {
   const workspaceIds = workspaceId
     ? [workspaceId]
     : [...new Set(ingest.results.map((r) => r.workspaceId))];
+  // Retain admission/write refusals for this job, even if a later read recovers.
+  // Provider failures/skips have no scope code and preserve their live sweeps.
+  const refusedScopes = new Set(ingest.results
+    .filter((r) => r.code === 'NoWorkspace' || r.code === 'WorkspaceUnavailable')
+    .map((r) => r.workspaceId));
   let guardrailHits = 0;
   let swept = 0;
   // The post-sync sweep re-scores freshly-landed data, but it fans out to the AI
@@ -54,6 +59,7 @@ async function processSyncJob(job) {
     logger.info({ jobId: job.id }, '[syncWorker] post-sync sweep disabled (SYNC_TRIGGERS_SWEEP=false)');
   }
   for (const wsId of workspaceIds) {
+    if (refusedScopes.has(wsId)) continue;
     // Failed/skipped live connections still sweep; scope liveness is independent.
     try {
       await assertWorkspaceLive(prisma, wsId);
