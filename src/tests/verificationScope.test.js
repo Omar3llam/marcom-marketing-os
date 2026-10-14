@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { verificationScope } from '../../scripts/verificationScope.js';
+import { verificationScope, discoverFrontendSources } from '../../scripts/verificationScope.js';
 
 describe('verification scope cannot hide a missing subject', () => {
   it('requires frontend for full checks and all backend subjects for backend checks', () => {
@@ -18,9 +18,18 @@ describe('verification scope cannot hide a missing subject', () => {
       expect(() => verificationScope(root, [])).toThrow('client/src');
       mkdirSync(join(root, 'client/src'), {recursive: true});
       expect(() => verificationScope(root, [])).toThrow('empty');
-      writeFileSync(join(root, 'client/src/subject'), 'synthetic');
+      writeFileSync(join(root, 'client/src/subject.jsx'), 'export const subject = true;');
       expect(verificationScope(root, [])).toEqual({includeFrontend: true});
       expect(() => verificationScope(root, ['--skip'])).toThrow('Expected');
+    } finally { rmSync(root, {recursive: true, force: true}); }
+  });
+  it('shares traversal while preserving each scanner’s existing file policy', () => {
+    const root = mkdtempSync(join(tmpdir(), 'lumi-discovery-'));
+    try {
+      for (const dir of ['', 'dist', 'node_modules']) mkdirSync(join(root, dir), {recursive: true});
+      for (const file of ['live.jsx', 'fixture.test.jsx', 'dist/generated.js', 'node_modules/dependency.js', 'README.md']) writeFileSync(join(root, file), 'synthetic');
+      expect(discoverFrontendSources(root).map(file => file.slice(root.length + 1)).sort()).toEqual(['dist/generated.js', 'fixture.test.jsx', 'live.jsx'].map(file => file.replaceAll('/', process.platform === 'win32' ? '\\' : '/')).sort());
+      expect(discoverFrontendSources(root, ['.js', '.jsx'], {includeTests: false, includeDist: false})).toEqual([join(root, 'live.jsx')]);
     } finally { rmSync(root, {recursive: true, force: true}); }
   });
   it('backend security retains its verified-email guard with no client present', () => {

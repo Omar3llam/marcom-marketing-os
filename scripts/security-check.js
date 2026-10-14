@@ -30,7 +30,7 @@
 // controls in the test suite are for, and a scanner that pretended otherwise
 // would be exactly the theatre this replaces.
 // ============================================================
-import { verificationScope } from './verificationScope.js';
+import { verificationScope, discoverFrontendSources } from './verificationScope.js';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, extname, relative, sep } from 'path';
 
@@ -92,7 +92,7 @@ function stripComments(src) {
 }
 
 const backendFiles = allFiles(BACKEND).filter((f) => !f.includes('.test.'));
-const clientFiles  = includeFrontend ? allFiles(CLIENT, ['.js', '.jsx']).filter((f) => !f.includes('.test.')) : [];
+const clientFiles  = includeFrontend ? discoverFrontendSources(CLIENT, ['.js', '.jsx'], {includeTests: false, includeDist: false}) : [];
 const sourceOf     = new Map(backendFiles.map((f) => [f, stripComments(read(f))]));
 /** Raw text, for the require_() rules — those look FOR a shape, comments included. */
 const rawOf        = new Map(backendFiles.map((f) => [f, read(f)]));

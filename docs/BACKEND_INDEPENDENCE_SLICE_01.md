@@ -145,7 +145,7 @@ and serve the current frontend; there is no database migration to reverse. Any
 future backend-only deployment must explicitly choose `SERVE_FRONTEND=false` and
 an independently governed migration/runtime configuration.
 
-## Local RED/GREEN evidence — 14 October 2026
+## Original slice evidence at b39d7feb — 14 October 2026
 
 RED used an immutable disposable sparse checkout of the reference SHA, with no
 `client` directory, `.env`, or production credentials. PostgreSQL 18 on loopback
@@ -187,3 +187,65 @@ found the relocated test still in the disposable Git index; the final build used
 the correct staged tree. These earlier failures are retained in the evidence;
 they are not represented as passing runs. Browser end-to-end tests, real provider
 authentication and production checks are outside this slice's verification claim.
+
+## Independent review remediation — F-1 / F-2 only
+
+Reverified master `0660e9123f3583e7054336534512e8b3fb098949`, draft PR #574 and
+branch `codex/backend-independence-01` at `b39d7febf1698ca6afc69e73389c1a469c972221`
+before edits. The implementation checkout was clean; the primary checkout's
+preexisting Phase 6 files were preserved. The remediation head is recorded in
+PR #574 and its new evidence archive.
+
+**Definitive RED:** ten expected assertions failed, one live-child control passed.
+Full architecture and security accepted a subject with Vite configuration and
+only a README or test source under `client/src`; an empty directory had only a
+generic directory error. The controlled smoke child emitted readiness and sync
+markers, then exited 17 during the one-second settling interval, but the original
+CLI reported success. Additional controls exposed unexpected exit 0, SIGTERM and
+API termination during a response. Test fixtures use real child processes and
+synthetic responses; they do not invoke providers or a database.
+
+**Corrections:** shared frontend discovery validates a nonempty applicable
+non-test JS/JSX corpus before full checks. Both scanners use that traversal with
+their existing test/generated-file inclusion policies; the current valid corpus
+is unchanged (674 architecture files, 398 security files). Specialized frontend
+rules with no subject report that they were not evaluated. Backend scope still
+works with the client absent. No existing rule patterns or assertions were removed.
+
+Smoke records exit code, signal and spawn errors, checks liveness after readiness,
+around awaited API responses/body reads, after worker settling, and before final
+success reporting. It yields for pending exit events before that final check.
+Expected SIGTERM cleanup occurs after verification, waits for stream/process close,
+and retains a bounded SIGKILL fallback for a stuck cleanup. This is a bounded boot
+observation, not worker recovery or production readiness certification.
+
+| Remediation verification | Result |
+|---|---|
+| Focused F-1/F-2, scope and serving tests | Four suites / 21 tests pass |
+| Same focused tests in a fresh client-absent checkout | Four suites / 21 tests pass |
+| Client-absent full PostgreSQL verification | 451 suites / 6,941 tests pass; zero skipped |
+| Frontend full verification | 302 suites / 4,897 tests pass |
+| Legacy contract parity | Six suites / 34 tests pass |
+| Backend lint and valid full architecture/security | Pass |
+| Client-absent backend architecture/security | Pass |
+| Client-absent full architecture/security | Both reject with explicit missing-frontend-source error |
+| Real legacy API/worker smoke | Pass; SPA 200, protected API/webhook 401 |
+| Real client-absent API/worker smoke | Pass; browser 404, health/DB 200, protected API/webhook 401 |
+
+Remediation paths and reasons:
+
+- `scripts/verificationScope.js`: shared discovery and fail-closed frontend corpus guard.
+- `scripts/arch-check.js`: reuse discovery; truthful reporting when a specialized subject is absent.
+- `scripts/security-check.js`: reuse the same discovery with the existing security file policy.
+- `scripts/backend-runtime-smoke.js`: child lifecycle checks and awaited cleanup.
+- `src/tests/verificationScope.test.js`: applicable-source subject and file-policy controls.
+- `src/tests/frontendVerificationCorpus.test.js`: real full-scanner README/empty/test-only rejection cases, independent of client files.
+- `src/tests/backendRuntimeSmoke.test.js`: terminated API/worker and live/SIGTERM cleanup cases.
+- `src/tests/fixtures/backendSmoke.fixture.js`: controlled child processes and synthetic HTTP responses.
+- This document: evidence, limits and re-review record.
+
+The old local CI exception applies only to `b39d7feb...`; it does not apply to
+the remediation head. Hosted CI must execute or receive a new separately approved
+decision after verification. Independent re-review of F-1/F-2 at the new immutable
+head is requested. No frontend deletion, business/API/schema/migration/Render
+changes, automatic merge, deployment or Gate B/C closure is authorized or performed.

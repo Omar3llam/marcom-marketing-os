@@ -39,21 +39,37 @@ async function probe(kind) {
   const childEnv = {...env, NODE_ENV: kind === 'api' ? 'production' : 'test', REDIS_URL: kind === 'api' ? '' : redis.href};
   if (!legacy) childEnv.SERVE_FRONTEND = 'false';
   const child = spawn(process.execPath, [kind === 'api' ? 'src/server.js' : 'src/workers/index.js'], {cwd: root, env: childEnv});
-  let output = '', exited = false;
+  let output = '', exitState = null, spawnError = null;
+  const closed = new Promise(done => child.once('close', done));
   child.stdout.on('data', b => output += b);
   child.stderr.on('data', b => output += b);
-  child.on('exit', () => exited = true);
+  child.on('exit', (code, signal) => exitState = {code, signal});
+  child.on('error', error => spawnError = error);
+  const assertAlive = phase => {
+    if (spawnError) throw new Error(`${kind} could not start before ${phase}: ${spawnError.message}`);
+    if (exitState || child.exitCode !== null || child.signalCode !== null) {
+      const state = exitState || {code: child.exitCode, signal: child.signalCode};
+      throw new Error(`${kind} terminated before ${phase}: code=${state.code} signal=${state.signal}\n${output}`);
+    }
+  };
   try {
     const marker = kind === 'api' ? 'MARCOM v4 online' : '[worker] all workers online';
-    for (let i = 0; i < 300 && !exited && !output.includes(marker); i++) await new Promise(r => setTimeout(r, 100));
+    for (let i = 0; i < 300 && !output.includes(marker); i++) {
+      assertAlive('readiness');
+      await new Promise(r => setTimeout(r, 100));
+    }
+    assertAlive('readiness');
     if (!output.includes(marker)) throw new Error(`${kind} did not boot\n${output}`);
     if (kind === 'api') {
       for (const [path, status] of [
         ['/api/health', 200], ['/health', 200], ['/api/__slice01_missing', 401],
         ['/webhook/__slice01_missing', 401], ['/app/__slice01_missing', legacy ? 200 : 404],
       ]) {
+        assertAlive(`API response ${path}`);
         const response = await fetch(`http://127.0.0.1:${env.PORT}${path}`);
+        assertAlive(`API response ${path}`);
         const body = await response.text();
+        assertAlive(`API response body ${path}`);
         if (response.status !== status) throw new Error(`${path}: expected ${status}, got ${response.status}: ${body}`);
         if (path.startsWith('/api/') && !response.headers.get('content-type')?.includes('application/json')) throw new Error(`${path} returned a UI response`);
         if (path === '/health' && JSON.parse(body).db !== true) throw new Error('DB health failed');
@@ -61,10 +77,20 @@ async function probe(kind) {
       }
     } else {
       await new Promise(r => setTimeout(r, 1000));
+      assertAlive('worker settling completed');
       if (!output.includes('[worker] campaign sync scheduled') || /ECONNREFUSED|Unhandled|TypeError/.test(output)) throw new Error(`Worker/Redis boot failed\n${output}`);
     }
+    // Give pending exit events a turn before reporting success. exitCode/signalCode
+    // are checked too, so marker delivery cannot override termination state.
+    await new Promise(done => setImmediate(done));
+    assertAlive('verification completed');
     console.log(`${kind} boot verified (${kind === 'worker' ? 'isolated Redis, NODE_ENV=test' : 'NODE_ENV=production'}; synthetic Firebase identity only)`);
-  } finally { child.kill('SIGTERM'); }
+  } finally {
+    if (!spawnError && !exitState && child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+    const cleanupDeadline = setTimeout(() => child.kill('SIGKILL'), 10000);
+    cleanupDeadline.unref();
+    try { await closed; } finally { clearTimeout(cleanupDeadline); }
+  }
 }
 
 await probe('api');

@@ -9,7 +9,7 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = one or more checks fail
 // ============================================================
-import { verificationScope } from './verificationScope.js';
+import { verificationScope, discoverFrontendSources } from './verificationScope.js';
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import * as pathForMigrations from 'path';
 import { join, extname } from 'path';
@@ -75,7 +75,7 @@ const SIZE_LIMITS = [
 
 let sizePass = true;
 for (const { dir, ext, max, label } of SIZE_LIMITS.filter(rule => includeFrontend || !rule.dir.startsWith(CLIENT))) {
-  const files = getAllFiles(dir, [ext]);
+  const files = dir.startsWith(CLIENT) ? discoverFrontendSources(dir, [ext]) : getAllFiles(dir, [ext]);
   for (const file of files) {
     const lines = lineCount(file);
     const name  = file.replace(ROOT + '/', '');
@@ -128,7 +128,7 @@ for (const file of backendFiles) {
 }
 
 // Frontend: no direct axios.post/get bypassing api client
-const frontendFiles = includeFrontend ? getAllFiles(CLIENT, ['.js', '.jsx']) : [];
+const frontendFiles = includeFrontend ? discoverFrontendSources(CLIENT) : [];
 if (!includeFrontend && importPass) pass('No forbidden backend imports detected');
 if (includeFrontend) {
 for (const file of frontendFiles) {
@@ -152,7 +152,7 @@ const API_BOUNDARY_DIRS = [
   join(CLIENT, 'design-system'),
   join(CLIENT, 'components', 'layout'),
 ];
-const apiBoundaryFiles = API_BOUNDARY_DIRS.flatMap((dir) => getAllFiles(dir, ['.js', '.jsx', '.ts', '.tsx']));
+const apiBoundaryFiles = API_BOUNDARY_DIRS.flatMap((dir) => discoverFrontendSources(dir, ['.js', '.jsx', '.ts', '.tsx']));
 const forbiddenApiBoundaryImport = /from\s+['"][^'"]*(?:@\/lib\/api|\/lib\/api|\.\.?\/.*lib\/api)[^'"]*['"]/;
 const directFetchCall = /\bfetch\s*\(/;
 let apiBoundaryPass = true;
@@ -172,7 +172,8 @@ for (const file of apiBoundaryFiles) {
   }
 }
 
-if (apiBoundaryPass) pass('New frontend layers respect the API boundary');
+if (!apiBoundaryFiles.length) console.log('No applicable frontend API-boundary files; rule not evaluated.');
+else if (apiBoundaryPass) pass('New frontend layers respect the API boundary');
 
 // ══════════════════════════════════════════════════════════════
 // CHECK 3 — Raw hex in JSX files
@@ -180,7 +181,8 @@ if (apiBoundaryPass) pass('New frontend layers respect the API boundary');
 section('CHECK 3: Raw hex in JSX (design token discipline)');
 
 let hexPass = true;
-for (const file of frontendFiles.filter(f => f.endsWith('.jsx'))) {
+const jsxFiles = frontendFiles.filter(f => f.endsWith('.jsx'));
+for (const file of jsxFiles) {
   const lines   = readFile(file).split('\n');
   const name    = file.replace(ROOT + '/', '');
   lines.forEach((line, i) => {
@@ -193,7 +195,8 @@ for (const file of frontendFiles.filter(f => f.endsWith('.jsx'))) {
     }
   });
 }
-if (hexPass) pass('No raw hex values in JSX className props');
+if (!jsxFiles.length) console.log('No applicable JSX files; raw-hex rule not evaluated.');
+else if (hexPass) pass('No raw hex values in JSX className props');
 
 // ══════════════════════════════════════════════════════════════
 // CHECK 4 — useEffect without cleanup (memory leak detection)
@@ -252,7 +255,7 @@ if (prismaPass) pass('No obvious N+1 Prisma patterns detected');
 if (includeFrontend) {
 section('CHECK 6: Component registry — detect similar names');
 
-const uiComponents = getAllFiles(join(CLIENT, 'components'), ['.jsx'])
+const uiComponents = discoverFrontendSources(join(CLIENT, 'components'), ['.jsx'])
   .map(f => f.split('/').pop().replace('.jsx', '').toLowerCase());
 
 const SIMILAR_PATTERNS = [
@@ -269,7 +272,8 @@ for (const pattern of SIMILAR_PATTERNS) {
     registryPass = false;
   }
 }
-if (registryPass) pass('No suspicious component name clusters detected');
+if (!uiComponents.length) console.log('No applicable JSX components; registry rule not evaluated.');
+else if (registryPass) pass('No suspicious component name clusters detected');
 } else console.log('Frontend component registry: outside backend scope.');
 
 // ══════════════════════════════════════════════════════════════
