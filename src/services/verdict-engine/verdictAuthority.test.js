@@ -22,7 +22,6 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const SRC    = fileURLToPath(new URL('../..', import.meta.url));          // src/
-const CLIENT = fileURLToPath(new URL('../../../client/src', import.meta.url));
 
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
   const full = path.join(dir, e.name);
@@ -180,41 +179,6 @@ describe('R8 · CampaignReasoning stays a cache', () => {
     // …and it never feeds a Decision or an account-health computation.
     expect(route).not.toMatch(callsTo('computeAccountHealth'));
     expect(route).not.toMatch(/prisma\.decision\.create/);
-  });
-});
-
-// CONTROL 4 — the client must not hold a verdict authority.
-describe('R8 · the client consumes verdicts, it does not author them', () => {
-  it('the ONLY client-side verdict derivation is the known-dead useOrchestrate mapper', () => {
-    const derivation = /[<>]=?\s*[\d.]+\s*\?\s*['"`](KILL|SCALE|HOLD|WATCH|REFRESH|REALLOCATE|OPTIMIZE)/;
-    // R8 §12 rules this out of scope for removal (it belongs to R12 Legacy
-    // Cleanup) and requires it to be documented instead. Documented is not the
-    // same as safe, so the next test is the one that actually holds it down.
-    expect(filesMatching(CLIENT, derivation)).toEqual(['hooks/useOrchestrate/fetchers.js']);
-  });
-
-  it('…and nothing reaches the mappers, so they cannot render', () => {
-    // This is the real guard. The derivation is harmless only while unreachable;
-    // the moment a component wires it up, a score-derived 'SCALE' and an
-    // 'OPTIMIZE' the backend cannot emit start rendering beside real verdicts.
-    //
-    // TWO doors, and only one of them is shut by accident of nobody using it:
-    //   1. the useOrchestrate hook itself — zero importers
-    //   2. the three flow functions in fetchers.js that call the mappers
-    // `fetchContext`, also exported from fetchers.js, IS live (useOnboardingContext)
-    // and reaches no mapper — which is why this asks about the doors rather than
-    // about the file.
-    const files = walk(CLIENT).filter((f) => !/hooks[\\/]useOrchestrate/.test(f));
-
-    const hookImporters = files
-      .filter((f) => /from\s+['"][^'"]*useOrchestrate(\.js|\/index\.js)?['"]/.test(codeOf(f)))
-      .map((f) => rel(CLIENT, f));
-    expect(hookImporters).toEqual([]);
-
-    const flowImporters = files
-      .filter((f) => /\b(runContentFlow|runStrategyFlow|runCampaignFlow)\b/.test(codeOf(f)))
-      .map((f) => rel(CLIENT, f));
-    expect(flowImporters).toEqual([]);
   });
 });
 

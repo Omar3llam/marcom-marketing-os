@@ -23,8 +23,8 @@ import {
   LINEAR_RECONNECT,
   FIXED_INTERVAL,
   NO_RETRY,
-} from '../../client/src/contracts/errors/retryPolicy.ts';
-import { NetworkError, PlatformError, RateLimitError } from '../../client/src/contracts/errors/index.ts';
+} from '../../packages/api-contracts/errors/retryPolicy.ts';
+import { NetworkError, PlatformError, RateLimitError } from '../../packages/api-contracts/errors/index.ts';
 
 
 describe('Resilience Wiring Integration Tests', () => {

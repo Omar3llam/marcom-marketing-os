@@ -35,7 +35,7 @@ import { readFileSync } from 'node:fs';
 import { BRIEFING_SELECT } from './PatternService.js';
 
 const SCHEMA_PATH = new URL(
-  '../../../client/src/contracts/schemas/accountPattern.schema.ts',
+  '../../../packages/api-contracts/schemas/accountPattern.schema.ts',
   import.meta.url,
 );
 

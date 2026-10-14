@@ -36,7 +36,7 @@ const read = (...p) => readFileSync(join(process.cwd(), ...p), 'utf8');
 const SERVICE = read('src', 'services', 'network-engine', 'NetworkService.js');
 const ROUTE = read('src', 'routes', 'lumi', 'memory.js');
 const ENGINE = read('src', 'services', 'network-engine', 'networkEngine.js');
-const SCHEMA = read('client', 'src', 'contracts', 'schemas', 'networkInsight.schema.ts');
+const SCHEMA = read('packages', 'api-contracts', 'schemas', 'networkInsight.schema.ts');
 
 /** Every `NETWORK_STATUS.X` a source actually names. */
 function published(source) {

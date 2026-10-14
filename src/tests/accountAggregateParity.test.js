@@ -36,7 +36,7 @@ import { VERDICT } from '../services/verdict-engine/verdictTypes.js';
 
 const SCHEMA_PATH = join(
   process.cwd(),
-  'client', 'src', 'contracts', 'schemas', 'accountAggregate.schema.ts',
+  'packages', 'api-contracts', 'schemas', 'accountAggregate.schema.ts',
 );
 const source = readFileSync(SCHEMA_PATH, 'utf8');
 
@@ -93,12 +93,8 @@ describe('PARITY-01 · the account-aggregate vocabulary crosses the boundary int
     expect(source).toContain(`z.literal('${AGGREGATION_LEVEL}')`);
   });
 
-  it('the empty-state reason the route publishes is the one the client branches on', () => {
+  it('the route publishes the explicit no-measurement reason', () => {
     const routeSource = readFileSync(join(process.cwd(), 'src', 'routes', 'lumi', 'account.js'), 'utf8');
     expect(routeSource).toContain("reason: 'NO_CANONICAL_MEASUREMENT'");
-    const readingSource = readFileSync(
-      join(process.cwd(), 'client', 'src', 'lib', 'accountAggregate.js'), 'utf8',
-    );
-    expect(readingSource).toContain('NO_CANONICAL_MEASUREMENT');
   });
 });

@@ -26,7 +26,6 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const SRC = fileURLToPath(new URL('../..', import.meta.url));          // src/
-const CLIENT = fileURLToPath(new URL('../../../client/src', import.meta.url));
 
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
   const full = path.join(dir, e.name);
@@ -62,17 +61,12 @@ describe('R7 — the retired DecisionMemory table has no live code path', () => 
     expect(offenders(SRC, /['"`]\/api\/(memory|decision-memory)\b/)).toEqual([]);
   });
 
-  it('no client file calls the retired endpoints', () => {
-    expect(offenders(CLIENT, /['"`]\/api\/(memory|decision-memory)\b/)).toEqual([]);
-  });
-
   it('no file reads the Shape-B columns that never existed', () => {
     // campaignId / decisionRationale / deltaCtr / deltaRoas / resultStatus on a
     // decision-memory row. These are the field accesses that failed silently:
     // valid queries, wrong columns, empty results nobody attributed to a bug.
     const shapeB = /\bmem\.(campaignId|decisionRationale|deltaCtr|deltaRoas|resultStatus|impactDurationHrs|isSustainable)\b/;
     expect(offenders(SRC, shapeB)).toEqual([]);
-    expect(offenders(CLIENT, shapeB)).toEqual([]);
   });
 
   it('the temporal observer is gone, and nothing tries to start it', () => {
