@@ -26,7 +26,7 @@ import { join } from 'node:path';
 import { VERDICT } from '../services/verdict-engine/verdictTypes.js';
 
 const SCHEMA_PATH = join(
-  process.cwd(), 'client', 'src', 'contracts', 'schemas', 'connectorCampaigns.schema.ts',
+  process.cwd(), 'packages', 'api-contracts', 'schemas', 'connectorCampaigns.schema.ts',
 );
 const source = readFileSync(SCHEMA_PATH, 'utf8');
 

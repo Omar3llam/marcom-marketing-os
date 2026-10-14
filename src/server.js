@@ -23,6 +23,7 @@ import './config.js';           // Validates env vars; exits on failure
 import express              from 'express';
 import cors                 from 'cors';
 import path from 'path';
+import { shouldServeFrontend } from './lib/frontendServing.js';
 import { securityHeaders }  from './middleware/securityHeaders.js';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
 import { requireWorkspace } from './middleware/requireWorkspace.js';
@@ -378,7 +379,7 @@ app.use('/api',
 // ── PRODUCTION: serve React client (client/dist) ─────────────
 // MUST be registered AFTER every /api/* and /webhook/* mount so
 // the catch-all never shadows a real route.
-if (config.nodeEnv === 'production') {
+if (shouldServeFrontend(config.nodeEnv, process.env.SERVE_FRONTEND)) {
   // server.js lives in /src — the client build sits one level up.
   // path.resolve produces an absolute path regardless of cwd, which
   // matters on Render where the worker process cwd is not always

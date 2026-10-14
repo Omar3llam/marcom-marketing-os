@@ -58,6 +58,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/client/
 
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
@@ -69,8 +74,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
 
-      - name: Install dependencies (workspace-wide)
-        run: npm ci
+      - name: Install backend dependencies without client
+        run: npm run install:backend
 
       # NO `prisma migrate deploy` STEP, deliberately (B5-CI-01 §8).
       #
@@ -133,3 +138,6 @@ jobs:
       - name: Run frontend tests
         # Uses client/vitest.config.ts (JSDOM + React Testing Library).
         run: npm run test --workspace client
+
+      - name: Verify legacy frontend and API contract parity
+        run: npm run test:legacy-contracts

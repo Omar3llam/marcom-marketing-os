@@ -39,7 +39,12 @@
     "arch-check": "node scripts/arch-check.js",
     "arch-check:ci": "node scripts/arch-check.js 2>&1 | tee arch-check.log; exit ${PIPESTATUS[0]}",
     "security-check": "node scripts/security-check.js",
-    "prestart": "npm run check"
+    "prestart": "npm run check",
+    "install:backend": "npm ci --include=dev --workspace @marcom/runtime-contracts --workspace @marcom/api-contracts --include-workspace-root",
+    "build:backend": "npm run prisma:generate && npm run check && npm run boot-check",
+    "arch-check:backend": "node scripts/arch-check.js --backend",
+    "security-check:backend": "node scripts/security-check.js --backend",
+    "test:legacy-contracts": "node node_modules/vitest/vitest.mjs run --config vitest.legacy.config.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

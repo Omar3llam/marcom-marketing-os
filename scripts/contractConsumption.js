@@ -120,6 +120,14 @@ export function measureCallers(sources = clientSources()) {
   return callers;
 }
 
+// Compatibility entries preserve the legacy public names. Follow their shared
+// implementation so moving a schema cannot erase its reachability edges.
+function schemaSource(file) {
+  const source = readFileSync(join(SCHEMA_DIR, file), 'utf8');
+  const proxy = source.match(/export \* from '\.\.\/\.\.\/\.\.\/\.\.\/packages\/api-contracts\/schemas\/([A-Za-z0-9_]+\.schema)'/);
+  return proxy ? readFileSync(join(ROOT, 'packages/api-contracts/schemas', proxy[1] + '.ts'), 'utf8') : source;
+}
+
 /** [2] Which schemas are REACHED from a schema a production module parses. */
 export function measureSchemas(sources = clientSources()) {
   const files = readdirSync(SCHEMA_DIR).filter((f) => f.endsWith('.schema.ts'));
@@ -151,7 +159,7 @@ export function measureSchemas(sources = clientSources()) {
   // edges, then the walk
   const deps = new Map(files.map((f) => [
     f,
-    new Set([...readFileSync(join(SCHEMA_DIR, f), 'utf8').matchAll(/from\s*'\.\/([A-Za-z0-9_]+)\.schema'/g)].map((m) => `${m[1]}.schema.ts`)),
+    new Set([...schemaSource(f).matchAll(/from\s*'\.\/([A-Za-z0-9_]+)\.schema'/g)].map((m) => `${m[1]}.schema.ts`)),
   ]));
   const reached = new Set();
   const walkDeps = (f) => { if (reached.has(f)) return; reached.add(f); for (const d of deps.get(f) ?? []) walkDeps(d); };

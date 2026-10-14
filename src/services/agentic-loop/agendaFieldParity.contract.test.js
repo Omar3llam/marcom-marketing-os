@@ -33,7 +33,7 @@ import { readFileSync } from 'node:fs';
 import { agendaItem, AGENDA_BAND, AGENDA_TYPE } from './agenticTypes.js';
 
 const SCHEMA_PATH = new URL(
-  '../../../client/src/contracts/schemas/agenda.schema.ts',
+  '../../../packages/api-contracts/schemas/agenda.schema.ts',
   import.meta.url,
 );
 

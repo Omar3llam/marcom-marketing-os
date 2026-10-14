@@ -30,10 +30,12 @@
 // controls in the test suite are for, and a scanner that pretended otherwise
 // would be exactly the theatre this replaces.
 // ============================================================
+import { verificationScope } from './verificationScope.js';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, extname, relative, sep } from 'path';
 
 const ROOT    = process.cwd();
+const { includeFrontend } = verificationScope(ROOT);
 const BACKEND = join(ROOT, 'src');
 const CLIENT  = join(ROOT, 'client', 'src');
 
@@ -90,7 +92,7 @@ function stripComments(src) {
 }
 
 const backendFiles = allFiles(BACKEND).filter((f) => !f.includes('.test.'));
-const clientFiles  = allFiles(CLIENT, ['.js', '.jsx']).filter((f) => !f.includes('.test.'));
+const clientFiles  = includeFrontend ? allFiles(CLIENT, ['.js', '.jsx']).filter((f) => !f.includes('.test.')) : [];
 const sourceOf     = new Map(backendFiles.map((f) => [f, stripComments(read(f))]));
 /** Raw text, for the require_() rules — those look FOR a shape, comments included. */
 const rawOf        = new Map(backendFiles.map((f) => [f, read(f)]));
@@ -378,7 +380,7 @@ require_({
   why: 'The original redact list named none of the fields the OAuth code actually uses, so any wholesale log of a credential object printed it.',
 });
 
-require_({
+if (includeFrontend) require_({
   id: 'SEC-SC-5',
   title: 'production builds emit no source maps',
   file: 'client/vite.config.js',
@@ -421,7 +423,7 @@ forbid({
   why: 'The Unsafe variants take a pre-built string. Use $queryRaw with a tagged template so values are parameterised.',
 });
 
-{
+if (includeFrontend) {
   let xssHits = 0;
   for (const f of clientFiles) {
     const src = read(f);
@@ -434,7 +436,7 @@ forbid({
     });
   }
   if (xssHits === 0) pass('SEC-XSS-1 — no unguarded innerHTML in the client');
-}
+} else console.log('Frontend source-map and XSS rules: outside backend scope; run full legacy verification separately.');
 
 // ════════════════════════════════════════════════════════════
 section('SUPPLY CHAIN');

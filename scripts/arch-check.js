@@ -9,6 +9,7 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = one or more checks fail
 // ============================================================
+import { verificationScope } from './verificationScope.js';
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import * as pathForMigrations from 'path';
 import { join, extname } from 'path';
@@ -21,6 +22,7 @@ import {
 const fsForMigrations = { readdirSync, readFileSync, existsSync };
 
 const ROOT      = process.cwd();
+const { includeFrontend } = verificationScope(ROOT);
 const CLIENT    = join(ROOT, 'client/src');
 const BACKEND   = join(ROOT, 'src');
 
@@ -72,7 +74,7 @@ const SIZE_LIMITS = [
 ];
 
 let sizePass = true;
-for (const { dir, ext, max, label } of SIZE_LIMITS) {
+for (const { dir, ext, max, label } of SIZE_LIMITS.filter(rule => includeFrontend || !rule.dir.startsWith(CLIENT))) {
   const files = getAllFiles(dir, [ext]);
   for (const file of files) {
     const lines = lineCount(file);
@@ -126,7 +128,9 @@ for (const file of backendFiles) {
 }
 
 // Frontend: no direct axios.post/get bypassing api client
-const frontendFiles = getAllFiles(CLIENT, ['.js', '.jsx']);
+const frontendFiles = includeFrontend ? getAllFiles(CLIENT, ['.js', '.jsx']) : [];
+if (!includeFrontend && importPass) pass('No forbidden backend imports detected');
+if (includeFrontend) {
 for (const file of frontendFiles) {
   const content  = readFile(file);
   const name     = file.replace(ROOT + '/', '');
@@ -216,6 +220,7 @@ for (const file of frontendFiles) {
   }
 }
 if (effectPass) pass('useEffect cleanup check passed (static analysis — verify in PR)');
+} else console.log('Frontend import/API/token/effect rules: outside backend scope; run full legacy verification separately.');
 
 // ══════════════════════════════════════════════════════════════
 // CHECK 5 — Backend: Prisma calls in loops (N+1 detection)
@@ -244,6 +249,7 @@ if (prismaPass) pass('No obvious N+1 Prisma patterns detected');
 // ══════════════════════════════════════════════════════════════
 // CHECK 6 — Component registry integrity
 // ══════════════════════════════════════════════════════════════
+if (includeFrontend) {
 section('CHECK 6: Component registry — detect similar names');
 
 const uiComponents = getAllFiles(join(CLIENT, 'components'), ['.jsx'])
@@ -264,6 +270,7 @@ for (const pattern of SIMILAR_PATTERNS) {
   }
 }
 if (registryPass) pass('No suspicious component name clusters detected');
+} else console.log('Frontend component registry: outside backend scope.');
 
 // ══════════════════════════════════════════════════════════════
 // CHECK 8 — Tenant-isolation architecture  (R11 · I74)
@@ -383,7 +390,7 @@ section('MIGRATION ROLLOUT COMPATIBILITY');
 // ══════════════════════════════════════════════════════════════
 console.log('\n══════════════════════════════════════════════');
 console.log(`Architecture Check Results:`);
-console.log(`  Checks run:  9`);
+console.log(`  Scope: ${includeFrontend ? 'backend + legacy frontend' : 'backend only'}`);
 console.log(`  ✅ Failures: ${failures}`);
 console.log(`  🟡 Warnings: ${warnings}`);
 console.log('══════════════════════════════════════════════\n');

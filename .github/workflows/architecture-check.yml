@@ -16,6 +16,34 @@ permissions:
   contents: read
 
 jobs:
+  backend-independence:
+    name: Backend checks without client
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout without frontend
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/client/
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      - name: Install backend dependencies
+        run: npm run install:backend
+      - name: Build backend without database migration
+        run: npm run build:backend
+      - name: Backend lint
+        run: npm run lint
+      - name: Backend architecture
+        run: npm run arch-check:backend
+      - name: Backend security
+        run: npm run security-check:backend
+
   architecture-audit:
     name: Architecture & Token Discipline
     runs-on: ubuntu-latest
