@@ -19,6 +19,27 @@ import { CAPABILITY } from './connectorReadiness.js';
 import { prisma } from '../../lib/prisma.js';
 import { assertWorkspaceLive, isWorkspaceScopeError, withLiveWorkspace } from '../../lib/workspaceLiveness.js';
 
+const META_FETCH_EDGE_LABELS = Object.freeze({
+  campaignInsights: 'campaign insights', campaignRoster: 'campaign roster',
+  adSetInsights: 'ad set insights', adSetRoster: 'ad set roster',
+  adInsights: 'ad insights', adRoster: 'ad roster',
+});
+
+function fetchWarning(meta) {
+  if (!meta) return null;
+  const truncated = meta.truncatedEdges ?? [];
+  const failed = meta.failedEdges ?? [];
+  if (!meta.truncated && !meta.incomplete && !truncated.length && !failed.length) return null;
+  const label = (edges) => edges.map((edge) => META_FETCH_EDGE_LABELS[edge] ?? edge).join(', ');
+  const details = [
+    ...(truncated.length ? [`${label(truncated)} (pagination limit)`] : []),
+    ...(failed.length ? [`${label(failed)} (fetch failed)`] : []),
+  ];
+  // Compatibility with connectors that expose only the historical boolean:
+  // acknowledge unknown edges rather than incorrectly blaming only ad sets.
+  return `Incomplete fetch: ${details.join('; ') || 'affected campaigns/ad sets/ads not identified'}. Figures may be incomplete.`;
+}
+
 /** Success linearizes at COMMIT of this DB-only receipt transaction. Parent
  * lock and metadata UPDATE use the SAME client; never call the raw-pool writer
  * under this lock. Lifecycle deletion locks workspace before credentials too.
@@ -204,14 +225,12 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       }
 
       // A connector MAY hang non-enumerable fetch metadata off the raw array
-      // (MetaConnector does, for ad-set pagination). A sync that knowingly read
+      // (MetaConnector does, for all six operational fetch edges). A sync that knowingly read
       // only part of an account is not a plain success: it lands real data, but
       // presenting it as complete is the "looks whole, isn't" failure. Recorded
       // as a health WARNING so it is visible in the admin drill-down rather than
       // living only in a log line.
-      const warning = raw?.fetchMeta?.truncated
-        ? 'Large account: some ad sets were not read this sync (pagination limit). Figures may be incomplete.'
-        : null;
+      const warning = fetchWarning(raw?.fetchMeta);
       if (warning) {
         logger.warn({ workspaceId: wsId, platform: channel, fetchMeta: raw.fetchMeta }, '[connectorSync] partial fetch');
       }

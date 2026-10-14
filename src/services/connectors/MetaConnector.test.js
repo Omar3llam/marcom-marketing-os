@@ -65,6 +65,68 @@ import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 const connector = new MetaConnector();
 const CRED = { accessToken: 'tok', accountId: 'act_123' };
 
+const campaignFetch = (rows, truncated = false) => {
+  Object.defineProperty(rows, 'fetchMeta', { value: Object.freeze({ pages: 1, truncated }), enumerable: false });
+  return rows;
+};
+
+describe('MetaConnector campaign completeness', () => {
+  const auth = { accessToken: 'tok', accountExternalId: 'act_123' };
+  const insight = { campaign_id: 'c1', campaign_name: 'Delivered', spend: '12.34' };
+  beforeEach(() => {
+    fetchCampaignInsights.mockResolvedValue(campaignFetch([{ ...insight }]));
+    fetchAllCampaigns.mockResolvedValue(campaignFetch([{ id: 'c2', name: 'Roster only' }]));
+  });
+
+  it.each([
+    ['campaignInsights', () => fetchCampaignInsights.mockResolvedValue(campaignFetch([{ ...insight }], true))],
+    ['campaignRoster', () => fetchAllCampaigns.mockResolvedValue(campaignFetch([{ id: 'c2', name: 'Roster only' }], true))],
+  ])('%s truncation reaches fetchMeta without changing row values', async (edge, setup) => {
+    const complete = await connector.fetchRaw(auth);
+    setup();
+    const partial = await connector.fetchRaw(auth);
+    expect(partial).toEqual(complete);
+    expect(partial.fetchMeta).toMatchObject({ truncated: true, incomplete: true, truncatedEdges: [edge], failedEdges: [] });
+    expect(partial[0]).toEqual(insight);
+    expect(partial[1]._rosterOnly).toBe(true);
+    expect(JSON.parse(JSON.stringify(partial))).toEqual([...complete]);
+  });
+
+  it('roster failure is identifiable after successful primary insights', async () => {
+    fetchAllCampaigns.mockRejectedValue(new Error('permissions'));
+    const rows = await connector.fetchRaw(auth);
+    expect(rows).toEqual([insight]);
+    expect(rows.fetchMeta).toMatchObject({ incomplete: true, truncated: false, truncatedEdges: [], failedEdges: ['campaignRoster'] });
+  });
+
+  it('primary insights still throw', async () => {
+    fetchCampaignInsights.mockRejectedValue(new Error('primary unavailable'));
+    await expect(connector.fetchRaw(auth)).rejects.toThrow('primary unavailable');
+  });
+
+  it('complete empty stays distinct from a failed empty roster', async () => {
+    fetchCampaignInsights.mockResolvedValue(campaignFetch([]));
+    fetchAllCampaigns.mockResolvedValue(campaignFetch([]));
+    const empty = await connector.fetchRaw(auth);
+    expect(empty).toEqual([]);
+    expect(empty.fetchMeta).toMatchObject({ incomplete: false, truncated: false, failedEdges: [], truncatedEdges: [] });
+    fetchAllCampaigns.mockRejectedValue(new Error('roster unavailable'));
+    const failedEmpty = await connector.fetchRaw(auth);
+    expect(failedEmpty).toEqual([]);
+    expect(failedEmpty.fetchMeta).toMatchObject({ incomplete: true, failedEdges: ['campaignRoster'] });
+  });
+
+  it.each([
+    ['adSetInsights', fetchAdSetInsights], ['adSetRoster', fetchAllAdSets],
+    ['adInsights', fetchAdInsights], ['adRoster', fetchAllAds],
+  ])('%s retains truncation and identifies secondary failure', async (edge, provider) => {
+    provider.mockResolvedValue({ rows: [], truncated: true });
+    expect((await connector.fetchRaw(auth)).fetchMeta).toMatchObject({ truncated: true, truncatedEdges: [edge] });
+    provider.mockRejectedValue(new Error('secondary unavailable'));
+    expect((await connector.fetchRaw(auth)).fetchMeta).toMatchObject({ incomplete: true, failedEdges: [edge] });
+  });
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   resolveCredential.mockResolvedValue(CRED);
