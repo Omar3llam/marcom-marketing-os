@@ -4,6 +4,11 @@ Date: 14 October 2026 (Africa/Cairo). Base: `7478d11a8ea596f32da02f2849a2a1c8c80
 Bounded implementation; independent review pending. Backend Gates B/C remain **BLOCKED**.
 No roadmap phase or production readiness approval is implied.
 
+**2026-10-15 follow-up:** the Product Owner approved the five Canonical Completeness
+principles. [02A records that ruling and proposes a durable provenance contract](BACKEND_STABILIZATION_02A_CANONICAL_PROVENANCE.md).
+V-1's implementation, schema and persisted-decision behavior remain unapproved and
+unimplemented. This historical discovery/evidence record is preserved; Gates B/C remain BLOCKED.
+
 ## Discovery and authority
 
 Fresh fetch verified origin/master at the supplied base. GitHub reported no open
