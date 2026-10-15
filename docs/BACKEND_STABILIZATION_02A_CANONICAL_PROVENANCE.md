@@ -571,3 +571,7 @@ mutable snapshot binding, full cohort membership and history semantics, vocabula
 transaction/deletion ordering and persisted-decision risks. Request separate
 Product Owner approval of technical decisions and the first implementation slice.
 **Stop at Draft PR. No merge, deploy, implementation or Gate B/C advancement.**
+
+**02B-0 preflight:** [The proposed minimal capture schema and approval package](BACKEND_STABILIZATION_02B0_TECHNICAL_PREFLIGHT.md)
+further specifies storage, atomicity, retention and deployment safety. It is a
+technical proposal only; no 02B implementation, migration or gate approval follows.
