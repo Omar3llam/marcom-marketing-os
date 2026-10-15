@@ -85,7 +85,9 @@ export class MetaConnector extends ChannelConnector {
     //
     // All six are account-scoped with a `level` param — Meta fans out
     // server-side, so this is O(1) requests, NOT one per campaign or ad-set.
-    const softFail = (label, fallback) => (err) => {
+    const failedEdges = new Set();
+    const softFail = (edge, label, fallback) => (err) => {
+      failedEdges.add(edge);
       logger.warn({ err: err.message, accountId: auth.accountExternalId }, `[MetaConnector] ${label}`);
       return fallback;
     };
@@ -93,21 +95,21 @@ export class MetaConnector extends ChannelConnector {
     const [insights, campaigns, adSetInsights, adSetRoster, adInsights, adRoster] = await Promise.all([
       fetchCampaignInsights(auth.accessToken, auth.accountExternalId, datePreset),
       fetchAllCampaigns(auth.accessToken, auth.accountExternalId).catch(
-        softFail('fetchAllCampaigns failed — landing insights only (zero-spend campaigns omitted)', []),
+        softFail('campaignRoster', 'fetchAllCampaigns failed — landing insights only (zero-spend campaigns omitted)', []),
       ),
       fetchAdSetInsights(auth.accessToken, auth.accountExternalId, datePreset).catch(
-        softFail('fetchAdSetInsights failed — landing campaigns only (no ad-set drill-down this sync)', { rows: [], truncated: false }),
+        softFail('adSetInsights', 'fetchAdSetInsights failed — landing campaigns only (no ad-set drill-down this sync)', { rows: [], truncated: false }),
       ),
       fetchAllAdSets(auth.accessToken, auth.accountExternalId).catch(
-        softFail('fetchAllAdSets failed — ad-set roster omitted (non-delivering ad-sets will not appear)', { rows: [], truncated: false }),
+        softFail('adSetRoster', 'fetchAllAdSets failed — ad-set roster omitted (non-delivering ad-sets will not appear)', { rows: [], truncated: false }),
       ),
       // Ad level — SECONDARY like the two above. Losing ad detail must never cost
       // the campaign substrate every engine already reads.
       fetchAdInsights(auth.accessToken, auth.accountExternalId, datePreset).catch(
-        softFail('fetchAdInsights failed — ad-level metrics omitted this sync', { rows: [], truncated: false }),
+        softFail('adInsights', 'fetchAdInsights failed — ad-level metrics omitted this sync', { rows: [], truncated: false }),
       ),
       fetchAllAds(auth.accessToken, auth.accountExternalId).catch(
-        softFail('fetchAllAds failed — ad roster omitted (non-delivering ads will not appear)', { rows: [], truncated: false }),
+        softFail('adRoster', 'fetchAllAds failed — ad roster omitted (non-delivering ads will not appear)', { rows: [], truncated: false }),
       ),
     ]);
 
@@ -118,6 +120,17 @@ export class MetaConnector extends ChannelConnector {
     const adSetRows = mergeMetaAdSets(adSetInsights.rows, adSetRoster.rows);
     const adRows = mergeMetaAds(adInsights.rows, adRoster.rows);
     const rows = [...campaignRows, ...adSetRows, ...adRows];
+
+    // Read the campaign side-channel BEFORE merging loses array metadata.
+    // Fixed edge order makes simultaneous failures deterministic; never infer
+    // completeness from a row count or fabricate measurements for a failed edge.
+    const edges = [
+      ['campaignInsights', insights.fetchMeta], ['campaignRoster', campaigns.fetchMeta],
+      ['adSetInsights', adSetInsights], ['adSetRoster', adSetRoster],
+      ['adInsights', adInsights], ['adRoster', adRoster],
+    ];
+    const truncatedEdges = Object.freeze(edges.filter(([, meta]) => meta?.truncated).map(([edge]) => edge));
+    const failed = Object.freeze(edges.filter(([edge]) => failedEdges.has(edge)).map(([edge]) => edge));
 
     // Truncation rides as a property ON the returned array, not as a wrapper
     // object: ConnectorSyncService feeds fetchRaw's return straight into
@@ -138,12 +151,10 @@ export class MetaConnector extends ChannelConnector {
         adSetsMerged: adSetRows.length,
         adsFetched: adInsights.rows.length,
         adsMerged: adRows.length,
-        // Ads are the level most likely to pass the page cap (they outnumber ad-sets
-        // several-fold), so their truncation MUST reach the sync loop — otherwise a
-        // partial read is recorded as a complete one.
-        truncated: Boolean(
-          adSetInsights.truncated || adSetRoster.truncated || adInsights.truncated || adRoster.truncated,
-        ),
+        truncated: truncatedEdges.length > 0,
+        truncatedEdges,
+        failedEdges: failed,
+        incomplete: truncatedEdges.length > 0 || failed.length > 0,
       }),
       enumerable: false,
     });

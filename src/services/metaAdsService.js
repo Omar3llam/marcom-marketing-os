@@ -208,7 +208,7 @@ const MAX_PAGES = 50;
  * SDK's `_data` envelope to plain objects (every consumer already did this).
  *
  * @param {Array & { hasNext?: Function, next?: Function }} cursor
- * @returns {Promise<{ rows: Array, pages: number }>}
+ * @returns {Promise<{ rows: Array, pages: number, truncated: boolean }>}
  */
 export async function collectCursorPages(cursor) {
   const rows = [];
@@ -229,6 +229,17 @@ export async function collectCursorPages(cursor) {
     logger.warn({ pages, collected: rows.length }, '[metaAdsService] pagination hit MAX_PAGES — result may be truncated');
   }
   return { rows, pages, truncated };
+}
+
+// Legacy direct callers require an array. Carry pagination evidence without
+// changing iteration, row values or JSON serialization (same side-channel as
+// MetaConnector.fetchRaw). Consumers must read it before merging/spreading.
+function campaignRowsWithCompleteness({ rows, pages, truncated }) {
+  Object.defineProperty(rows, 'fetchMeta', {
+    value: Object.freeze({ pages, truncated }),
+    enumerable: false,
+  });
+  return rows;
 }
 
 /**
@@ -263,7 +274,8 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   );
 
   // Collect ALL pages — not just page 1 (the SDK Cursor has no fetchAll()).
-  const { rows, pages } = await collectCursorPages(cursor);
+  const collected = await collectCursorPages(cursor);
+  const { rows, pages, truncated } = collected;
 
   // Raw-count observability at the fetch boundary — logged before any
   // normalize/storage step touches the data. This is the number that answers
@@ -272,11 +284,11 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   // a divergence (beyond the +1 account rollup normalize adds) is a real
   // finding, not something to assume away.
   logger.info(
-    { accountId, datePreset, rawCount: rows.length, pages },
+    { accountId, datePreset, rawCount: rows.length, pages, truncated },
     '[metaAdsService] fetchCampaignInsights raw response',
   );
 
-  return rows;
+  return campaignRowsWithCompleteness(collected);
 }
 
 /** A Date → Meta's `YYYY-MM-DD`, in UTC. Matches metaPerformanceSync's format. */
@@ -517,14 +529,15 @@ export async function fetchAllCampaigns(accessToken, adAccountId) {
   const account   = new AdAccount(accountId);
 
   const cursor = await account.getCampaigns(CAMPAIGN_LIST_FIELDS, { limit: CAMPAIGN_PAGE_SIZE });
-  const { rows, pages } = await collectCursorPages(cursor);
+  const collected = await collectCursorPages(cursor);
+  const { rows, pages, truncated } = collected;
 
   logger.info(
-    { accountId, campaignCount: rows.length, pages },
+    { accountId, campaignCount: rows.length, pages, truncated },
     '[metaAdsService] fetchAllCampaigns roster',
   );
 
-  return rows;
+  return campaignRowsWithCompleteness(collected);
 }
 
 /**

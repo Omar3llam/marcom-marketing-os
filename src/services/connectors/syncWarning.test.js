@@ -33,6 +33,8 @@ vi.mock('../../utils/logger.js', () => ({
 
 import { runConnectorSync } from './ConnectorSyncService.js';
 import { prisma } from '../../lib/prisma.js';
+import { nextHealth } from './connectorHealth.js';
+import { completenessOf, availabilityOf } from './connectorReadiness.js';
 
 /** A connector whose fetchRaw returns rows carrying (or not) fetchMeta. */
 const connectorReturning = (rows, fetchMeta) => {
@@ -53,6 +55,50 @@ beforeEach(() => {
   listActiveSyncable.mockResolvedValue([{ workspaceId: 'ws-1', channel: 'META' }]);
   landSnapshots.mockResolvedValue({ entities: 3, snapshots: 2 });
   recordSync.mockResolvedValue({});
+  prisma.$queryRaw.mockResolvedValue([{ id: 'ws-1', health: null }]);
+});
+
+describe('campaign completeness reaches persisted workspace health', () => {
+  it.each([
+    [{ truncated: true, incomplete: true, truncatedEdges: ['campaignInsights'], failedEdges: [] }, /campaign insights.*pagination limit/i],
+    [{ truncated: true, incomplete: true, truncatedEdges: ['campaignRoster'], failedEdges: [] }, /campaign roster.*pagination limit/i],
+    [{ truncated: false, incomplete: true, truncatedEdges: [], failedEdges: ['campaignRoster'] }, /campaign roster.*fetch failed/i],
+    [{ truncated: true, incomplete: true, truncatedEdges: ['adInsights', 'adSetRoster'], failedEdges: ['campaignRoster'] }, /ad insights.*pagination limit.*campaign roster.*fetch failed/i],
+  ])('persists and exposes actual affected edges: %j', async (fetchMeta, warningPattern) => {
+    resolve.mockReturnValue(connectorReturning([{ campaign_id: 'c1' }], fetchMeta));
+    const result = await runConnectorSync('ws-1');
+    expect(result).toMatchObject({ synced: 1, failed: 0 });
+    expect(recorded().lastWarning).toMatch(warningPattern);
+    expect(result.results[0].warning).toBe(recorded().lastWarning);
+    expect(completenessOf(recorded())).toBe('INCOMPLETE');
+    expect(availabilityOf(recorded())).toBe('OK');
+    // Same transaction still scopes the receipt to the requested workspace.
+    expect(prisma.$executeRaw.mock.calls.at(-1).slice(2)).toContain('ws-1');
+  });
+
+  it('a genuinely complete empty sync clears a previous warning', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'ws-1', health: nextHealth({}, { ok: true, warning: 'previous incomplete read' }) }]);
+    resolve.mockReturnValue(connectorReturning([], { truncated: false, incomplete: false, truncatedEdges: [], failedEdges: [] }));
+    landSnapshots.mockResolvedValue({ entities: 0, snapshots: 0 });
+    const result = await runConnectorSync('ws-1');
+    expect(result.synced).toBe(1);
+    expect(recorded()).toMatchObject({ lastWarning: null, lastError: null, recordsImported: 0 });
+    expect(completenessOf(recorded())).toBe('COMPLETE');
+  });
+
+  it('primary failure records failure rather than complete empty', async () => {
+    const connector = connectorReturning([]);
+    connector.fetchRaw.mockRejectedValue(new Error('primary unavailable'));
+    resolve.mockReturnValue(connector);
+    const result = await runConnectorSync('ws-1');
+    expect(result).toMatchObject({ synced: 0, failed: 1 });
+    expect(recordSync).toHaveBeenCalledWith('ws-1', 'META', expect.objectContaining({ ok: false, error: 'primary unavailable' }));
+    expect(landSnapshots).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    const failed = nextHealth({}, { ok: false, error: 'primary unavailable' });
+    expect(availabilityOf(failed)).toBe('FAILING');
+    expect(completenessOf(failed)).toBe('NOT_RECORDED');
+  });
 });
 
 describe('a complete sync', () => {
