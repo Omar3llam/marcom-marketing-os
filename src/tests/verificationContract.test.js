@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 43 files', () => {
+  it('the census matches the current baseline of 45 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -217,7 +217,9 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // credential lifecycle suites exercise real locks, rollback and ownership.
     // 42 → 43: runtimeWorkspaceLiveness.integration.test.js proves actual
     // parent locks, deletion interleavings and FK refusal on migrated PostgreSQL.
-    expect(dbGatedFiles().length).toBe(43);
+    // 43 → 45: 02B-1 constraint/concurrency and actual migration replay suites.
+    // Both retain the shared probe and require physical full-verification DBs.
+    expect(dbGatedFiles().length).toBe(45);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
