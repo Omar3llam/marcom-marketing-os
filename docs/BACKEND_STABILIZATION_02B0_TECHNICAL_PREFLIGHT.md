@@ -4,6 +4,14 @@ Date: 2026-10-15, Africa/Cairo. Reference master:
 `b3da053becb4ac1e89bf040eb251eaaf73e4065c`.
 **Discovery/design/approval package only. No implementation authorized or performed.**
 
+**02B-0G amendment:** four-table architecture is now approved in principle and
+isolated technical testing is authorized. The [technical-validation annex](BACKEND_STABILIZATION_02B0G_TECHNICAL_VALIDATION.md)
+records executed PostgreSQL/Prisma evidence, supersedes the original90/30 retention
+proposal with a universal event+90-day recommendation, and specifies native-DDL
+ownership/Prisma corrections. Application implementation remains unauthorized.
+Historical untested statements below describe the original preflight; use the
+annex for current tested facts and explicit NOT_TESTED boundaries.
+
 Status labels used throughout: **VERIFIED** = inspected repository/provider-code
 fact; **PROPOSED** = technical recommendation, not implemented; **UNKNOWN** = not
 established by available evidence; **REQUIRES APPROVAL** = explicit prerequisite
@@ -157,7 +165,7 @@ Additional columns (all columns not listed as NULL are NN with no default):
 | attempt_dispositions | jsonb | NULL until selection seal; frozen list of every admitted attempt ID/level, selected flag and receipt hash or explicit unknown-at-seal fact |
 | selection_hash | bytea | NULL until seal, then 32 bytes |
 | source_sealed_at | timestamptz(3) | NULL until seal; does not imply write success |
-| retain_until | timestamptz(3) | NN; explicitly supplied approved retention deadline, never inferred evidence freshness |
+| retain_until | timestamptz(3) | NN; T0 DB time+90-day minimum; atomically extend to each later admission/seal event+90 days per02B-0G; never evidence freshness |
 
 PK `(workspace_id,id)`. Retry FK `(workspace_id,retry_of_refresh_id)` to this PK,
 ON DELETE NO ACTION, DEFERRABLE INITIALLY DEFERRED. Selection FKs for each chosen ID:
@@ -367,6 +375,12 @@ cross-language hashing function or new extension is assumed.
 
 Use BEFORE triggers for immutable columns/once-only transitions and deferred
 constraint triggers for cross-row commit consistency and selected-level checks.
+For Prisma5.22, selection inverse relations must be represented as lists;
+unmodified introspection generates invalid one-to-one relations. Native DDL owns
+deferral, CHECKs, triggers/functions and grants; schema-only diff misses their
+drift. Require exact catalog assertions. Insert observations only under a locked
+open write, defer their terminal-write check, and validate the full set once per
+write seal to avoid quadratic manifest scans. See02B-0G for actual evidence.
 Restrict ordinary roles to permitted insert/seal operations; retention/deletion
 privileges are separate. Trusted migration owners can bypass such mechanisms;
 this is not a claim of protection against DB superusers. Trigger design must be
@@ -386,10 +400,11 @@ is already absent in that deleting transaction. Child DELETE guards require the
 refresh parent to be absent in that transaction, permitting only parent-driven
 cascade. No SET NULL facts, caller-set GUC or pg_trigger_depth authorization shortcut.
 The exact cascade visibility/trigger ordering must be proven in isolated tests
-before this mechanism is approved; it is not established by this document. No FK to mutable snapshot
+before implementation approval;02B-0G now proves the specified mechanisms on PG18.4
+with synthetic ownership fixtures, not the final migration/runtime. No FK to mutable snapshot
 rows; their deletion does not erase evidence, while tenant deletion does.
 
-## 4. One commit and concurrency protocol — PROPOSED, not executed
+## 4. One commit and concurrency protocol — PROPOSED; isolated evidence in02B-0G
 
 ### 4.1 Exact boundaries and lock order
 
@@ -494,7 +509,8 @@ provider request, polling, Direct Meta AI Analysis change or provider integratio
 
 ### 6.1 Illustrative model — not production measurement or price
 
-No authorized database measurement was used. Repository facts: three canonical
+The original model used no database measurement;02B-0G adds labelled isolated
+measurements without treating them as production budgets. Repository facts: three canonical
 levels, MAX_PAGES=50; explicit adset page size200 and ad size500; campaign canonical
 request has no explicit limit, so its actual page size/cap cannot be promised.
 35,000 observations below is a sensitivity case, not a proven combined cap.
@@ -531,9 +547,14 @@ measurements demonstrate need; partition/FK complexity is deferred.
 
 ### 6.2 Retention proposal and immutable references
 
-**PROPOSED/REQUIRES APPROVAL:** retain successful capture graphs at least90 days;
-failed/unknown-only graphs at least30 days with no observation/consumer dependency.
-Each root gets explicit retain_until, extend-only. A deadline is eligibility for
+**PROPOSED/REQUIRES APPROVAL, corrected by02B-0G:** use a universal90-day floor at
+T0 admission, including failed/unknown graphs, and atomically extend the root to
+at least DB event time+90 days on every later admission/selection/source/plan/write
+seal. DB-stamp event times; narrow privileged triggers extend the deadline without
+granting app retention authority. This replaces the outcome-dependent90/30 rule;
+failed-only graphs cost up to3x their former time-based population before additional
+events/dependencies. Compare the atomic30→90 alternative and tested boundaries in
+the annex. A deadline is eligibility for
 reviewed deletion, not proof that deleting is safe. Retry-linked ancestors retain
 their descendants' necessary lifetime. Keep all level/failure/disposition records
 needed to interpret a retained successful graph; do not prune just the failure.
@@ -666,7 +687,9 @@ connections prove interleavings, not sleep timing. Use test:full for DB claims.
 
 ## 9. Exact Product Owner technical decisions requested
 
-**None is approved by the five policy principles or this preflight.**
+**02B-0G approves the four-table architecture in principle and isolated testing.
+No migration/runtime/deployment implementation is approved.** Remaining choices
+below require decisions after independent review of the annex.
 
 1. Four-table capture scope and combinations/deferrals; review each column/PK/FK,
    source-only seal and write/manifest coupling before authorizing migration.
@@ -677,7 +700,7 @@ connections prove interleavings, not sleep timing. Use test:full for DB claims.
    candidate timeouts versus measured latency; no hidden advisory/global lock.
 4. Immutable projection/source-fact allowlist, hash format, duplicate/derived-row
    binding and candidate payload/storage budgets. No raw secrets/PII retention.
-5. Proposed90/30-day minimums, retry dependency retention, future restrictive
+5. Recommended universal event+90-day minimum, retry dependency retention, future restrictive
    references/pins and verified pruning policy before activation; no indefinite
    writer enabled on assumed capacity.
 6. Capture v1 mandatory UNKNOWN membership with no membership authority/evaluation
@@ -690,11 +713,12 @@ connections prove interleavings, not sleep timing. Use test:full for DB claims.
 
 ## 10. Verification record and independent review checklist
 
-**Actual work:** Git/GitHub/source inspection; PostgreSQL18 primary documentation
+**Original02B-0 work:** Git/GitHub/source inspection; PostgreSQL18 primary documentation
 check; illustrative PowerShell storage arithmetic; documentation scope/link/diff
 checks. No SQL/migration executed, isolated DB started, runtime test suite run,
 production secret inspected, Meta request sent or deployment configuration changed.
-Scenario/SQL-lock/trigger descriptions are design requirements, not proven passes.
+The02B-0G annex now records actual isolated SQL/Prisma tests and remaining untested
+requirements. No SQL was committed to the application and no runtime was changed.
 Hosted PR-head CI status is recorded separately in the PR; no exception authorized.
 
 Independent reviewer: verify fresh baseline and unchanged approved principles/R-8;
