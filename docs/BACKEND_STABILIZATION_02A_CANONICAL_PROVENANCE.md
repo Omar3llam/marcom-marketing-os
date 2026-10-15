@@ -135,21 +135,44 @@ Hash a versioned canonical serialization, not incidental object/array ordering.
 Scope proves only the declared API-visible population, not every campaign or
 account that might exist in the business outside that scope.
 
-Create a server-owned attemptId per actual canonical provider-read attempt,
-independent of BullMQ job ID or caller-supplied now. Separate correlationId and
-retryOf may link attempts; an actual new provider read is never replayed as an old
-observation. Record startedAt, fetchFinishedAt, committedAt separately. Retain
-snapshotDate with its existing sync-time meaning; do not redefine observedAt or
-advance it when historical measurements are reused.
+Use two distinct, server-owned identities, independent of BullMQ job ID or
+caller-supplied now:
+
+- **refreshId** identifies one logical canonical refresh for one workspace,
+  platform/account, requested window, captured account-set revision and declared
+  required levels (currently campaign, ad-set and ad). It groups work, not one
+  provider read. A global sync has a separate refreshId for each such scope.
+- **levelAttemptId** identifies one actual invocation of the per-level canonical
+  fetch, with exactly one refreshId, level and immutable level-scope descriptor.
+  Its unit is the traversal starting with that level's initial getInsights call,
+  followed by its cursor pages. A next-page request belongs to this traversal;
+  it is not another level attempt. A new invocation/restarted traversal, including
+  a retry of the same level/window, always gets a new levelAttemptId.
+
+An admitted logical refresh can have multiple level attempts per level. A retry
+records retryOfLevelAttemptId and an ordinal unique within (refreshId, level);
+it never appends pages or changes the result of the failed/capped predecessor.
+Only an open refresh with the identical captured scope may admit that retry.
+After refresh sealing, or on a changed account/window/scope, create a new refreshId;
+retryOfRefreshId may correlate it, but confers no evidence from its predecessor.
+Queue/job retries must resolve this durable parent explicitly, not infer it from
+job ID or timestamps. No retry, polling or additional provider request is authorized
+by this identity definition. Hidden SDK transport retries are not invented as
+observed attempts/counts; any claim depending on unavailable request evidence
+remains unknown.
+
+Record refresh admission and each level's startedAt, fetchFinishedAt and committedAt
+separately. Retain snapshotDate with its existing sync-time meaning; do not
+redefine observedAt or advance it when historical measurements are reused.
 
 ### 3.2 Proposed records and invariants
 
 | Record | Required content and purpose |
 |---|---|
-| CanonicalFetchAttempt | Workspace, platform/account, attemptId, versioned scope/request descriptor, original requested window and configured account-set revision; admission/start and terminal timestamps. One attempt can contain three level receipts, each with its own scope. |
-| CanonicalLevelReceipt | attemptId + level; actual cursor exhaustion/cap/error facts, pages observed, returned rows/distinct identities when actually known, per-row period-proof summary, normalization/write outcomes. Terminal receipt sealed once; absence of a field is unknown, not false/zero. |
-| CanonicalObservation | Immutable observationId; workspace/account/platform/level/external entity identity, attempt/level reference, snapshot logical key, source-reported dates or their absence, requested bounds separately, source/currency/timezone provenance and field-presence/quality facts. Store the exact committed normalized evidence projection and its versioned content hash. Snapshot ID, if captured, is a materialization locator only. |
-| CanonicalPopulationManifest | Sealed campaign-level source membership and committed observation IDs for one exact scope/window; explicit omissions/exclusions/reasons and manifest hash. Separate fetched membership from ingested membership. Complete empty has a real empty membership list and exhaustion proof. |
+| CanonicalRefresh | refreshId and immutable workspace/platform/account/window/account-set/required-level descriptor; admitted levelAttemptIds and terminal selection of exactly one terminal levelAttemptId with its outcome per attempted required level, including failures. A never-started level has an explicit unknown/not-started disposition, not a fabricated attempt ID. This groups the logical refresh; it is not a provider attempt. |
+| CanonicalLevelFetchAttempt / CanonicalLevelReceipt | One levelAttemptId under exactly one refreshId and level; retry predecessor/ordinal, traversal scope, observed cursor exhaustion/cap/error facts and counts when actually known, and period-proof summary. Its terminal source receipt is sealed once; absence is unknown, not false/zero. A separately identified, once-sealed write-outcome receipt references this source receipt; later commit/failure cannot mutate source facts. |
+| CanonicalObservation | Immutable observationId; workspace/account/platform/level/external entity identity, exact refreshId + levelAttemptId + level-receipt reference, snapshot logical key, source-reported dates or their absence, requested bounds separately, source/currency/timezone provenance and field-presence/quality facts. Store the exact committed normalized evidence projection and its versioned content hash. Snapshot ID, if captured, is a materialization locator only. |
+| CanonicalPopulationManifest | Sealed record for one exact scope/window identifying its refreshId and selected campaign levelAttemptId, returned Insights identities, independently evidenced applicable membership and its proof references, committed observation IDs, all reconciliation dispositions and hash. Traversal, membership and write evidence are separate; a sealed record can remain UNKNOWN/INCOMPLETE and is not automatically evaluation-ready COMPLETE. Empty Insights alone is not an empty applicable cohort. |
 | CanonicalCohortEvaluationReference | Immutable evaluation identity, policy version, declared account/source scope, manifest(s), input observation IDs/partition attributes, derived candidate membership and comparison window. Same reference must travel through the read result and any separately approved persisted Decision lineage. |
 
 All ownership and joins include workspaceId. Require same-workspace composite
@@ -160,11 +183,44 @@ time, not recovered later from today's credential. Version objective/classificat
 facts used to partition cohorts; current mutable campaign attributes alone cannot
 reproduce an earlier cohort.
 
-Observations and manifests are append-only after sealing. Attempt admission may
-exist before a terminal receipt; finalization is compare-and-set, once only.
-Replaying identical persisted artifacts is idempotent. Reusing one observation or
-attempt identity with different scope/content must fail as a conflict; do not
-overwrite provenance. This adds no provider retry or polling requirement.
+Observations, terminal level receipts and manifests are append-only after sealing.
+A known provider exception seals a FAILED source receipt for that levelAttemptId,
+including only observed partial counts/identities (otherwise null), never an empty
+success. Campaign failure and other-level success remain separate receipts. If all
+three fail, their failures and the logical terminal refresh receipt must survive
+the aggregate throw; no level is promoted to complete. A commit failure has its
+own write-failure receipt and cannot replace a successful source-traversal receipt.
+If a crash/storage outage prevents recording a terminal fact, the unsealed attempt
+is UNKNOWN; a later process may record observed abandonment, not fabricate success.
+A DB-only retry may reference the same source attempt only when the identical
+captured payload remains available; it gets a new write-receipt identity linked
+to the failed write, without changing that failure or original observation time.
+Replay of an already committed artifact is idempotent. A new provider invocation
+always requires a new levelAttemptId; unavailable payload is never reconstructed
+from counts or a newer mutable snapshot.
+
+Sealing is compare-and-set, once only. Before sealing a refresh, stop admission of
+new attempts and freeze the chosen levelAttemptIds and every other attempt's
+disposition. Only terminal attempts whose exact scope matches their parent may be
+selected; missing/unsealed levels are explicitly unknown. A late completion cannot
+change the sealed selection. Sealing the logical refresh does not certify any
+cohort or certify ingestion: it closes provider-attempt admission and source
+selection; separate write receipts record subsequent commit outcomes. Campaign
+completeness is decided from its selected campaign attempt and
+§3.4 proof, independently of ad/ad-set outcomes.
+
+No receipt, page fragment, observation or favorable boolean from another attempt
+may fill a selected attempt's gaps, even inside the same refresh. A later success
+supersedes a failed attempt only by explicit selection of the new whole attempt;
+the original failure is retained. Across refreshes, earlier evidence is reusable
+only as its original coherent manifest under the historical rules below. Composing
+distinct account scopes for a workspace evaluation requires an explicit versioned
+composition reference; it cannot splice attempts for the same account/level scope.
+Identical artifact replay is idempotent; reuse of an identity with different
+scope/content is a conflict. A separately referenced membership-proof artifact
+under §3.4 remains distinct evidence, not a substitute for the selected attempt's
+own traversal or missing metric observations. These rules do not add a provider
+retry or request.
 
 ### 3.3 Facts and four completeness meanings
 
@@ -174,9 +230,11 @@ count, source/currency/timezone disclosures. A successful HTTP response or nonem
 array alone proves none of complete pagination, complete fields, or all campaigns.
 
 **Derived facts:** normalization acceptance/exclusion, committed row identities and
-hashes, query coverage, candidate/cohort membership, structural/freshness eligibility,
-and whether a declared cohort has sufficient evidence. Persist the derivation
-version and inputs. Metrics from invalid/missing fields are not silently invented.
+hashes, query coverage, and cohort membership reconciled against the positive
+membership evidence in §3.4, plus structural/freshness eligibility. Persist the
+derivation version and inputs. An exhausted Meta Insights traversal is a source
+fact about that edge; it is not proof of the applicable campaign roster/cohort.
+Metrics from invalid/missing fields are not silently invented.
 
 **Unprovable facts:** contents of unread pages, metrics for absent rows, all business
 accounts outside the authorized scope, a provider-wide point-in-time snapshot across
@@ -186,17 +244,19 @@ traversal, not a transactional provider snapshot.
 
 | Meaning | Contract interpretation | Relationship to existing vocabulary |
 |---|---|---|
-| COMPLETE | Positive evidence of exhausted declared campaign source scope, compatible period and fully reconciled applicable committed membership; all comparison inputs trace to a coherent sealed manifest set. | Existing health COMPLETE is operational only and cannot supply this proof. This is a technical lineage conclusion, not a new persisted sync enum. |
+| COMPLETE | Positive membership evidence for the declared applicable cohort, exhausted relevant Insights traversal, compatible scope/period and full membership-to-observation-to-evaluation reconciliation under §3.4; all comparison inputs trace to a coherent sealed manifest set. Traversal exhaustion alone is insufficient. | Existing health COMPLETE is operational only and cannot supply this proof. This is a technical lineage conclusion, not a new persisted sync enum. |
 | INCOMPLETE | Known cap, known omitted applicable members, or downstream query truncation/exclusion whose coverage cannot support the declared cohort. | Operational partial success still maps to success + warning / INCOMPLETE as today; canonical proof stays separate. |
-| FAILED | The applicable read or required commit failed; record which boundary failed. A successful provider read followed by failed storage has source-complete facts but no committed complete cohort. | Existing failure/COULD_NOT_LOOK meaning; never NO_DATA. Different level success is preserved, not collapsed into campaign success. |
-| UNKNOWN | Missing receipt, unsealed attempt, ambiguous membership/scope, incomplete lineage or legacy evidence. | Existing NOT_RECORDED/COULD_NOT_LOOK distinctions remain. Do not publish a new canonical API token by reusing an unrelated health enum. |
+| FAILED | The applicable read or required commit failed; record which boundary failed. An exhausted Insights traversal followed by failed storage retains traversal facts but proves no committed complete cohort. | Existing failure/COULD_NOT_LOOK meaning; never NO_DATA. Different level success is preserved, not collapsed into campaign success. |
+| UNKNOWN | Missing receipt, unsealed attempt, absent/insufficient positive membership evidence, unproved downstream coverage, ambiguous scope, incomplete lineage or legacy evidence, even when Insights traversal exhausted successfully. | Existing NOT_RECORDED/COULD_NOT_LOOK distinctions remain. Do not publish a new canonical API token by reusing an unrelated health enum. |
 
 These four words are design semantics, not new database enums or public product
 states. The future wire contract must map each exact absence/refusal meaning to
 the governed vocabulary through a separately approved contract change. Known
 cohort uncertainty must not be falsely labelled NO_CANONICAL_WINDOW when valid
-individual evidence exists. Complete empty means a verified empty declared
-population; it does not fabricate a per-campaign zero measurement or verdict.
+individual evidence exists. Complete empty requires positive proof that the
+applicable membership is empty as well as the reconciled empty traversal; an empty
+Insights response alone leaves cohort membership UNKNOWN. Neither case fabricates
+a per-campaign zero measurement or verdict.
 
 ### 3.4 Entity versus cohort qualification
 
@@ -208,15 +268,54 @@ assumed to have every metric, genuine period proof or a whole campaign populatio
 Capture provider-reported bounds separately from requested-window fallback; the
 current stored pair cannot recover that distinction retrospectively.
 
-For relative judgment, derive membership from the sealed campaign source manifest,
-then reconcile every member with a committed observation or an explicit, justified
-exclusion under the versioned current candidate rules. The manifest covers the
-whole declared source set; the evaluated awareness/conversion cohort is its
-derived subset, not every entity in the workspace graph. Unknown classification,
-unexplained dropped rows, take:200, pagination at the DB/API layer or a membership
-query failure prevent a COMPLETE comparison. Counts/hash alone are insufficient
-without auditable identities and exclusion rules. Duplicate/conflicting provider
-rows require explicit reconciliation, never an implicit last-row-wins proof.
+For relative judgment, define the applicable campaign population and existing
+candidate/partition predicate before inspecting the returned subset. Meta campaign
+Insights reports delivery measurements; exhausting it does not establish the full
+campaign roster or prove that every applicable member was represented. Do not
+redefine the cohort as "whatever Insights returned" to make completeness true.
+
+**Positive membership evidence** must identify an authoritative, exhaustive set of
+campaign identities for the declared account/source scope and relevant period,
+with the versioned applicability predicate, account-set revision, scope/filter
+descriptor, temporal validity and per-identity partition facts. An independently
+captured roster/discovery artifact from already-authorized reads is a possible
+input only if its coverage is positively established: including applicable
+non-delivering, archived/deleted or otherwise filter-sensitive campaigns, or
+explicit authoritative evidence why they cannot belong. A current roster is not
+automatically historical-window proof. Neither operational health nor the current
+bounded entity-graph query supplies that authority. A roster cursor/count also
+requires evidence of the declared membership coverage; its name alone proves none.
+
+Persist the proof artifact/reference and identity membership, not just a count or
+hash. This finding authorizes **no additional Meta requests**, new discovery path
+or reinterpretation of existing roster guarantees. If already-authorized evidence
+cannot establish that authoritative set and its temporal/scope compatibility,
+capture the traversal facts but leave membership and cohort completeness UNKNOWN.
+Capture-only 02B must not seal an evaluation-ready COMPLETE cohort from exhausted
+Insights pagination, successful HTTP, row counts or a sealed refresh alone.
+
+**Required reconciliation:** let M be the positively evidenced applicable identity
+set, I the selected campaign attempt's returned Insights identities, O its committed
+observation identities, and E the evaluation's actual candidate identities. For
+every member of M, record a qualifying observation or a justified exclusion under
+the unchanged versioned candidate predicate with supporting evidence. Absence from
+Insights alone is not proof of zero delivery or non-applicability. Resolve I outside
+M, missing/duplicate/conflicting IDs, partition ambiguity, normalization/orphan/
+zero-shadow drops and all differences between intended candidates and E explicitly.
+Do not ignore unexpected members or infer reconciliation from matching counts.
+Unresolved known omissions are INCOMPLETE; an unproved universe or disposition is
+UNKNOWN. Both refuse relative judgment while preserving qualifying absolute facts.
+
+The current take:200 identity query is an independent downstream coverage limit.
+Fewer or exactly 200 returned IDs, or equal fetched/stored counts, do not by
+themselves prove E exhaustive. Require identity-level reconciliation against M
+and all justified exclusions, or an independently exhaustive bounded/paginated
+enumeration with the same scope/predicate and end-of-enumeration proof. If that
+evidence is unavailable, E's coverage is UNKNOWN even after exhausted Insights.
+If known applicable members are omitted by the cap, coverage is INCOMPLETE. A
+small positively proven M can qualify only when all its candidates and exclusions
+are reconciled; the cap must not silently truncate the applicable evaluation.
+This contract does not change the existing query or add requests.
 
 An ad/ad-set failure does not invalidate an otherwise proven campaign cohort.
 Per-level receipts must remain independent; an aggregate truncated boolean cannot
@@ -241,7 +340,7 @@ succeeded. Selection/reuse policy details in §9 require technical approval.
 The shipped non-daily identity is
 `(entityId, entityLevel, date, granularity, source, measurementWindow)` under the
 partial index `WHERE measurementWindow <> 'DAILY'`. It excludes workspaceId,
-providerAccountId, attemptId, windowStart and windowEnd. Normal connector IDs are
+providerAccountId, refreshId, levelAttemptId, windowStart and windowEnd. Normal connector IDs are
 workspace-derived, but new lineage must enforce workspace ownership explicitly.
 DAILY uses a different sink/identity and stays outside this design's write scope.
 
@@ -262,18 +361,26 @@ be reconciled, treat it as unknown; do not borrow the old completeness flag.
 
 ### 4.2 Commit protocol
 
-1. Admit the attempt for a live authorized workspace and captured account scope;
-   release DB locks before provider calls. Queue/request IDs are correlation only.
-2. Collect per-level source facts without promoting completion from HTTP status.
-   Persist a terminal source receipt, or leave an unsealed attempt when process/
-   storage failure prevents knowing the terminal outcome. Lost next-page rows are
-   not recovered by inventing observations; changing that fetch behavior is separate.
+1. Admit the logical refreshId for a live authorized workspace and immutable
+   captured account/window/required-level scope. Admit a distinct levelAttemptId
+   before each actual per-level fetch invocation; release DB locks before provider
+   calls. Queue/request IDs are correlation only. Retries follow §3.1, never a
+   reset/reuse of a prior attempt identity.
+2. Collect and seal each attempt's source receipt independently, including known
+   per-level failures before propagating aggregate failure. Leave unsealed facts
+   UNKNOWN when process/storage failure prevents terminal evidence. Select and
+   freeze exact levelAttemptIds in the refresh receipt as §3.2 specifies; a failed
+   predecessor cannot contribute pages/flags to a selected retry. Lost next-page
+   rows are not recovered by invention; changing fetch behavior is separate.
 3. Use the existing parent/admission checks and record all normalization, orphan
    and zero-shadow exclusions. Source success is distinct from ingest success.
 4. In one bounded DB-only transaction, lock live workspace then the affected
    canonical scope(s) in deterministic order; write canonical materialization,
-   immutable observations and the population-manifest commit. Seal COMPLETE only
-   after actual writes/exclusions reconcile. Existing entity upserts may remain
+   immutable observations bound to the exact refreshId/levelAttemptId, and the
+   population-manifest commit. Seal evaluation-ready COMPLETE only when §3.4's
+   positive membership proof and full source/committed/evaluated reconciliation
+   also hold; exhausted Insights plus successful writes is insufficient. A capture
+   manifest can be sealed with membership UNKNOWN. Existing entity upserts may remain
    separate; their success alone is not a population commit. No provider/AI call
    belongs inside this transaction.
 5. On failure, roll back that canonical metric/observation/manifest transaction.
@@ -290,9 +397,11 @@ worker and does not serialize other instances/manual requests. Proposed scope
 locks/unique keys/sealing must handle these paths explicitly. No global/provider
 lock or long transaction around network fetch is recommended.
 
-Concurrent attempts retain separate identities, even with identical requested
-windows or snapshotDate. Conflicting materializations are detected/reconciled
-under scope locking; immutable observation content remains distinguishable.
+Concurrent logical refreshes and their per-level attempts retain separate
+refreshIds and levelAttemptIds, even with identical windows or snapshotDate.
+Retry selection cannot cross parent scope or alter a sealed refresh. Conflicting
+materializations are detected/reconciled under scope locking; immutable observation
+content remains distinguishable and no failed attempt is upgraded in place.
 Latest committed does not automatically mean freshest measured evidence.
 Use existing period/freshness ordering and an approved deterministic observation
 tie-break; never complete a cohort by stitching races together. CAS-sealed receipts
@@ -316,18 +425,25 @@ were executed for these future scenarios.
 
 | Scenario | Absolute evaluation | Relative evaluation | Retained evidence | Public absence/refusal meaning |
 |---|---|---|---|---|
-| Whole campaign source scope exhausted and committed | A observations qualify individually | Allowed only when C, partition metadata and full consumer coverage are proven | Seal new source/observation/manifest references | Known measurements; no promise of campaigns outside declared scope |
+| Positively evidenced applicable cohort, exhausted Insights and fully reconciled commit/evaluation | A observations qualify individually | Allowed only when C, partition metadata and full consumer coverage are proven | Logical refresh and distinct per-level attempts; seal source/observation/membership references | Known measurements and proven declared membership, not campaigns outside scope |
+| Insights exhausted, no independent applicable-membership proof | Returned committed A observations can qualify | Refuse UNKNOWN cohort, regardless of counts or HTTP success | Keep traversal receipt; capture manifest remains membership UNKNOWN | Insights traversal finished; applicable cohort coverage unproved |
 | Campaign MAX_PAGES after valid rows | A collected and committed observations can qualify | Refuse this incomplete manifest | Keep genuine new observations and older evidence separately | Known partial population; not complete and not empty |
 | Campaign canonical fetch fails, other levels succeed | Only independently qualifying historical campaign observations; other levels retain their own facts | Refuse failed campaign attempt; an earlier C manifest may qualify as an earlier cohort | No new campaign measurements fabricated from ad/ad-set success | Could not read campaign scope; not NO_DATA |
+| Failed campaign attempt then successful retry under an open logical refresh | A from the new committed attempt may qualify | Only the whole selected retry with positive membership/reconciliation can establish C | Distinct levelAttemptIds and retry link; immutable failed predecessor; freeze retry selection | Earlier attempt failed, selected retry succeeded; never rewrite the failure |
+| All three level attempts throw | No new A; historical A stays independently qualified | No C from failed refresh; earlier coherent C reuse only under original rules | Three sealed failure receipts and terminal refresh dispositions survive aggregate throw | Failed refresh, not three complete empty levels |
+| Crash before terminal receipt or refresh selection sealing | Only previously committed, independently qualified A | No C inferred from unsealed facts | Retain open/unknown identities; never synthesize terminal success | Outcome unknown, distinct from an observed provider failure |
 | Ad-set/ad fails, campaign complete | Campaign A observations qualify | Campaign comparison allowed if C; failed other level is not a campaign veto | Preserve each level's distinct receipts | Campaign evidence available; drill-down level failure explained separately |
 | Earlier complete, then failed refresh | Reuse earlier A with original times | Earlier C may be reused only coherently while freshness/scope still qualify | Keep earlier receipt and separate later failure | Earlier qualified evidence, latest refresh failed; never newly refreshed |
 | Earlier incomplete, then complete refresh | New A qualifies; legitimate old observations remain historical | New C can permit relative judgments | Append new manifest; never upgrade old incomplete receipt | Current proved cohort; prior partial history preserved |
 | Legacy snapshot, no fetch lineage | Conditional A; missing fetch receipt alone is not unrelated-campaign invalidation. Unprovable required row provenance must be refused under an approved predicate | Refuse UNKNOWN cohort | Leave legacy rows/lineage unknown; no synthetic completion backfill | Completeness unrecorded; distinguish from read failure and measured zero |
-| Two concurrent workspace refreshes | Use a consistent selected A observation, original identity/time | One coherent C manifest set; never a union of the races | Separate attempts; detect restatement and preserve observation versions | State the selected evidence basis; ambiguous lineage is unknown |
+| Two concurrent workspace refreshes | Use a consistent selected A observation, original identity/time | One coherent C manifest set; never a union of the races | Separate refreshIds and child levelAttemptIds; frozen per-refresh selection and observation versions | State the selected evidence basis; ambiguous lineage is unknown |
+| Successful fragments from different attempts/refreshes appear to cover missing pages | A may use each genuine committed observation under its original lineage | Refuse a fabricated union; complete traversal/membership must belong to the selected whole attempt or an original earlier C manifest | Retain separate receipts; never transfer exhaustion flags or fill a failed attempt's gaps | Combined fragments are not a proved complete cohort |
 | Provider success then snapshot transaction fails | No A from uncommitted rows; earlier A may qualify | New source-complete receipt does not permit relative evaluation; earlier C reuse only under the same rules | Roll back new metrics/observations/manifest; retain source/commit failure facts | Data read but not committed; not successful refresh or empty account |
 | Relative ranking invoked with INCOMPLETE/UNKNOWN cohort | Preserve independently qualified absolute assessment | Refuse ranking/relative KILL-SCALE adjustment | Keep absolute input and refusal basis | Relative comparison unavailable; do not replace it with HOLD/KILL or NO_CANONICAL_WINDOW |
-| Complete empty campaign response | No new per-campaign A observation; old A only under its own reuse rules | No candidates; no relative judgment; old rows cannot be inserted into this new empty manifest | Seal real empty membership, no zero snapshots | Verified empty declared read, distinct from failure/unknown; no fabricated per-entity zero |
-| Complete provider read but identity take:200 truncates membership | Returned A rows can qualify | Refuse while full evaluated membership cannot be reconciled | Preserve source proof and downstream omission evidence | Evaluation coverage incomplete despite provider success |
+| Empty exhausted Insights response | No new per-campaign A observation; old A only under its own reuse rules | UNKNOWN membership unless positive evidence proves applicable set empty; then no candidates and no relative judgment | Seal traversal facts; empty cohort only with membership proof; no zero snapshots | No returned Insights is not by itself proof of an empty applicable cohort |
+| Exhausted Insights but take:200 coverage is unproved | Returned A rows can qualify | Refuse UNKNOWN evaluation coverage; fewer/exactly 200 IDs and matching counts do not establish C | Keep traversal proof and bounded-query facts, not a completion inference | Evaluated membership coverage unproved despite provider success |
+| take:200 or another filter demonstrably omits applicable members | Returned A rows can qualify | Refuse INCOMPLETE coverage until every member/disposition is reconciled | Preserve positive membership proof and named omissions | Known incomplete evaluation, distinct from unknown universe |
+| Membership artifact exists but contains unmatched/ambiguous members or Insights extras | Independently qualified A remains usable | Refuse: UNKNOWN for unproved dispositions; INCOMPLETE for known omissions | Retain M/I/O/E identity-level differences, exclusion evidence and classification uncertainty | Roster existence or equal counts is not completed reconciliation |
 | Missing/contradictory provider dates or wrong account binding | Only independently qualifying A; record/request fallback cannot cure unknown source period | Refuse comparison that relies on unverifiable members/window | Keep original source facts, no repaired dates | Evidence provenance missing/mismatched, not verified complete |
 | Workspace deleted during fetch | Refuse new writes/evaluation in deleted scope | Refuse | Lifecycle cascade; in-flight write cannot recreate tenant/lineage | Existing NoWorkspace/WorkspaceUnavailable distinction, no cross-tenant fallback |
 
