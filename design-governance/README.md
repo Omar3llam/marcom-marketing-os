@@ -205,6 +205,12 @@ unchanged.
 | **PR-12** | Currency formatting | One canonical money contract; minor vs major explicit; currency from data; no silent USD. |
 | **PR-13** | Governance | The Master Build Spec + locked Product Constitution supersede conflicting historical frontend and design documents. Superseding does not delete evidence: old documents become HISTORICAL. |
 
+**Canonical Completeness Ruling — Product Owner approved 2026-10-15:**
+[02A records the five approved principles and the proposed provenance contract](../docs/BACKEND_STABILIZATION_02A_CANONICAL_PROVENANCE.md).
+Individual evidence and cohort completeness are separate; Constitution R-8 remains
+unchanged. Technical schema, eligibility, API and persisted-decision changes require
+separate implementation approval. Backend Gates B/C remain BLOCKED; no phase advances.
+
 ---
 
 ## 4. Historical documents (PR-13)
