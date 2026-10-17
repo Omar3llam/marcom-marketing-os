@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // ============================================================
-// MARCOM — Production Migration Gate (Render build step)
+// MARCOM — Explicit Operator Migration Gate
 // ============================================================
-// Invoked by `npm run build`, which render.yaml runs as lumi-backend's
-// buildCommand. This is the ONLY thing that migrates production.
+// Invoked only by the separately authorized `npm run db:migrate:deploy`.
+// Never invoke from build, package lifecycle, prestart or either Render service.
+// See docs/BACKEND_STABILIZATION_03A.md; startup legacy SQL is a separate OPEN gap.
 //
 // ── GOVERNING LAW (B5-01Q) ──────────────────────────────────────────────────
 //   Migration history is evidence, not a repair tool.
@@ -114,7 +115,7 @@ function migrationStatus() {
 }
 
 /**
- * Does the database this build just migrated actually satisfy schema.prisma?
+ * Does the database this operator just migrated actually satisfy schema.prisma?
  *
  * `migrate deploy` proves every migration FILE ran. It cannot prove the result
  * matches the datamodel the deployed code was generated against — that is a
@@ -288,7 +289,13 @@ if (deployed) {
     shout('        no object present    → npx prisma migrate resolve --rolled-back "<name>"');
     shout('        partially present    → finish or undo it by hand FIRST, then use one');
     shout('                               of the two commands above.');
-    shout('   4. Redeploy. This gate will verify the result against prisma/schema.prisma.\n');
+    shout('   4. NO-DEPLOY FREEZE: the choices above require separate incident approval.');
+    shout('      A rolled-back migration remains pending for deploy selection, even when');
+    shout('      Prisma 5.22 migrate status says "Database schema is up to date!" (H-1).');
+    shout('      After any approved resolve, verify _prisma_migrations AND native catalogs');
+    shout('      for every affected object, checksum, owner, privilege and constraint.');
+    shout('      Status alone never proves schema presence or authorizes retry/redeploy.');
+    shout('      Keep the current incident frozen until a separate recovery/cutover approval.\n');
     process.exit(1);
   }
 
@@ -305,11 +312,12 @@ if (deployed) {
     shout('   applied SKIPS that DDL and asserts those tables already exist as declared.');
     shout('');
     shout('── OPERATOR PROCEDURE ───────────────────────────────────────────────────');
-    shout('   • Empty database expected? Point DATABASE_URL at the right one and redeploy.');
+    shout('   • Empty database expected? Verify the target identity before a separately approved retry.');
     shout('   • Restored/pre-existing database? Confirm which migration its schema actually');
     shout('     corresponds to, then baseline to THAT migration in a shell:');
     shout('        npx prisma migrate resolve --applied "<migration it truly matches>"');
-    shout('     Repeat for each earlier migration, then redeploy.');
+    shout('     Any history change requires separate approval and native catalog verification.');
+    shout('     Keep the current incident under NO-DEPLOY FREEZE; status is not schema proof.');
     shout('   • See DEPLOYMENT-MIGRATION-GUIDE.md → "Baselining an existing database".\n');
     process.exit(1);
   }

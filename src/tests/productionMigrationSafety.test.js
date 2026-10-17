@@ -7,8 +7,8 @@
 //     What does the deploy do when the database is NOT in the state it expects?
 //
 // The subject under test is the real `scripts/prisma-migrate-safe.js` — the
-// thing render.yaml runs, via `npm run build`, against production. It is spawned
-// as a child process against a disposable clone, exactly as Render invokes it.
+// explicit operator gate (`npm run db:migrate:deploy` after 03A). It is spawned
+// as a child process against a disposable clone, never as a build step.
 // Nothing here reads its source to guess at behaviour except T5, which exists
 // only as a backstop for the behavioural tests above it.
 //
