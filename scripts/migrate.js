@@ -3,15 +3,16 @@
 // MARCOM — Database Migration
 // Applies schema.sql using the postgres npm client.
 // Safe to re-run: all statements use IF NOT EXISTS / OR REPLACE.
-// Run automatically as part of Render build step.
+// Explicit operator-only DDL: npm run db:migrate:legacy, after separate approval.
+// Never part of build/start hooks. See docs/BACKEND_STABILIZATION_03A.md.
 // ============================================================
 import 'dotenv/config';
 import postgres from 'postgres';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error('[migrate] DATABASE_URL not set — skipping migration.');
-  process.exit(0);
+  console.error('[migrate] DATABASE_URL is required — refusing migration.');
+  process.exit(1);
 }
 
 const sql = postgres(DATABASE_URL, {

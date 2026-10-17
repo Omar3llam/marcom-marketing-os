@@ -55,9 +55,10 @@ describe('PARITY-04 · the verdict vocabulary crosses the boundary intact', () =
     // above must be reopened, because a server ahead of a browser would blank
     // the Campaigns surface rather than degrade it.
     const render = readFileSync(join(process.cwd(), 'render.yaml'), 'utf8');
-    expect(render).toMatch(/buildCommand:\s*npm run build\b/);
+    expect(render).toMatch(/buildCommand:\s*npm ci --include=dev && npm run build\b/);
     const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
-    expect(pkg.scripts.build).toContain('npm run build --workspace client');
+    expect(pkg.scripts.build).toBe('npm run prisma:generate && npm run build:client');
+    expect(pkg.scripts['build:client']).toBe('npm run build --workspace client');
   });
 
   it('the OPEN vocabularies are still open', () => {

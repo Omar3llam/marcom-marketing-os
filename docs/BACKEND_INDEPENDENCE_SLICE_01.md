@@ -21,9 +21,11 @@ is invoked. Prisma generation and backend parse/link checks run during build;
 build does not call a migration or connect to a database. Migration deployment
 remains a separate, explicit operation governed by existing procedures.
 
-The existing `npm run build`, client workspace, frontend tests, production
-serving default and Render configuration are retained. The old build still
-includes its existing migration and client build behavior.
+The slice originally retained the existing migration-bearing root build.
+Backend 03A supersedes that build contract: `npm run build` generates Prisma
+and compiles the existing client, without migration or implicit installation.
+See [03A](BACKEND_STABILIZATION_03A.md) for the explicit operator commands and
+unapplied deployment proposal. Client source, tests and serving defaults remain.
 
 ## Runtime
 

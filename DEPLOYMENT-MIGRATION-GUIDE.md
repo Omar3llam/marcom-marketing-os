@@ -1,6 +1,35 @@
 # MARCOM Production Migration Guide
 
-## ⚠️ CRITICAL: First Deployment After Migration System Implementation
+## Current authority — Backend 03A (2026-10-17)
+
+Ordinary builds do not install dependencies, migrate, execute legacy SQL, resolve
+history or verify a live database. Install separately with `npm ci --include=dev`;
+`npm run build` generates Prisma Client and compiles the existing UI.
+`npm run build:backend` / `build:worker` generate and run backend static checks.
+Read [the 03A contract and cutover proposal](docs/BACKEND_STABILIZATION_03A.md)
+before any operational action. This PR authorizes code review only.
+
+One named, separately approved operator owns `npm run db:migrate:deploy` and,
+only if explicitly required, `npm run db:migrate:legacy`. Neither command belongs
+in Web/Worker build, predeploy, start or package lifecycle hooks. The old aliases
+`migrate` and `build:migrate` are removed deliberately; stale live build commands
+will fail rather than execute legacy DDL. No automatic retry/resolve/repair of
+the current production incident is authorized.
+
+**H-1 / NO-DEPLOY FREEZE:** Prisma 5.22.0 `migrate status` can exit 0 and say
+"Database schema is up to date!" after `resolve --rolled-back`, while that
+migration remains pending for deploy selection. A resolve changes history,
+not schema. After a separately approved resolve, compare the exact history rows
+in `_prisma_migrations` (including checksum, finished/rolled-back timestamps and
+steps) with every affected object in native catalogs, including definitions,
+constraints, indexes, functions/triggers, owners and privileges. A status message
+alone proves neither schema presence nor readiness. Keep builds, predeploys,
+manual deploys and worker rollout frozen until separate recovery/cutover approval.
+
+The historical description below explains earlier incidents. It is not an
+executable recovery approval and does not override the current contract.
+
+## Historical migration-system introduction
 
 ### Background
 
@@ -22,16 +51,17 @@ The production database already has tables created by the old `db push` system. 
 
 #### Option A: Manual Resolution (Recommended for First Deploy)
 
-1. **Before deploying the new code**, connect to production database and run:
+1. Only after separate approval and proof of every existing baseline object,
+   a named operator could mark a verified baseline:
 
 ```bash
-# Mark the baseline migration as applied (doesn't execute SQL)
+# Writes migration history; does not create the missing schema
 npx prisma migrate resolve --applied "20260517000000_init"
 ```
 
 This tells Prisma: "The database already has these tables, don't try to create them."
 
-2. **Deploy the new code** — future deployments will work automatically.
+2. Verify history AND native catalogs. Deployment requires separate approval.
 
 #### ~~Option B: Automatic Handling~~ — REMOVED (B5-01Q)
 
@@ -64,8 +94,10 @@ To baseline deliberately:
    ```bash
    npx prisma migrate resolve --applied "<migration it truly matches>"
    ```
-3. Redeploy. The build verifies the result against `prisma/schema.prisma` before
-   it continues.
+3. Verify history and native catalogs, retaining the no-deploy freeze. An
+   ordinary build no longer verifies a database. The explicit operator migration
+   gate retains its existing schema-diff verification; that is not a native-object
+   ownership/privilege certification and cannot resolve the current incident.
 
 If the database was *meant* to be empty, the answer is not to baseline — it is to
 point `DATABASE_URL` at the right database.
@@ -88,7 +120,7 @@ object its SQL creates. See `scripts/prisma-migrate-safe.js` and
 
 ### Future Deployments
 
-After the first deployment, all future deployments work automatically:
+After independent review and a separately approved operational plan:
 
 1. Developer creates migration locally:
    ```bash
@@ -101,10 +133,14 @@ After the first deployment, all future deployments work automatically:
    git commit -m "feat(db): add new table for feature X"
    ```
 
-3. Deploy to production — `npm run build` automatically runs:
+3. A single named migration operator may run the explicit gate, against the
+   approved direct target, after backup/recovery and compatibility checks:
    ```bash
-   npx prisma migrate deploy
+   npm run db:migrate:deploy
    ```
+
+4. Record postconditions before either service's separately approved rollout.
+   Builds never perform this operation, and no #578 deployment is approved here.
 
 ## Migration Best Practices
 
@@ -150,21 +186,16 @@ After the first deployment, all future deployments work automatically:
 
 ## Rollback Strategy
 
-If a migration fails in production:
+Freeze deployment on migration failure. Preserve history, logs and native state;
+obtain a separate recovery decision. `resolve --rolled-back` does not undo SQL
+and can make the same migration eligible to run again (H-1). Never run `migrate
+dev` against production or assume reverting code restores schema.
 
-1. **Immediate fix** (if migration was partially applied):
-   ```bash
-   # Mark as rolled back
-   npx prisma migrate resolve --rolled-back "20260517_bad_migration"
-   
-   # Deploy a new migration that reverts the changes
-   npx prisma migrate dev --name revert_bad_migration
-   ```
-
-2. **Redeploy previous version** (if deployment failed):
-   - Git revert the commit with the bad migration
-   - Redeploy
-   - Previous schema state will be restored
+03A rollback is a code/artifact rollback only, with pure build settings retained
+on BOTH services. Reverting package.json to a migration-bearing build is unsafe.
+No destructive down migration, object drop, history rewrite or automatic restore
+is part of rollback. A database restore requires separately approved recovery,
+writer quiescence and a verified backup; see the 03A proposal.
 
 ## Development Workflow
 

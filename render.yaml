@@ -14,19 +14,24 @@
 # below uses Render's canonical schema so the blueprint imports
 # cleanly via dashboard.render.com → New → Blueprint.
 # ============================================================
+# Source contract only. No sync/deploy without separate 03A cutover approval
+# and live Web/Worker attestation in docs/BACKEND_STABILIZATION_03A.md.
+# One separately authorized operator owns DDL; neither service auto-migrates.
+previews:
+  generation: off
 services:
   # ── Web service: Express API + React static ───────────────
   - type: web
     name: lumi-backend
-    env: node
+    runtime: node
     region: oregon
     plan: starter
-    # `npm run build` itself runs `npm install --include=dev` for both
-    # root and client, so we don't need a separate `npm install` here.
-    buildCommand: npm run build
+    # Install from the lockfile, generate Prisma, compile the existing client.
+    # No migrate/resolve/legacy SQL here or in preDeployCommand.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
-    autoDeploy: true
+    autoDeployTrigger: off
     envVars:
       - key: ALLOWED_ORIGINS
         value: "https://marcom-marketing-os.onrender.com"
@@ -156,16 +161,14 @@ services:
   # ── Background worker: BullMQ Action + Observer ───────────
   - type: worker
     name: lumi-worker
-    env: node
+    runtime: node
     region: oregon
     plan: starter
-    # Both services deploy independently. The worker reads AllocationPlan with
-    # a generated client, so its migration gate must finish before it starts;
-    # the backend build runs the same gate before serving or writing new rows.
-    # Include the Prisma CLI dev dependency explicitly under NODE_ENV=production.
-    buildCommand: npm install --include=dev && npx prisma generate && node scripts/prisma-migrate-safe.js
+    # Keep Prisma CLI available under NODE_ENV=production; generate + static
+    # backend checks only. No DDL or runtime worker startup during build.
+    buildCommand: npm ci --include=dev && npm run build:worker
     startCommand: npm run worker
-    autoDeploy: true
+    autoDeployTrigger: off
     envVars:
       - key: NODE_ENV
         value: production
