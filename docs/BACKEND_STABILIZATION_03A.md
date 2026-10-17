@@ -89,6 +89,15 @@ operation by that same owner; it is not automatically chained to Prisma.
 These command names are an operational boundary, not an authorization system.
 Direct script/Prisma CLI access still requires the same human approval.
 
+The explicit legacy command fails with exit 1 and an error when `DATABASE_URL`
+is absent or empty, before constructing a database client or attempting SQL.
+A successful command exit does not prove the correct production target identity,
+privileges, backup or recovery readiness; those require separate qualification.
+This P1 correction follows [independent review](https://github.com/Omar3llam/marcom-marketing-os/pull/580#issuecomment-6233404710)
+of `d86aeb4dd67cf0f399c913f761f90596b4c374df`. Section 5 preserves that head's
+original 03A measurements; the corrective head and its new verification evidence
+are recorded separately in PR #580 for independent re-review.
+
 The existing gate retains connectivity/advisory-lock retries for a newly approved
 migration operation. It performs no automatic resolve. This PR does not authorize
 calling it against the unresolved incident, a retry, resolve or repair. Prisma

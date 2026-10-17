@@ -11,8 +11,8 @@ import postgres from 'postgres';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error('[migrate] DATABASE_URL not set — skipping migration.');
-  process.exit(0);
+  console.error('[migrate] DATABASE_URL is required — refusing migration.');
+  process.exit(1);
 }
 
 const sql = postgres(DATABASE_URL, {
