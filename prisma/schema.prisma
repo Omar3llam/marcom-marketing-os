@@ -390,6 +390,7 @@ enum TransitionActor {
 // ── Core Models ──────────────────────────────────────────────
 
 model Workspace {
+  canonicalRefreshes CanonicalRefresh[]
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   currency  String   @default("USD") // ISO 4217 currency code (EGP, USD, SAR, AED, etc.)
@@ -470,6 +471,135 @@ model Workspace {
   executionRequests ExecutionRequest[]
 
   @@map("workspaces")
+}
+
+// 02B-1 additive capture-only storage. Native migration owns CHECKs, deferral,
+// guards, event clocks and grants. Prisma diff cannot audit those constructs.
+// No runtime capture writer is installed. Do not use db push for these models.
+model CanonicalRefresh {
+  workspaceId String @map("workspace_id") @db.Uuid
+  id String @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  recordVersion Int @default(1) @map("record_version") @db.SmallInt
+  platform String @default("META")
+  providerAccountId String @map("provider_account_id")
+  measurementWindow String @default("CUMULATIVE_30D") @map("measurement_window")
+  requestedStart DateTime @map("requested_start") @db.Date
+  requestedEnd DateTime @map("requested_end") @db.Date
+  scopeDescriptor Json @map("scope_descriptor")
+  scopeHash Bytes @map("scope_hash")
+  accountSetHash Bytes @map("account_set_hash")
+  retryOfRefreshId String? @map("retry_of_refresh_id") @db.Uuid
+  correlationId String? @map("correlation_id")
+  selectedCampaignId String? @map("selected_campaign_id") @db.Uuid
+  selectedAdsetId String? @map("selected_adset_id") @db.Uuid
+  selectedAdId String? @map("selected_ad_id") @db.Uuid
+  notStartedLevels Json @default("[]") @map("not_started_levels")
+  attemptDispositions Json? @map("attempt_dispositions")
+  selectionHash Bytes? @map("selection_hash")
+  sourceSealedAt DateTime? @map("source_sealed_at") @db.Timestamptz(3)
+  // Required in Prisma input, but always DB-stamped by the admission guard.
+  retainUntil DateTime @map("retain_until") @db.Timestamptz(3)
+  workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+  retryOf CanonicalRefresh? @relation("CanonicalRefreshRetry",fields:[workspaceId,retryOfRefreshId],references:[workspaceId,id],onDelete:NoAction,onUpdate:NoAction)
+  retries CanonicalRefresh[] @relation("CanonicalRefreshRetry")
+  attempts CanonicalLevelAttempt[] @relation("CanonicalSourceAttempts")
+  selectedCampaign CanonicalLevelAttempt? @relation("CanonicalCampaignSelection",fields:[workspaceId,id,selectedCampaignId],references:[workspaceId,refreshId,id],onDelete:NoAction,onUpdate:NoAction,map:"canonical_selection_campaign_fk")
+  selectedAdset CanonicalLevelAttempt? @relation("CanonicalAdsetSelection",fields:[workspaceId,id,selectedAdsetId],references:[workspaceId,refreshId,id],onDelete:NoAction,onUpdate:NoAction,map:"canonical_selection_adset_fk")
+  selectedAd CanonicalLevelAttempt? @relation("CanonicalAdSelection",fields:[workspaceId,id,selectedAdId],references:[workspaceId,refreshId,id],onDelete:NoAction,onUpdate:NoAction,map:"canonical_selection_ad_fk")
+  writes CanonicalWriteAttempt[]
+  @@id([workspaceId,id])
+  @@index([workspaceId,createdAt])
+  @@index([retainUntil,workspaceId,id])
+  @@index([workspaceId,retryOfRefreshId])
+  @@map("canonical_refreshes")
+}
+
+model CanonicalLevelAttempt {
+  workspaceId String @map("workspace_id") @db.Uuid
+  refreshId String @map("refresh_id") @db.Uuid
+  id String @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  recordVersion Int @default(1) @map("record_version") @db.SmallInt
+  level String
+  ordinal Int
+  retryOfAttemptId String? @map("retry_of_attempt_id") @db.Uuid
+  requestDescriptor Json @map("request_descriptor")
+  requestHash Bytes @map("request_hash")
+  callIntentAt DateTime @map("call_intent_at") @db.Timestamptz(3)
+  sourceReceipt Json? @map("source_receipt")
+  receiptHash Bytes? @map("receipt_hash")
+  sourceSealedAt DateTime? @map("source_sealed_at") @db.Timestamptz(3)
+  refresh CanonicalRefresh @relation("CanonicalSourceAttempts",fields:[workspaceId,refreshId],references:[workspaceId,id],onDelete:Cascade,onUpdate:NoAction)
+  retryOf CanonicalLevelAttempt? @relation("CanonicalLevelRetry",fields:[workspaceId,refreshId,retryOfAttemptId],references:[workspaceId,refreshId,id],onDelete:NoAction,onUpdate:NoAction)
+  retries CanonicalLevelAttempt[] @relation("CanonicalLevelRetry")
+  observations CanonicalObservation[]
+  // Inverse lists deliberately avoid Prisma's invalid introspected 1:1 model.
+  selectedCampaignRefreshes CanonicalRefresh[] @relation("CanonicalCampaignSelection")
+  selectedAdsetRefreshes CanonicalRefresh[] @relation("CanonicalAdsetSelection")
+  selectedAdRefreshes CanonicalRefresh[] @relation("CanonicalAdSelection")
+  @@id([workspaceId,refreshId,id])
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,refreshId,level,ordinal])
+  @@index([workspaceId,refreshId,retryOfAttemptId])
+  @@map("canonical_level_attempts")
+}
+
+model CanonicalWriteAttempt {
+  workspaceId String @map("workspace_id") @db.Uuid
+  refreshId String @map("refresh_id") @db.Uuid
+  id String @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  recordVersion Int @default(1) @map("record_version") @db.SmallInt
+  ordinal Int
+  retryOfWriteId String? @map("retry_of_write_id") @db.Uuid
+  sourceSelectionHash Bytes @map("source_selection_hash")
+  plannedPayloadHash Bytes? @map("planned_payload_hash")
+  plannedAt DateTime? @map("planned_at") @db.Timestamptz(3)
+  outcome String?
+  errorCode String? @map("error_code")
+  commitManifest Json? @map("commit_manifest")
+  outcomeHash Bytes? @map("outcome_hash")
+  sealedAt DateTime? @map("sealed_at") @db.Timestamptz(3)
+  committedAt DateTime? @map("committed_at") @db.Timestamptz(3)
+  refresh CanonicalRefresh @relation(fields:[workspaceId,refreshId],references:[workspaceId,id],onDelete:Cascade,onUpdate:NoAction)
+  retryOf CanonicalWriteAttempt? @relation("CanonicalWriteRetry",fields:[workspaceId,refreshId,retryOfWriteId],references:[workspaceId,refreshId,id],onDelete:NoAction,onUpdate:NoAction)
+  retries CanonicalWriteAttempt[] @relation("CanonicalWriteRetry")
+  observations CanonicalObservation[]
+  @@id([workspaceId,refreshId,id])
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,refreshId,ordinal])
+  @@index([workspaceId,refreshId,retryOfWriteId])
+  @@map("canonical_write_attempts")
+}
+
+model CanonicalObservation {
+  workspaceId String @map("workspace_id") @db.Uuid
+  id String @db.Uuid
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(3)
+  recordVersion Int @default(1) @map("record_version") @db.SmallInt
+  refreshId String @map("refresh_id") @db.Uuid
+  writeId String @map("write_id") @db.Uuid
+  sourceAttemptId String @map("source_attempt_id") @db.Uuid
+  entityId String @map("entity_id") @db.Uuid
+  entityLevel String @map("entity_level")
+  externalEntityId String? @map("external_entity_id")
+  date DateTime @db.Timestamp(3)
+  granularity String
+  source String
+  measurementWindow String @map("measurement_window")
+  windowStart DateTime? @map("window_start") @db.Timestamp(3)
+  windowEnd DateTime? @map("window_end") @db.Timestamp(3)
+  materializedSnapshotId String? @map("materialized_snapshot_id") @db.Uuid
+  committedProjection Json @map("committed_projection")
+  sourceFacts Json @map("source_facts")
+  contentHash Bytes @map("content_hash")
+  write CanonicalWriteAttempt @relation(fields:[workspaceId,refreshId,writeId],references:[workspaceId,refreshId,id],onDelete:Cascade,onUpdate:NoAction)
+  sourceAttempt CanonicalLevelAttempt @relation(fields:[workspaceId,refreshId,sourceAttemptId],references:[workspaceId,refreshId,id],onDelete:Cascade,onUpdate:NoAction)
+  @@id([workspaceId,id])
+  @@unique([workspaceId,refreshId,writeId,entityId,entityLevel,date,granularity,source,measurementWindow])
+  @@index([workspaceId,refreshId,sourceAttemptId])
+  @@map("canonical_observations")
 }
 
 model User {

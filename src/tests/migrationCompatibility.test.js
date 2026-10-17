@@ -113,12 +113,14 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // window bounds. Existing rows remain unknown; no backfill invents proof.
     // 74 → 75 and COMPATIBLE 52 → 53: two nullable AllocationPlan efficiency
     // columns isolate new writes from legacy MER-named storage. No backfill.
-    expect(scan.length).toBe(75);
+    // 75 → 76: 02B-1 adds native guarded provenance storage. Runtime-built
+    // role/ACL DDL and a private schema remain UNKNOWN, explicitly declared.
+    expect(scan.length).toBe(76);
     expect(counts).toEqual({
       COMPATIBLE: 53,
       TRANSITION_REQUIRED: 10,
       INCOMPATIBLE: 8,
-      UNKNOWN: 4,
+      UNKNOWN: 5,
     });
     // Changing these numbers is allowed — deliberately, in a diff, alongside a
     // baseline entry explaining the new migration. It is not allowed silently.
@@ -267,7 +269,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(75); // +1 additive Phase 6 AllocationPlan semantic storage migration
+    expect(dirs).toHaveLength(76); // +1 native 02B-1 provenance storage migration
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

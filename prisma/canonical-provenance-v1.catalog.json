@@ -1,0 +1,2458 @@
+{
+  "migrationSha256": "367293ea86b331ec00a7437ee1a60125bd3bb9e062f2dede1a80a72a02efb16c",
+  "catalog": {
+    "schemas": [
+      {
+        "nspname": "canonical_provenance",
+        "owner": "lumi_canonical_owner",
+        "acl": "{lumi_canonical_owner=UC/lumi_canonical_owner,lumi_canonical_app=U/lumi_canonical_owner,lumi_canonical_retention=U/lumi_canonical_owner}",
+        "app_create": false
+      }
+    ],
+    "tables": [
+      {
+        "relname": "canonical_level_attempts",
+        "owner": "lumi_canonical_owner",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false
+      },
+      {
+        "relname": "canonical_observations",
+        "owner": "lumi_canonical_owner",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false
+      },
+      {
+        "relname": "canonical_refreshes",
+        "owner": "lumi_canonical_owner",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "owner": "lumi_canonical_owner",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false
+      }
+    ],
+    "columns": [
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "workspace_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "refresh_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "created_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": true,
+        "default_expression": "clock_timestamp()"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "record_version",
+        "type": "smallint",
+        "attnotnull": true,
+        "default_expression": "1"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "level",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "ordinal",
+        "type": "integer",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "retry_of_attempt_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "request_descriptor",
+        "type": "jsonb",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "request_hash",
+        "type": "bytea",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "call_intent_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "source_receipt",
+        "type": "jsonb",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "receipt_hash",
+        "type": "bytea",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "attname": "source_sealed_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "workspace_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "created_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": true,
+        "default_expression": "clock_timestamp()"
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "record_version",
+        "type": "smallint",
+        "attnotnull": true,
+        "default_expression": "1"
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "refresh_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "write_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "source_attempt_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "entity_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "entity_level",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "external_entity_id",
+        "type": "text",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "date",
+        "type": "timestamp(3) without time zone",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "granularity",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "source",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "measurement_window",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "window_start",
+        "type": "timestamp(3) without time zone",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "window_end",
+        "type": "timestamp(3) without time zone",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "materialized_snapshot_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "committed_projection",
+        "type": "jsonb",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "source_facts",
+        "type": "jsonb",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_observations",
+        "attname": "content_hash",
+        "type": "bytea",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "workspace_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "created_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": true,
+        "default_expression": "clock_timestamp()"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "record_version",
+        "type": "smallint",
+        "attnotnull": true,
+        "default_expression": "1"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "platform",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": "'META'::text"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "provider_account_id",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "measurement_window",
+        "type": "text",
+        "attnotnull": true,
+        "default_expression": "'CUMULATIVE_30D'::text"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "requested_start",
+        "type": "date",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "requested_end",
+        "type": "date",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "scope_descriptor",
+        "type": "jsonb",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "scope_hash",
+        "type": "bytea",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "account_set_hash",
+        "type": "bytea",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "retry_of_refresh_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "correlation_id",
+        "type": "text",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "selected_campaign_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "selected_adset_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "selected_ad_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "not_started_levels",
+        "type": "jsonb",
+        "attnotnull": true,
+        "default_expression": "'[]'::jsonb"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "attempt_dispositions",
+        "type": "jsonb",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "selection_hash",
+        "type": "bytea",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "source_sealed_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_refreshes",
+        "attname": "retain_until",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "workspace_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "refresh_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "created_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": true,
+        "default_expression": "clock_timestamp()"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "record_version",
+        "type": "smallint",
+        "attnotnull": true,
+        "default_expression": "1"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "ordinal",
+        "type": "integer",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "retry_of_write_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "source_selection_hash",
+        "type": "bytea",
+        "attnotnull": true,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "planned_payload_hash",
+        "type": "bytea",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "planned_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "outcome",
+        "type": "text",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "error_code",
+        "type": "text",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "commit_manifest",
+        "type": "jsonb",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "outcome_hash",
+        "type": "bytea",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "sealed_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": false,
+        "default_expression": null
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "attname": "committed_at",
+        "type": "timestamp(3) with time zone",
+        "attnotnull": false,
+        "default_expression": null
+      }
+    ],
+    "constraints": [
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((((source_receipt IS NULL) AND (receipt_hash IS NULL) AND (source_sealed_at IS NULL)) OR ((source_receipt IS NOT NULL) AND (receipt_hash IS NOT NULL) AND (source_sealed_at IS NOT NULL))))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_level_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((level = ANY (ARRAY['campaign'::text, 'adset'::text, 'ad'::text])))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_ordinal_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((ordinal > 0))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (workspace_id, refresh_id, id)"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_receipt_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(receipt_hash) = 32))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_record_version_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((record_version = 1))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_request_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(request_hash) = 32))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_source_receipt_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (((source_receipt IS NULL) OR (((source_receipt ->> 'outcome'::text) = ANY (ARRAY['EXHAUSTED'::text, 'CAPPED'::text, 'FAILED'::text, 'UNPROVEN'::text])) IS TRUE)))"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_workspace_id_id_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_workspace_id_refresh_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (workspace_id, refresh_id) REFERENCES canonical_refreshes(workspace_id, id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_workspace_id_refresh_id_level_ordi_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (workspace_id, refresh_id, level, ordinal)"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "conname": "canonical_level_attempts_workspace_id_refresh_id_retry_of__fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "FOREIGN KEY (workspace_id, refresh_id, retry_of_attempt_id) REFERENCES canonical_level_attempts(workspace_id, refresh_id, id) DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observation_commit",
+        "contype": "t",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_content_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(content_hash) = 32))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_entity_level_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((entity_level = ANY (ARRAY['ACCOUNT'::text, 'CAMPAIGN'::text, 'ADSET'::text, 'AD'::text])))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_external_entity_id_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((length(external_entity_id) <= 128))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_granularity_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((granularity = 'DAILY'::text))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_measurement_window_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((measurement_window = 'CUMULATIVE_30D'::text))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_record_version_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((record_version = 1))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_source_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((source = 'META'::text))"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_workspace_id_refresh_id_source_atte_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (workspace_id, refresh_id, source_attempt_id) REFERENCES canonical_level_attempts(workspace_id, refresh_id, id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_workspace_id_refresh_id_write_id_ent_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (workspace_id, refresh_id, write_id, entity_id, entity_level, date, granularity, source, measurement_window)"
+      },
+      {
+        "relname": "canonical_observations",
+        "conname": "canonical_observations_workspace_id_refresh_id_write_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (workspace_id, refresh_id, write_id) REFERENCES canonical_write_attempts(workspace_id, refresh_id, id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_account_set_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(account_set_hash) = 32))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((requested_end >= requested_start))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_check1",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((((selection_hash IS NULL) AND (source_sealed_at IS NULL) AND (attempt_dispositions IS NULL)) OR ((selection_hash IS NOT NULL) AND (source_sealed_at IS NOT NULL) AND (attempt_dispositions IS NOT NULL))))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_correlation_id_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((length(correlation_id) <= 128))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_measurement_window_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((measurement_window = 'CUMULATIVE_30D'::text))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_platform_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((platform = 'META'::text))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_provider_account_id_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (((length(provider_account_id) >= 1) AND (length(provider_account_id) <= 128)))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_record_version_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((record_version = 1))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_scope_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(scope_hash) = 32))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_selection_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(selection_hash) = 32))"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_workspace_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_refreshes_workspace_id_retry_of_refresh_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "FOREIGN KEY (workspace_id, retry_of_refresh_id) REFERENCES canonical_refreshes(workspace_id, id) DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_selection_ad_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "FOREIGN KEY (workspace_id, id, selected_ad_id) REFERENCES canonical_level_attempts(workspace_id, refresh_id, id) DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_selection_adset_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "FOREIGN KEY (workspace_id, id, selected_adset_id) REFERENCES canonical_level_attempts(workspace_id, refresh_id, id) DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_selection_campaign_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "FOREIGN KEY (workspace_id, id, selected_campaign_id) REFERENCES canonical_level_attempts(workspace_id, refresh_id, id) DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "conname": "canonical_selection_seal",
+        "contype": "t",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (((planned_payload_hash IS NULL) = (planned_at IS NULL)))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_check1",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((((outcome IS NULL) AND (error_code IS NULL) AND (commit_manifest IS NULL) AND (outcome_hash IS NULL) AND (sealed_at IS NULL) AND (committed_at IS NULL)) OR ((outcome = 'FAILED'::text) AND (error_code IS NOT NULL) AND (commit_manifest IS NULL) AND (outcome_hash IS NOT NULL) AND (sealed_at IS NOT NULL) AND (committed_at IS NULL)) OR ((outcome = 'COMMITTED'::text) AND (planned_at IS NOT NULL) AND (error_code IS NULL) AND (commit_manifest IS NOT NULL) AND (outcome_hash IS NOT NULL) AND (sealed_at IS NOT NULL) AND (committed_at IS NOT NULL))))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_error_code_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((length(error_code) <= 64))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_ordinal_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((ordinal > 0))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_outcome_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((outcome = ANY (ARRAY['COMMITTED'::text, 'FAILED'::text])))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_outcome_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(outcome_hash) = 32))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (workspace_id, refresh_id, id)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_planned_payload_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(planned_payload_hash) = 32))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_record_version_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((record_version = 1))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_source_selection_hash_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((octet_length(source_selection_hash) = 32))"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_workspace_id_id_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_workspace_id_refresh_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (workspace_id, refresh_id) REFERENCES canonical_refreshes(workspace_id, id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_workspace_id_refresh_id_ordinal_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (workspace_id, refresh_id, ordinal)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_attempts_workspace_id_refresh_id_retry_of__fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "FOREIGN KEY (workspace_id, refresh_id, retry_of_write_id) REFERENCES canonical_write_attempts(workspace_id, refresh_id, id) DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_seal",
+        "contype": "t",
+        "convalidated": true,
+        "condeferrable": true,
+        "condeferred": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "conname": "canonical_write_shape",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((\nCASE\n    WHEN (outcome IS NULL) THEN ((error_code IS NULL) AND (commit_manifest IS NULL) AND (outcome_hash IS NULL) AND (sealed_at IS NULL) AND (committed_at IS NULL))\n    WHEN (outcome = 'FAILED'::text) THEN ((error_code IS NOT NULL) AND (commit_manifest IS NULL) AND (outcome_hash IS NOT NULL) AND (sealed_at IS NOT NULL) AND (committed_at IS NULL))\n    WHEN (outcome = 'COMMITTED'::text) THEN ((planned_at IS NOT NULL) AND (error_code IS NULL) AND (commit_manifest IS NOT NULL) AND (outcome_hash IS NOT NULL) AND (sealed_at IS NOT NULL) AND (committed_at IS NOT NULL))\n    ELSE false\nEND IS TRUE))"
+      }
+    ],
+    "indexes": [
+      {
+        "relname": "canonical_level_attempts",
+        "index_name": "canonical_level_attempts_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_level_attempts_pkey ON public.canonical_level_attempts USING btree (workspace_id, refresh_id, id)"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "index_name": "canonical_level_attempts_workspace_id_id_key",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_level_attempts_workspace_id_id_key ON public.canonical_level_attempts USING btree (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "index_name": "canonical_level_attempts_workspace_id_refresh_id_level_ordi_key",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_level_attempts_workspace_id_refresh_id_level_ordi_key ON public.canonical_level_attempts USING btree (workspace_id, refresh_id, level, ordinal)"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "index_name": "canonical_level_attempts_workspace_id_refresh_id_retry_of_a_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX canonical_level_attempts_workspace_id_refresh_id_retry_of_a_idx ON public.canonical_level_attempts USING btree (workspace_id, refresh_id, retry_of_attempt_id)"
+      },
+      {
+        "relname": "canonical_observations",
+        "index_name": "canonical_observations_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_observations_pkey ON public.canonical_observations USING btree (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_observations",
+        "index_name": "canonical_observations_workspace_id_refresh_id_source_attem_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX canonical_observations_workspace_id_refresh_id_source_attem_idx ON public.canonical_observations USING btree (workspace_id, refresh_id, source_attempt_id)"
+      },
+      {
+        "relname": "canonical_observations",
+        "index_name": "canonical_observations_workspace_id_refresh_id_write_id_ent_key",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_observations_workspace_id_refresh_id_write_id_ent_key ON public.canonical_observations USING btree (workspace_id, refresh_id, write_id, entity_id, entity_level, date, granularity, source, measurement_window)"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "index_name": "canonical_refreshes_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_refreshes_pkey ON public.canonical_refreshes USING btree (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "index_name": "canonical_refreshes_retain_until_workspace_id_id_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX canonical_refreshes_retain_until_workspace_id_id_idx ON public.canonical_refreshes USING btree (retain_until, workspace_id, id)"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "index_name": "canonical_refreshes_workspace_id_created_at_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX canonical_refreshes_workspace_id_created_at_idx ON public.canonical_refreshes USING btree (workspace_id, created_at)"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "index_name": "canonical_refreshes_workspace_id_retry_of_refresh_id_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX canonical_refreshes_workspace_id_retry_of_refresh_id_idx ON public.canonical_refreshes USING btree (workspace_id, retry_of_refresh_id)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "index_name": "canonical_write_attempts_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_write_attempts_pkey ON public.canonical_write_attempts USING btree (workspace_id, refresh_id, id)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "index_name": "canonical_write_attempts_workspace_id_id_key",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_write_attempts_workspace_id_id_key ON public.canonical_write_attempts USING btree (workspace_id, id)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "index_name": "canonical_write_attempts_workspace_id_refresh_id_ordinal_key",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX canonical_write_attempts_workspace_id_refresh_id_ordinal_key ON public.canonical_write_attempts USING btree (workspace_id, refresh_id, ordinal)"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "index_name": "canonical_write_attempts_workspace_id_refresh_id_retry_of_w_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX canonical_write_attempts_workspace_id_refresh_id_retry_of_w_idx ON public.canonical_write_attempts USING btree (workspace_id, refresh_id, retry_of_write_id)"
+      },
+      {
+        "relname": "metric_snapshots",
+        "index_name": "metric_snapshots_non_daily_identity_key",
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX metric_snapshots_non_daily_identity_key ON public.metric_snapshots USING btree (\"entityId\", \"entityLevel\", date, granularity, source, \"measurementWindow\") WHERE (\"measurementWindow\" <> 'DAILY'::\"MeasurementWindow\")"
+      }
+    ],
+    "triggers": [
+      {
+        "relname": "canonical_level_attempts",
+        "tgname": "canonical_guard",
+        "tgenabled": "O",
+        "tgdeferrable": false,
+        "tginitdeferred": false,
+        "definition": "CREATE TRIGGER canonical_guard BEFORE INSERT OR DELETE OR UPDATE ON public.canonical_level_attempts FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_guard()"
+      },
+      {
+        "relname": "canonical_level_attempts",
+        "tgname": "canonical_retention_event",
+        "tgenabled": "O",
+        "tgdeferrable": false,
+        "tginitdeferred": false,
+        "definition": "CREATE TRIGGER canonical_retention_event AFTER INSERT OR UPDATE ON public.canonical_level_attempts FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_extend_retention()"
+      },
+      {
+        "relname": "canonical_observations",
+        "tgname": "canonical_guard",
+        "tgenabled": "O",
+        "tgdeferrable": false,
+        "tginitdeferred": false,
+        "definition": "CREATE TRIGGER canonical_guard BEFORE INSERT OR DELETE OR UPDATE ON public.canonical_observations FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_guard()"
+      },
+      {
+        "relname": "canonical_observations",
+        "tgname": "canonical_observation_commit",
+        "tgenabled": "O",
+        "tgdeferrable": true,
+        "tginitdeferred": true,
+        "definition": "CREATE CONSTRAINT TRIGGER canonical_observation_commit AFTER INSERT ON public.canonical_observations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_validate_observation()"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "tgname": "canonical_guard",
+        "tgenabled": "O",
+        "tgdeferrable": false,
+        "tginitdeferred": false,
+        "definition": "CREATE TRIGGER canonical_guard BEFORE INSERT OR DELETE OR UPDATE ON public.canonical_refreshes FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_guard()"
+      },
+      {
+        "relname": "canonical_refreshes",
+        "tgname": "canonical_selection_seal",
+        "tgenabled": "O",
+        "tgdeferrable": true,
+        "tginitdeferred": true,
+        "definition": "CREATE CONSTRAINT TRIGGER canonical_selection_seal AFTER UPDATE ON public.canonical_refreshes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((old.source_sealed_at IS NULL) AND (new.source_sealed_at IS NOT NULL))) EXECUTE FUNCTION canonical_provenance.canonical_validate_selection()"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "tgname": "canonical_guard",
+        "tgenabled": "O",
+        "tgdeferrable": false,
+        "tginitdeferred": false,
+        "definition": "CREATE TRIGGER canonical_guard BEFORE INSERT OR DELETE OR UPDATE ON public.canonical_write_attempts FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_guard()"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "tgname": "canonical_retention_event",
+        "tgenabled": "O",
+        "tgdeferrable": false,
+        "tginitdeferred": false,
+        "definition": "CREATE TRIGGER canonical_retention_event AFTER INSERT OR UPDATE ON public.canonical_write_attempts FOR EACH ROW EXECUTE FUNCTION canonical_provenance.canonical_extend_retention()"
+      },
+      {
+        "relname": "canonical_write_attempts",
+        "tgname": "canonical_write_seal",
+        "tgenabled": "O",
+        "tgdeferrable": true,
+        "tginitdeferred": true,
+        "definition": "CREATE CONSTRAINT TRIGGER canonical_write_seal AFTER UPDATE ON public.canonical_write_attempts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((old.sealed_at IS NULL) AND (new.sealed_at IS NOT NULL))) EXECUTE FUNCTION canonical_provenance.canonical_validate_write()"
+      }
+    ],
+    "functions": [
+      {
+        "proname": "canonical_delete_retained",
+        "arguments": "ws uuid, roots uuid[]",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner,lumi_canonical_retention=X/lumi_canonical_owner}",
+        "definitionSha256": "a909f84e1b76224b9eb3ba5bde12c459e9cbec0058e917f6a792f26a921162a1"
+      },
+      {
+        "proname": "canonical_extend_retention",
+        "arguments": "",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "4b75dae6878880df8aad3221dfa2ae2a6434b52e0ebd847519fa877b424b4827"
+      },
+      {
+        "proname": "canonical_guard",
+        "arguments": "",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "ae956a171bcff87ba165d3df8d80d777187c3a478824702f0a22dfac39ee1dbd"
+      },
+      {
+        "proname": "canonical_v1_assert",
+        "arguments": "ok boolean, reason text",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "53a91c415cea8b2e52190b921c2fc28806eaf2ce58b8bc007a41023a4858e4eb"
+      },
+      {
+        "proname": "canonical_v1_date",
+        "arguments": "j jsonb, instant boolean",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "7b202b8ee5911ff6e0880804cb946ce75e13736f85fdfe0fbe63f51713d582fa"
+      },
+      {
+        "proname": "canonical_v1_facts",
+        "arguments": "j jsonb, account_id text, entity_level text",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "22a49fd1ab80698afd1a3544150866c2bcbec0a7df1b6c81e082bd65482f229a"
+      },
+      {
+        "proname": "canonical_v1_hash",
+        "arguments": "j jsonb",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "8a36bb1db8702305090918f80cfae33f2f3bc8fa480996c4cfba36bf4074a0b5"
+      },
+      {
+        "proname": "canonical_v1_id",
+        "arguments": "j jsonb, uuid_only boolean",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "c6a9e8fa152baca75828e5e2d87cba9f1eec8156e0f40fccdcf4f3f0c7d7f860"
+      },
+      {
+        "proname": "canonical_v1_keys",
+        "arguments": "j jsonb, required text[], optional text[]",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "7714f3a2e225715c59d1cb29e381545514de34b11aa8f2bd917524dc440d57cc"
+      },
+      {
+        "proname": "canonical_v1_label",
+        "arguments": "j jsonb, allowed text[]",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "6141fe95c767337bb4904bff4e9ee6c83a900a580acb6d813404249c1ff0f4cb"
+      },
+      {
+        "proname": "canonical_v1_manifest",
+        "arguments": "j jsonb",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "2635f77609d8b20156a13c262015d69978a17e75494197ef86d74dc9f2befed4"
+      },
+      {
+        "proname": "canonical_v1_origin",
+        "arguments": "j jsonb",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "d426a3713ca715c2fed05ae1175649e47af0404203bebfa4054d06bb50e82ec2"
+      },
+      {
+        "proname": "canonical_v1_receipt",
+        "arguments": "j jsonb, lvl text, request_hash bytea, max_pages integer",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "255dac089903c7371d95e0bf652b5dfa3311121ac861c10a1d586495d8b84cf8"
+      },
+      {
+        "proname": "canonical_v1_request",
+        "arguments": "j jsonb, lvl text, since date, until_date date",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "a9af0e4a31ccf4d213f1c9d73cc901b843c1cd054f4f6f21552fdffbc34e1fe9"
+      },
+      {
+        "proname": "canonical_v1_scope",
+        "arguments": "j jsonb, ws uuid, account_id text, since date, until_date date",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "7d5f5924a1f5a82b062f338dfdf3b36fcc44c46f61d9bc0d3b0c0467cfdf9a4b"
+      },
+      {
+        "proname": "canonical_v1_string",
+        "arguments": "j jsonb, maximum integer, nullable boolean",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "821a05830b1cde4b2f952052029a322c426648f3b9d1cc3bef3ee26dfd62ebbe"
+      },
+      {
+        "proname": "canonical_v1_uint",
+        "arguments": "j jsonb, nullable boolean",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": false,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "f2db953e438b90b0ac945636bb52d47e114847f6134547485407884c5dacc7a3"
+      },
+      {
+        "proname": "canonical_validate_observation",
+        "arguments": "",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "e80a71e910e1bf2163a775ba5ba473754108c5eedae3be815745393fa6dce86b"
+      },
+      {
+        "proname": "canonical_validate_selection",
+        "arguments": "",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "353367531a6702a215a01b70a7ec67134a410dfa7afb882a438d598393e040da"
+      },
+      {
+        "proname": "canonical_validate_write",
+        "arguments": "",
+        "owner": "lumi_canonical_owner",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=pg_catalog"
+        ],
+        "acl": "{lumi_canonical_owner=X/lumi_canonical_owner}",
+        "definitionSha256": "d262fe98be2d2ded0605b34d468b5e141fdc07d627ec28acfffccee7dd6f68c9"
+      }
+    ],
+    "grants": [
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "DELETE"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRIGGER"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "DELETE"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRIGGER"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "DELETE"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRIGGER"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "DELETE"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRIGGER"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT"
+      }
+    ],
+    "columnGrants": [
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "receipt_hash",
+          "source_receipt",
+          "source_sealed_at"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_level_attempts",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT",
+        "columns": [
+          "call_intent_at",
+          "created_at",
+          "id",
+          "level",
+          "ordinal",
+          "receipt_hash",
+          "record_version",
+          "refresh_id",
+          "request_descriptor",
+          "request_hash",
+          "retry_of_attempt_id",
+          "source_receipt",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_observations",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT",
+        "columns": [
+          "committed_projection",
+          "content_hash",
+          "created_at",
+          "date",
+          "entity_id",
+          "entity_level",
+          "external_entity_id",
+          "granularity",
+          "id",
+          "materialized_snapshot_id",
+          "measurement_window",
+          "record_version",
+          "refresh_id",
+          "source",
+          "source_attempt_id",
+          "source_facts",
+          "window_end",
+          "window_start",
+          "workspace_id",
+          "write_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "attempt_dispositions",
+          "not_started_levels",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT",
+        "columns": [
+          "account_set_hash",
+          "attempt_dispositions",
+          "correlation_id",
+          "created_at",
+          "id",
+          "measurement_window",
+          "not_started_levels",
+          "platform",
+          "provider_account_id",
+          "record_version",
+          "requested_end",
+          "requested_start",
+          "retain_until",
+          "retry_of_refresh_id",
+          "scope_descriptor",
+          "scope_hash",
+          "selected_ad_id",
+          "selected_adset_id",
+          "selected_campaign_id",
+          "selection_hash",
+          "source_sealed_at",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_refreshes",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "retain_until"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "INSERT",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "SELECT",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_app",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "error_code",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "sealed_at"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "INSERT",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "REFERENCES",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "SELECT",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_owner",
+        "privilege_type": "UPDATE",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      },
+      {
+        "table_name": "canonical_write_attempts",
+        "grantee": "lumi_canonical_retention",
+        "privilege_type": "SELECT",
+        "columns": [
+          "commit_manifest",
+          "committed_at",
+          "created_at",
+          "error_code",
+          "id",
+          "ordinal",
+          "outcome",
+          "outcome_hash",
+          "planned_at",
+          "planned_payload_hash",
+          "record_version",
+          "refresh_id",
+          "retry_of_write_id",
+          "sealed_at",
+          "source_selection_hash",
+          "workspace_id"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "rolname": "lumi_canonical_app",
+        "rolsuper": false,
+        "rolinherit": true,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": false,
+        "rolreplication": false,
+        "rolbypassrls": false
+      },
+      {
+        "rolname": "lumi_canonical_owner",
+        "rolsuper": false,
+        "rolinherit": true,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": false,
+        "rolreplication": false,
+        "rolbypassrls": false
+      },
+      {
+        "rolname": "lumi_canonical_retention",
+        "rolsuper": false,
+        "rolinherit": true,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": false,
+        "rolreplication": false,
+        "rolbypassrls": false
+      }
+    ],
+    "memberships": {
+      "app_owner": false,
+      "app_retention": false,
+      "retention_owner": false
+    }
+  }
+}

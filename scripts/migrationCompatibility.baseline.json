@@ -10,7 +10,8 @@
     "",
     "These entries are HISTORY. They record what was already shipped and why it was",
     "acceptable, so the contract can be enforced on what comes next without rewriting",
-    "the past. Listing a migration does NOT make it safe — it records that someone",
+    "the past. The pending 02B-1 entry is a native-DDL review record, not shipped history.",
+    "Listing a migration does NOT make it safe — it records that someone",
     "looked. A new migration should almost always be COMPATIBLE instead.",
     "",
     "Verdicts: COMPATIBLE | TRANSITION_REQUIRED | INCOMPATIBLE | UNKNOWN"
@@ -98,6 +99,10 @@
   "20260824000000_b4e5_non_daily_partial_identity": {
     "verdict": "UNKNOWN",
     "reason": "Rebuilds the non-daily partial identity index, discovering the existing index name from the catalogue before dropping and recreating it. Dynamic by construction."
+  },
+  "20261015000000_canonical_provenance_v1": {
+    "verdict": "UNKNOWN",
+    "reason": "02B-1 is additive storage only: four new canonical tables, a private function schema, NOLOGIN capability roles and fixed-allowlist dynamic ownership/ACL installation. The static classifier cannot resolve runtime-built DDL or CREATE SCHEMA; its UNKNOWN verdict is retained. Old writers/readers never name the ledger and no capture wiring is installed. No existing columns, metrics, snapshot identity or historical evidence are rewritten. The new owner receives narrowly scoped legacy read/lock grants; existing runtime logins are not enrolled and new-object default ACLs are sanitized. Isolated tests prove populated75-to76 migration replay with identical legacy snapshot/model drift, actual transactional failure recovery, restricted migrator/app behavior, native catalog drift rejection and workspace deletion CASCADE. This declaration records a concrete native-DDL review surface, not production compatibility certification, hosted CI exception, merge approval or permission to run a migration. A dedicated DBA-provisioned migrator and separately approved two-service deployment/rollback plan remain mandatory."
   },
   "20260905120000_c10_decision_class": {
     "verdict": "TRANSITION_REQUIRED",
