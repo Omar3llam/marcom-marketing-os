@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync,readFileSync,writeFileSync } from 'node:fs';
+import { mkdtempSync,readFileSync,writeFileSync,mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 const load = () => import('../../scripts/legacy-schema/verify.js');
 describe('03B-1A explicit diagnostic fails closed before I/O', () => {
@@ -19,7 +20,7 @@ describe('03B-1A explicit diagnostic fails closed before I/O', () => {
     expect(result.status).toBe('UNKNOWN');
     expect(JSON.stringify(result)).not.toContain('do-not-print');
   });
-  it('rejects a missing manifest before opening a connection', async () => {
+  it('rejects a missing manifest override before opening a connection', async () => {
     const { verifyLegacySchema } = await load();
     let opened = false;
     const result = await verifyLegacySchema({ manifestPath: '/missing/contract.json', open: () => { opened = true; } });
@@ -30,6 +31,51 @@ describe('03B-1A explicit diagnostic fails closed before I/O', () => {
   const target={hostname:'127.0.0.1',port:55438,database:'fixture',login:bindings.auditor,
     serverAddress:'127.0.0.1',serverPort:55438,versionMajor:17,tls:'disabled-loopback'};
   const url='postgresql://fixture_auditor@127.0.0.1:55438/fixture';
+  async function forgedContract() {
+    const contract=await import('../../scripts/legacy-schema/contract.js');
+    const manifest=JSON.parse(readFileSync(contract.MANIFEST,'utf8'));
+    expect(manifest.catalog.columns).toHaveLength(43);
+    manifest.catalog.columns.pop();
+    expect(Object.keys(manifest.catalog)).toHaveLength(21);
+    const dir=mkdtempSync(join(tmpdir(),'lumi-p1-contract-'));
+    const manifestPath=join(dir,'forged.json');
+    writeFileSync(manifestPath,JSON.stringify(manifest));
+    return {contract,dir,manifestPath};
+  }
+  it('rejects a complete forged contract with one expected column removed',async()=>{
+    const {contract,manifestPath}=await forgedContract();
+    expect(()=>contract.loadContract({bindings,manifestPath,root:contract.ROOT})).toThrow();
+  });
+  it('rejects changed bundled manifest bytes even without a path override',async()=>{
+    const {dir,manifestPath}=await forgedContract();
+    // Isolated module copy exercises the fixed-path hash seal; repository authority is untouched.
+    const copy=join(dir,'scripts','legacy-schema');mkdirSync(copy,{recursive:true});
+    writeFileSync(join(copy,'contract.mjs'),readFileSync(new URL('../../scripts/legacy-schema/contract.js',import.meta.url),'utf8'));
+    writeFileSync(join(copy,'manifest.v1.json'),readFileSync(manifestPath));
+    const isolated=await import(/* @vite-ignore */ pathToFileURL(join(copy,'contract.mjs')).href);
+    expect(()=>isolated.loadContract({bindings})).toThrow('Unapproved manifest');
+  });
+  it.each(['manifestPath','root'])('normal verification rejects a %s override before opening a pool',async(key)=>{
+    const {contract,manifestPath}=await forgedContract();
+    const {verifyLegacySchema}=await load();let opened=false;
+    const result=await verifyLegacySchema({url,target,bindings,[key]:key==='root'?contract.ROOT:manifestPath,
+      open:()=>{opened=true;throw new Error('Connection must not be attempted');}});
+    expect(opened).toBe(false);expect(result.status).toBe('UNKNOWN');
+  });
+  it.each(['manifestPath','root'])('actual CLI rejects target JSON %s before any socket connection',async(key)=>{
+    const {contract,dir,manifestPath}=await forgedContract();
+    const config=join(dir,'target.json'),guard=join(dir,'socket-guard.cjs'),trace=join(dir,'connections.jsonl');
+    writeFileSync(trace,'');
+    writeFileSync(config,JSON.stringify({target,bindings,[key]:key==='root'?contract.ROOT.href:manifestPath}));
+    // The child has no ambient credentials or dotenv. Block before calling the real socket method.
+    writeFileSync(guard,"require('node:net').Socket.prototype.connect=function(){require('node:fs').appendFileSync(process.env.LUMI_P1_SOCKET_TRACE,'CONNECTION_ATTEMPT\\n');throw new Error('P1_CONNECTION_BLOCKED');};");
+    const run=spawnSync(process.execPath,['--require',guard,'scripts/verify-legacy-schema.js'],{encoding:'utf8',env:{
+      SystemRoot:process.env.SystemRoot,PATH:process.env.PATH,LEGACY_SCHEMA_AUDIT_TARGET_FILE:config,
+      LEGACY_SCHEMA_AUDIT_URL:url,LUMI_P1_SOCKET_TRACE:trace}});
+    expect(run.error).toBeUndefined();expect(run.status).toBe(1);
+    expect(readFileSync(trace,'utf8')).toBe('');
+    expect(JSON.parse(run.stdout)).toMatchObject({status:'UNKNOWN',reasons:['CONTRACT_OR_SOURCE_UNQUALIFIED']});
+  });
   it('does not leak connection error messages and always closes the pool',async()=>{
     const {verifyLegacySchema}=await load();let closed=false;
     const result=await verifyLegacySchema({url,target,bindings,open:()=>({
@@ -37,7 +83,7 @@ describe('03B-1A explicit diagnostic fails closed before I/O', () => {
     expect(result).toMatchObject({status:'FAILED',sqlState:'42501'});expect(closed).toBe(true);
     expect(JSON.stringify(result)).not.toContain('private-password');
   });
-  it('rejects missing source without opening a pool',async()=>{
+  it('rejects a missing source-root override without opening a pool',async()=>{
     const {verifyLegacySchema}=await load();let opened=false;
     const result=await verifyLegacySchema({url,target,bindings,root:new URL('file:///definitely-missing/'),open:()=>{opened=true;}});
     expect(result.status).toBe('UNKNOWN');expect(opened).toBe(false);

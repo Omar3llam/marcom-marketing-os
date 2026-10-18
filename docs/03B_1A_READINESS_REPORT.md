@@ -148,3 +148,54 @@ drop objects, rewrite history or execute production recovery as rollback.
 
 **Stop:** Draft PR and evidence for a genuinely separate reviewer. Independent
 acceptance and Omar's later explicit scope/release approvals are still required.
+
+## 2026-10-18 P1 correction — contract authority
+
+Addresses only the independent [P1 review](https://github.com/Omar3llam/marcom-marketing-os/pull/583#issuecomment-6235474551)
+of `b95782be81010654f7683c01111d988fa32f073b`. Fresh master remained
+`94232a32433de5f77b7d02874e9839f52a084b91`; the existing branch was clean.
+The historical results above describe the original head, not this correction.
+
+Before: operator target JSON was spread into verification options. A complete
+manifest retaining all21 categories and source hashes but removing one column
+(43 to42) was accepted. Both manifestPath and source-root substitutions reached
+the connection boundary. A self-reported alternate hash did not enforce authority.
+
+After: the loader rejects either override key, resolves both paths from its own
+module and checks the approved manifest's LF-normalized hash before parsing or
+connecting. The CLI rejects overrides and passes only target/bindings, plus the
+explicit audit URL. Normal verification cannot substitute a contract. The explicit
+connection-factory test seam remains for isolated query instrumentation. Manifest,
+source inventory, catalog assertions, role/target qualification and read-only SQL
+are unchanged. The approved manifest bytes/hash match the reviewed head exactly.
+
+Correction file list: `contract.js` (fixed authority/hash seal), operator CLI
+(reject and stop spreading overrides), validator unit tests (forgery/API/CLI/hash
+negatives), provisioning contract and this evidence annex. No other tracked files.
+
+| Correction evidence | Executed result |
+|---|---|
+| RED, old implementation plus five new tests |8 passed,5 failed,0 skipped. Complete forged manifest accepted; both API overrides opened the injected pool; both actual CLI overrides attempted a socket. A child preload blocked before the real connection method; no DB/network connection occurred. |
+| GREEN validator unit |14 passed,0 failed,0 skipped. Includes changed bundled bytes in an isolated module copy; approved repository manifest never altered. CLI override cases exit1/UNKNOWN with zero socket attempts. |
+| Unchanged isolated PG17.11 matrix |54 passed,0 failed,0 skipped; all54 positive baselines COMPATIBLE,3,032 instrumented statements,0 unexpected write statements/business-row reads. Retained local template reused; each case created and dropped its own disposable clone. No application migration execution. |
+| Focused regression initial |71 passed,2 failed,11 skipped. Existing runtime/census scanner tests exceeded unchanged5s limits; raw failures retained. |
+| Focused regression serial repeat (`--maxWorkers=1`) |73 passed,0 failed,11 skipped;7 suites passed,1 skipped. Same assertions and timeouts. |
+| Legacy contracts |34 passed,0 failed,0 skipped;6 suites. |
+| Source lint |0 errors,31 existing warnings. |
+| Client-absent backend build |PASS: Prisma5.22 generation;865 source parses; boot-check865 parses and server import graph link. Not a live API/worker boot. |
+| Client-absent validator unit |14 passed,0 failed,0 skipped. |
+| Architecture / security |Backend-only and full checks PASS; architecture5 backend /9 full existing warnings; security0 warnings. |
+| Build/static guard and script syntax |1,760 Node records,0 forbidden events; both changed standalone scripts parse; diff whitespace PASS. |
+| Full DB verification /11 production-migration tests |NOT_TESTED / skipped: existing provisioner executes application migrations including76, outside this correction's authority. |
+
+Detailed build/static logs and current-head hosted execution are recorded separately
+in the correction evidence package/PR. Zero-step hosted jobs are NOT_TESTED;
+no CI exception is requested or applied. The PG lab was stopped after verification.
+
+Rollback of this correction reopens the reviewed P1, so it is not an acceptable
+operator workaround. There is no runtime wiring or production data change to undo.
+Production native/ACL/privilege qualification, failed76 recovery, backup/restore,
+live build/predeploy drift, runtime/worker admission, full DB/hosted execution and
+rolling release remain OPEN. Gates B/C remain BLOCKED. No merge, deployment,
+production inspection, capture activation or phase advancement is authorized.
+Independent re-review from SaherMohamed250 is required at the updated immutable head.

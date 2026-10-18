@@ -6,7 +6,9 @@ export async function main(env=process.env) {
   let result;
   try {
     const config=JSON.parse(readFileSync(env.LEGACY_SCHEMA_AUDIT_TARGET_FILE,'utf8'));
-    result=await verifyLegacySchema({...config,url:env.LEGACY_SCHEMA_AUDIT_URL});
+    if(Object.hasOwn(config,'manifestPath')||Object.hasOwn(config,'root'))
+      result={status:'UNKNOWN',scope:'LEGACY_NATIVE_DIAGNOSTIC_ONLY',reasons:['CONTRACT_OR_SOURCE_UNQUALIFIED']};
+    else result=await verifyLegacySchema({target:config.target,bindings:config.bindings,url:env.LEGACY_SCHEMA_AUDIT_URL});
   }catch{result={status:'UNKNOWN',scope:'LEGACY_NATIVE_DIAGNOSTIC_ONLY',reasons:['EXPLICIT_TARGET_FILE_REQUIRED']};}
   process.stdout.write(JSON.stringify(result)+'\n');
   return result.status==='COMPATIBLE'?0:1;
