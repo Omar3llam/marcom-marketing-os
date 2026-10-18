@@ -14,21 +14,101 @@
 // SCOPE OF THE SCAN, stated so it can be argued with: `src/**` excluding tests.
 // The client never queries Prisma, and `packages/` holds no I/O.
 // ============================================================
-import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { readFileSync, existsSync, readdirSync, lstatSync, realpathSync, openSync, fstatSync, closeSync, constants, mkdtempSync, mkdirSync, writeFileSync, unlinkSync, symlinkSync, linkSync, rmSync } from 'node:fs';
+import { join, resolve, relative, sep, dirname, isAbsolute, basename } from 'node:path';
+import { tmpdir } from 'node:os';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 const SRC = join(fileURLToPath(new URL('../../', import.meta.url)));
 
-function walk(dir, out = []) {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (p.endsWith('.js') && !p.endsWith('.test.js')) out.push(p);
+/** Capture each applicable file once; assertions can only read sealed entries. */
+function loadSourceSnapshot(root, { directoryEntries = readdirSync, readSource = readFileSync } = {}) {
+  if (typeof root !== 'string' || !root || root.includes('\0') || !isAbsolute(root)) {
+    throw new Error('Malformed source root');
   }
-  return out;
+  const target = resolve(root);
+  for (let ancestor = target; ; ancestor = dirname(ancestor)) {
+    if (lstatSync(ancestor).isSymbolicLink()) throw new Error('Symlink in source root');
+    if (dirname(ancestor) === ancestor) break;
+  }
+  if (!lstatSync(target).isDirectory()) throw new Error('Source root is not a directory');
+  root = realpathSync(target);
+  const inside = (file) => {
+    const rel = relative(root, file);
+    return rel && rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel);
+  };
+  const key = (file) => process.platform === 'win32' ? file.toLowerCase() : file;
+  const entries = new Map(), files = [], seen = new Set();
+  // Other suites create read-only hard links: ctime/nlink can change without a write.
+  const unchanged = (a, b) => a.dev === b.dev && a.ino === b.ino
+    && a.size === b.size && a.mtimeMs === b.mtimeMs;
+  const capture = (file) => {
+    const before = lstatSync(file);
+    if (before.isSymbolicLink()) throw new Error('Symlink source entry: ' + file);
+    if (!before.isFile()) throw new Error('Invalid source file: ' + file);
+    const canonical = realpathSync(file);
+    if (!inside(canonical)) throw new Error('Source outside root: ' + file);
+    if (entries.has(key(canonical))) throw new Error('Duplicate source entry: ' + file);
+    const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    let text;
+    try {
+      const opened = fstatSync(fd);
+      if (!unchanged(before, opened)) throw new Error('Source changed before capture: ' + file);
+      text = readSource(fd, 'utf8');
+      if (!unchanged(opened, fstatSync(fd))) throw new Error('Source changed during capture: ' + file);
+    } finally { closeSync(fd); }
+    const after = lstatSync(file);
+    if (after.isSymbolicLink() || !unchanged(before, after) || realpathSync(file) !== canonical) {
+      throw new Error('Source changed after capture: ' + file);
+    }
+    if (typeof text !== 'string' || !text.trim()) throw new Error('Empty source file: ' + file);
+    entries.set(key(canonical), text);
+    return canonical;
+  };
+  const walk = (dir) => {
+    const before = lstatSync(dir);
+    if (before.isSymbolicLink()) throw new Error('Symlink source directory: ' + dir);
+    if (!before.isDirectory() || !inside(realpathSync(dir))) throw new Error('Invalid source directory: ' + dir);
+    const names = directoryEntries(dir);
+    if (!Array.isArray(names)) throw new Error('Invalid source directory entries');
+    for (const name of names) {
+      if (typeof name !== 'string' || !name || name === '.' || name === '..'
+        || /[\\/\0]/.test(name) || basename(name) !== name) throw new Error('Malformed source entry');
+      const full = join(dir, name), folded = full.normalize('NFC').toLowerCase();
+      if (seen.has(folded)) throw new Error('Duplicate or case-colliding source entry: ' + full);
+      seen.add(folded);
+    }
+    for (const name of names) {
+      const file = join(dir, name), stat = lstatSync(file);
+      if (stat.isSymbolicLink()) throw new Error('Symlink source entry: ' + file);
+      if (stat.isDirectory()) walk(file);
+      else if (!stat.isFile()) throw new Error('Invalid source entry: ' + file);
+      else if (file.endsWith('.js') && !file.endsWith('.test.js')) files.push(capture(file));
+    }
+    if (!unchanged(before, lstatSync(dir))) throw new Error('Source directory changed during capture: ' + dir);
+  };
+  walk(join(root, 'src'));
+  if (!files.length) throw new Error('Empty applicable source corpus');
+  const read = (file) => {
+    if (typeof file !== 'string' || !file || file.includes('\0') || !isAbsolute(file)) {
+      throw new Error('Malformed source target');
+    }
+    const target = resolve(file);
+    if (!inside(target)) throw new Error('Source target outside root');
+    if (!entries.has(key(target))) throw new Error('Missing snapshot entry: ' + file);
+    return entries.get(key(target));
+  };
+  return Object.freeze({ root, files: Object.freeze(files), read });
 }
+
+let SNAPSHOT;
+beforeAll(() => {
+  const started = performance.now();
+  SNAPSHOT = loadSourceSnapshot(resolve(SRC, '..'));
+  console.info('SOURCE_SNAPSHOT', JSON.stringify({ suite: 'jurisdiction', files: SNAPSHOT.files.length, elapsedMs: performance.now() - started }));
+});
 
 const WRITE = /\bdecision\.(create|createMany)\s*\(/g;
 const READ  = /\bdecision\.(findMany|findFirst|findUnique|findUniqueOrThrow|count|aggregate|groupBy|updateMany)\s*\(/g;
@@ -49,14 +129,14 @@ function callBody(source, openIndex) {
 /** Comments carry the defect verbatim in this slice — measure CODE only. */
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
-function sites(pattern) {
+function sites(pattern, snapshot = SNAPSHOT) {
   const found = [];
-  for (const file of walk(SRC)) {
-    const source = stripComments(readFileSync(file, 'utf8'));
+  for (const file of snapshot.files) {
+    const source = stripComments(snapshot.read(file));
     for (const m of source.matchAll(pattern)) {
       const open = source.indexOf('(', m.index + m[0].length - 1);
       found.push({
-        file: relative(SRC, file).split(sep).join('/'),
+        file: relative(join(snapshot.root, 'src'), file).split(sep).join('/'),
         op: m[1],
         body: callBody(source, open),
       });
@@ -82,6 +162,30 @@ const declares = (body) => (
   || /\bdecisionClass\s*:/.test(body)
 );
 
+function undeclaredWriters(snapshot) {
+    const declares$ = /\bdecisionClass\s*:/;
+    return sites(WRITE, snapshot)
+      .filter((s) => (s.op === 'createMany'
+        ? !declares$.test(stripComments(snapshot.read(join(snapshot.root, 'src', s.file))))
+        : !declares$.test(s.body)))
+      .map((s) => `${s.file} (decision.${s.op})`);
+}
+
+function blindReads(snapshot) {
+    const inFile = new Map();
+    const fileDeclares = (file) => {
+      if (!inFile.has(file)) {
+        inFile.set(file, declares(stripComments(snapshot.read(join(snapshot.root, 'src', file)))));
+      }
+      return inFile.get(file);
+    };
+    return sites(READ, snapshot)
+      .filter((s) => !byId(s.body)
+        && !declares(s.body)
+        && !(/\bwhere\s*[,}]/.test(s.body) && fileDeclares(s.file)))
+      .map((s) => `${s.file} (decision.${s.op})`);
+}
+
 describe('T1 — every writer declares its class', () => {
   it('names a decisionClass in every create payload', () => {
     // `create` carries its row inline, so the payload is checkable directly.
@@ -94,12 +198,7 @@ describe('T1 — every writer declares its class', () => {
     // is the case that matters: a new writer added by someone who never met
     // this contract. The precise payload shape is covered behaviourally in
     // decisionClassWriters.test.js.
-    const declares$ = /\bdecisionClass\s*:/;
-    const undeclared = sites(WRITE)
-      .filter((s) => (s.op === 'createMany'
-        ? !declares$.test(stripComments(readFileSync(join(SRC, s.file), 'utf8')))
-        : !declares$.test(s.body)))
-      .map((s) => `${s.file} (decision.${s.op})`);
+    const undeclared = undeclaredWriters(SNAPSHOT);
 
     // On trunk all five writers encode the class as a string PREFIX on
     // `rootCause` — three of them from a private const, one from a bare
@@ -122,18 +221,7 @@ describe('T13 — every population read declares, or reads one row', () => {
     // as `createMany({ data: rows })` above. Following a variable to its
     // definition is more machinery than this guard earns; what it must still
     // catch is a module that touches the table having never met the contract.
-    const inFile = new Map();
-    const fileDeclares = (file) => {
-      if (!inFile.has(file)) {
-        inFile.set(file, declares(stripComments(readFileSync(join(SRC, file), 'utf8'))));
-      }
-      return inFile.get(file);
-    };
-    const blind = sites(READ)
-      .filter((s) => !byId(s.body)
-        && !declares(s.body)
-        && !(/\bwhere\s*[,}]/.test(s.body) && fileDeclares(s.file)))
-      .map((s) => `${s.file} (decision.${s.op})`);
+    const blind = blindReads(SNAPSHOT);
 
     // TWENTY-ONE, not the eleven discovery named — and the gap is the contract,
     // not an error in either number. Discovery asked "which reads say nothing at
@@ -178,14 +266,156 @@ describe('the rootCause prefix stops being a class parser', () => {
     // is a subtype payload, which is exactly what `rootCause` keeps. What ends
     // is deriving the CLASS from it.
     const offenders = [];
-    for (const file of walk(SRC)) {
+    for (const file of SNAPSHOT.files) {
       const rel = relative(SRC, file).split(sep).join('/');
       if (rel.startsWith('services/decisions/')) continue;      // the registry's own home
       if (rel === 'services/verdict-engine/decisionIdentity.js') continue;
-      const source = stripComments(readFileSync(file, 'utf8'));
+      const source = stripComments(SNAPSHOT.read(file));
       if (/startsWith:\s*['"`](guardrail|allocation|test|incrementality):/.test(source)) offenders.push(rel);
       if (/rootCause[\s\S]{0,80}?\.(startsWith|match)\s*\(/.test(source)) offenders.push(rel);
     }
     expect([...new Set(offenders)]).toEqual([]);
   });
+});
+
+// Synthetic subjects are private temporary trees, never the tracked source.
+function withSourceFixture(run) {
+  const sandbox = mkdtempSync(join(tmpdir(), 'lumi-source-snapshot-'));
+  const root = join(sandbox, 'checkout');
+  mkdirSync(join(root, 'src'), { recursive: true });
+  mkdirSync(join(root, 'prisma'));
+  writeFileSync(join(root, 'src/probe.js'), 'export const safe = true;');
+  writeFileSync(join(root, 'prisma/schema.prisma'), 'enum ActionType { PAUSE_CAMPAIGN }');
+  writeFileSync(join(sandbox, 'outside.js'), 'export const outside = true;');
+  try { return run({ root, sandbox }); }
+  finally {
+    const rel = relative(resolve(tmpdir()), resolve(sandbox));
+    if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)
+      || !basename(sandbox).startsWith('lumi-source-snapshot-') || lstatSync(sandbox).isSymbolicLink()) {
+      throw new Error('Refusing unsafe synthetic-fixture cleanup');
+    }
+    rmSync(sandbox, { recursive: true });
+  }
+}
+
+describe('source snapshot fixture', () => {
+  it('permits read-only fixture hard links without treating link-count metadata as content changes', () => withSourceFixture(({ root, sandbox }) => {
+    const file = join(root, 'src/probe.js');
+    const snapshot = loadSourceSnapshot(root, {
+      readSource(fd, encoding) {
+        if (fstatSync(fd).ino === lstatSync(file).ino) linkSync(file, join(sandbox, 'read-only-copy.js'));
+        return readFileSync(fd, encoding);
+      },
+    });
+    expect(lstatSync(file).nlink).toBe(2);
+    expect(snapshot.read(file)).toContain('safe');
+  }));
+  it('eagerly reads once and exposes only immutable snapshot data', () => withSourceFixture(({ root }) => {
+    let reads = 0;
+    const snapshot = loadSourceSnapshot(root, { readSource(...args) { reads++; return readFileSync(...args); } });
+    expect(reads).toBeGreaterThan(0);
+    const count = reads, file = join(root, 'src/probe.js');
+    const original = snapshot.read(file);
+    writeFileSync(file, 'export const changed = true;');
+    expect(snapshot.read(file)).toBe(original);
+    expect(reads).toBe(count);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot.files)).toBe(true);
+    expect(() => snapshot.files.push(file)).toThrow();
+  }));
+
+  it('rejects an empty applicable source corpus', () => withSourceFixture(({ root }) => {
+    unlinkSync(join(root, 'src/probe.js'));
+    writeFileSync(join(root, 'src/ignored.test.js'), 'export const ignored = true;');
+    writeFileSync(join(root, 'src/README.md'), 'No applicable JavaScript');
+    expect(() => loadSourceSnapshot(root)).toThrow(/empty/i);
+  }));
+
+  it('rejects an empty source file before assertions', () => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/probe.js'), '');
+    expect(() => loadSourceSnapshot(root)).toThrow(/empty/i);
+  }));
+
+  it('rejects missing source directories', () => withSourceFixture(({ root }) => {
+    const missing = join(root, 'missing');
+    mkdirSync(missing);
+    expect(() => loadSourceSnapshot(missing)).toThrow();
+  }));
+
+  it('propagates unreadable source during eager fixture setup', () => withSourceFixture(({ root }) => {
+    expect(() => loadSourceSnapshot(root, { readSource() { throw new Error('EACCES synthetic read'); } })).toThrow(/EACCES/);
+  }));
+
+  it('rejects malformed roots and out-of-root lookup targets', () => withSourceFixture(({ root, sandbox }) => {
+    for (const malformed of [undefined, null, 42, '', '../relative', 'bad\0target']) {
+      expect(() => loadSourceSnapshot(malformed)).toThrow();
+    }
+    const snapshot = loadSourceSnapshot(root);
+    expect(() => snapshot.read(join(sandbox, 'outside.js'))).toThrow(/root|outside/i);
+    expect(() => snapshot.read(null)).toThrow();
+  }));
+
+  it.each([
+    ['duplicate', ['probe.js', 'probe.js']],
+    ['case-colliding', ['probe.js', 'PROBE.js']],
+    ['escaping', ['../outside.js']],
+  ])('rejects %s directory entries', (_kind, entries) => withSourceFixture(({ root }) => {
+    expect(() => loadSourceSnapshot(root, {
+      directoryEntries(dir) { return dir === realpathSync(join(root, 'src')) ? entries : readdirSync(dir); },
+    })).toThrow(/duplicate|collid|entry|escape|root/i);
+  }));
+
+  it('rejects descendant links and symlinked root ancestors', () => withSourceFixture(({ root, sandbox }) => {
+    const outside = join(sandbox, 'outside');
+    mkdirSync(outside); writeFileSync(join(outside, 'foreign.js'), 'export const foreign = true;');
+    const descendant = join(root, 'src/linked');
+    symlinkSync(outside, descendant, 'junction');
+    try { expect(() => loadSourceSnapshot(root)).toThrow(/symlink|link/i); }
+    finally { unlinkSync(descendant); }
+    const ancestor = join(sandbox, 'alias');
+    symlinkSync(sandbox, ancestor, 'junction');
+    try { expect(() => loadSourceSnapshot(join(ancestor, 'checkout'))).toThrow(/symlink|link/i); }
+    finally { unlinkSync(ancestor); }
+  }));
+
+  it('rejects absent snapshot entries without reading an alternate file', () => withSourceFixture(({ root }) => {
+    const snapshot = loadSourceSnapshot(root), added = join(root, 'src/late.js');
+    writeFileSync(added, 'export const late = true;');
+    expect(() => snapshot.read(added)).toThrow(/snapshot entry/i);
+  }));
+
+  it('discovers newly added modules on each fresh snapshot invocation', () => withSourceFixture(({ root }) => {
+    const first = loadSourceSnapshot(root), added = join(root, 'src/unseen.js');
+    writeFileSync(added, 'export const unseen = true;');
+    const second = loadSourceSnapshot(root);
+    expect(first.files).not.toContain(added);
+    expect(second.files).toContain(added);
+    expect(second.read(added)).toContain('unseen');
+  }));
+});
+
+describe('synthetic jurisdiction ratchets', () => {
+  it.each(['create', 'createMany'])('fails the existing writer assertion for unscoped %s', (op) => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/unseen-writer.js'), 'prisma.decision.' + op + '({ data: {} });');
+    const snapshot = loadSourceSnapshot(root);
+    expect(undeclaredWriters(snapshot)).toEqual(['unseen-writer.js (decision.' + op + ')']);
+    expect(() => expect(undeclaredWriters(snapshot)).toEqual([])).toThrow();
+  }));
+
+  it('fails the existing reader assertion for an unscoped population read', () => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/unseen-reader.js'), 'prisma.decision.findMany({ where: { workspaceId } });');
+    const snapshot = loadSourceSnapshot(root);
+    expect(blindReads(snapshot)).toEqual(['unseen-reader.js (decision.findMany)']);
+    expect(() => expect(blindReads(snapshot)).toEqual([])).toThrow();
+  }));
+
+  it('excludes comments/test files and preserves legitimate class and by-id predicates', () => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/comments.js'), '// prisma.decision.create({ data: {} });\n/* prisma.decision.findMany({}); */');
+    writeFileSync(join(root, 'src/ignored.test.js'), 'prisma.decision.create({ data: {} });');
+    writeFileSync(join(root, 'src/scoped.js'), 'prisma.decision.create({ data: { decisionClass: "CONNECTOR" } });\nprisma.decision.findMany({ where: { decisionClass: "CONNECTOR" } });\nprisma.decision.findUnique({ where: { id: identity } });');
+    const snapshot = loadSourceSnapshot(root);
+    expect(undeclaredWriters(snapshot)).toEqual([]);
+    expect(blindReads(snapshot)).toEqual([]);
+    expect(sites(READ, snapshot)).toHaveLength(2);
+  }));
 });
