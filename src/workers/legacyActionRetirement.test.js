@@ -20,26 +20,105 @@
 // success" is a property of the repository, not of one function, and a test
 // that imported a single module could not see a copy reintroduced elsewhere.
 // ============================================================
-import { describe, it, expect } from 'vitest';
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { readFileSync, existsSync, readdirSync, lstatSync, realpathSync, openSync, fstatSync, closeSync, constants, mkdtempSync, mkdirSync, writeFileSync, unlinkSync, symlinkSync, linkSync, rmSync } from 'node:fs';
+import { join, resolve, relative, sep, dirname, isAbsolute, basename } from 'node:path';
+import { tmpdir } from 'node:os';
+import { performance } from 'node:perf_hooks';
 
 const SRC = resolve(process.cwd(), 'src');
 
-/** Every .js file under src/, excluding tests. */
-function sourceFiles(dir = SRC, out = []) {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) { sourceFiles(full, out); continue; }
-    if (!entry.endsWith('.js')) continue;
-    if (entry.includes('.test.')) continue;
-    out.push(full);
+/** Capture each applicable file once; assertions can only read sealed entries. */
+function loadSourceSnapshot(root, { directoryEntries = readdirSync, readSource = readFileSync } = {}) {
+  if (typeof root !== 'string' || !root || root.includes('\0') || !isAbsolute(root)) {
+    throw new Error('Malformed source root');
   }
-  return out;
+  const target = resolve(root);
+  for (let ancestor = target; ; ancestor = dirname(ancestor)) {
+    if (lstatSync(ancestor).isSymbolicLink()) throw new Error('Symlink in source root');
+    if (dirname(ancestor) === ancestor) break;
+  }
+  if (!lstatSync(target).isDirectory()) throw new Error('Source root is not a directory');
+  root = realpathSync(target);
+  const inside = (file) => {
+    const rel = relative(root, file);
+    return rel && rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel);
+  };
+  const key = (file) => process.platform === 'win32' ? file.toLowerCase() : file;
+  const entries = new Map(), files = [], seen = new Set();
+  // Other suites create read-only hard links: ctime/nlink can change without a write.
+  const unchanged = (a, b) => a.dev === b.dev && a.ino === b.ino
+    && a.size === b.size && a.mtimeMs === b.mtimeMs;
+  const capture = (file) => {
+    const before = lstatSync(file);
+    if (before.isSymbolicLink()) throw new Error('Symlink source entry: ' + file);
+    if (!before.isFile()) throw new Error('Invalid source file: ' + file);
+    const canonical = realpathSync(file);
+    if (!inside(canonical)) throw new Error('Source outside root: ' + file);
+    if (entries.has(key(canonical))) throw new Error('Duplicate source entry: ' + file);
+    const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    let text;
+    try {
+      const opened = fstatSync(fd);
+      if (!unchanged(before, opened)) throw new Error('Source changed before capture: ' + file);
+      text = readSource(fd, 'utf8');
+      if (!unchanged(opened, fstatSync(fd))) throw new Error('Source changed during capture: ' + file);
+    } finally { closeSync(fd); }
+    const after = lstatSync(file);
+    if (after.isSymbolicLink() || !unchanged(before, after) || realpathSync(file) !== canonical) {
+      throw new Error('Source changed after capture: ' + file);
+    }
+    if (typeof text !== 'string' || !text.trim()) throw new Error('Empty source file: ' + file);
+    entries.set(key(canonical), text);
+    return canonical;
+  };
+  const walk = (dir) => {
+    const before = lstatSync(dir);
+    if (before.isSymbolicLink()) throw new Error('Symlink source directory: ' + dir);
+    if (!before.isDirectory() || !inside(realpathSync(dir))) throw new Error('Invalid source directory: ' + dir);
+    const names = directoryEntries(dir);
+    if (!Array.isArray(names)) throw new Error('Invalid source directory entries');
+    for (const name of names) {
+      if (typeof name !== 'string' || !name || name === '.' || name === '..'
+        || /[\\/\0]/.test(name) || basename(name) !== name) throw new Error('Malformed source entry');
+      const full = join(dir, name), folded = full.normalize('NFC').toLowerCase();
+      if (seen.has(folded)) throw new Error('Duplicate or case-colliding source entry: ' + full);
+      seen.add(folded);
+    }
+    for (const name of names) {
+      const file = join(dir, name), stat = lstatSync(file);
+      if (stat.isSymbolicLink()) throw new Error('Symlink source entry: ' + file);
+      if (stat.isDirectory()) walk(file);
+      else if (!stat.isFile()) throw new Error('Invalid source entry: ' + file);
+      else if (name.endsWith('.js') && !name.includes('.test.')) files.push(capture(file));
+    }
+    if (!unchanged(before, lstatSync(dir))) throw new Error('Source directory changed during capture: ' + dir);
+  };
+  walk(join(root, 'src'));
+  if (!files.length) throw new Error('Empty applicable source corpus');
+  if (lstatSync(join(root, 'prisma')).isSymbolicLink()) throw new Error('Symlink schema directory');
+  capture(join(root, 'prisma/schema.prisma'));
+  const read = (file) => {
+    if (typeof file !== 'string' || !file || file.includes('\0') || !isAbsolute(file)) {
+      throw new Error('Malformed source target');
+    }
+    const target = resolve(file);
+    if (!inside(target)) throw new Error('Source target outside root');
+    if (!entries.has(key(target))) throw new Error('Missing snapshot entry: ' + file);
+    return entries.get(key(target));
+  };
+  return Object.freeze({ root, files: Object.freeze(files), read, code: (file) => read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '') });
 }
 
-const FILES = sourceFiles();
-const read = (rel) => readFileSync(resolve(process.cwd(), rel), 'utf8');
+let SNAPSHOT, FILES;
+beforeAll(() => {
+  const started = performance.now();
+  SNAPSHOT = loadSourceSnapshot(process.cwd());
+  FILES = SNAPSHOT.files;
+  console.info('SOURCE_SNAPSHOT', JSON.stringify({ suite: 'retirement', files: SNAPSHOT.files.length, elapsedMs: performance.now() - started }));
+});
+
+const read = (rel) => SNAPSHOT.read(resolve(SNAPSHOT.root, rel));
 
 /**
  * Source with comments removed.
@@ -51,15 +130,13 @@ const read = (rel) => readFileSync(resolve(process.cwd(), rel), 'utf8');
  * fix is to read code, not to delete the explanation.
  */
 function code(file) {
-  return readFileSync(file, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')   // block comments
-    .replace(/^\s*\/\/.*$/gm, '');      // whole-line comments
+  return SNAPSHOT.code(file);
 }
 
 /** Files whose CODE (never comments) matches, as repo-relative POSIX paths. */
-const filesWhereCode = (re) => FILES
-  .filter((f) => re.test(code(f)))
-  .map((f) => f.replace(process.cwd(), '').replace(/\\/g, '/'))
+const filesWhereCode = (re, snapshot = SNAPSHOT) => snapshot.files
+  .filter((f) => re.test(snapshot.code(f)))
+  .map((f) => f.replace(snapshot.root, '').replace(/\\/g, '/'))
   .sort();
 
 describe('the worker itself is gone', () => {
@@ -237,4 +314,148 @@ describe('the canonical path is the only real mutation architecture', () => {
     // the retirement turned into a rewrite.
     expect(workerStarts.length).toBe(5);
   });
+});
+
+// Synthetic subjects are private temporary trees, never the tracked source.
+function withSourceFixture(run) {
+  const sandbox = mkdtempSync(join(tmpdir(), 'lumi-source-snapshot-'));
+  const root = join(sandbox, 'checkout');
+  mkdirSync(join(root, 'src'), { recursive: true });
+  mkdirSync(join(root, 'prisma'));
+  writeFileSync(join(root, 'src/probe.js'), 'export const safe = true;');
+  writeFileSync(join(root, 'prisma/schema.prisma'), 'enum ActionType { PAUSE_CAMPAIGN }');
+  writeFileSync(join(sandbox, 'outside.js'), 'export const outside = true;');
+  try { return run({ root, sandbox }); }
+  finally {
+    const rel = relative(resolve(tmpdir()), resolve(sandbox));
+    if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)
+      || !basename(sandbox).startsWith('lumi-source-snapshot-') || lstatSync(sandbox).isSymbolicLink()) {
+      throw new Error('Refusing unsafe synthetic-fixture cleanup');
+    }
+    rmSync(sandbox, { recursive: true });
+  }
+}
+
+describe('source snapshot fixture', () => {
+  it('permits read-only fixture hard links without treating link-count metadata as content changes', () => withSourceFixture(({ root, sandbox }) => {
+    const file = join(root, 'src/probe.js');
+    const snapshot = loadSourceSnapshot(root, {
+      readSource(fd, encoding) {
+        if (fstatSync(fd).ino === lstatSync(file).ino) linkSync(file, join(sandbox, 'read-only-copy.js'));
+        return readFileSync(fd, encoding);
+      },
+    });
+    expect(lstatSync(file).nlink).toBe(2);
+    expect(snapshot.read(file)).toContain('safe');
+  }));
+  it('eagerly reads once and exposes only immutable snapshot data', () => withSourceFixture(({ root }) => {
+    let reads = 0;
+    const snapshot = loadSourceSnapshot(root, { readSource(...args) { reads++; return readFileSync(...args); } });
+    expect(reads).toBeGreaterThan(0);
+    const count = reads, file = join(root, 'src/probe.js');
+    const original = snapshot.read(file);
+    writeFileSync(file, 'export const changed = true;');
+    expect(snapshot.read(file)).toBe(original);
+    expect(reads).toBe(count);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot.files)).toBe(true);
+    expect(() => snapshot.files.push(file)).toThrow();
+  }));
+
+  it('rejects an empty applicable source corpus', () => withSourceFixture(({ root }) => {
+    unlinkSync(join(root, 'src/probe.js'));
+    writeFileSync(join(root, 'src/ignored.test.js'), 'export const ignored = true;');
+    writeFileSync(join(root, 'src/README.md'), 'No applicable JavaScript');
+    expect(() => loadSourceSnapshot(root)).toThrow(/empty/i);
+  }));
+
+  it('rejects an empty source file before assertions', () => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/probe.js'), '');
+    expect(() => loadSourceSnapshot(root)).toThrow(/empty/i);
+  }));
+
+  it('rejects missing source directories', () => withSourceFixture(({ root }) => {
+    const missing = join(root, 'missing');
+    mkdirSync(missing);
+    expect(() => loadSourceSnapshot(missing)).toThrow();
+  }));
+
+  it('propagates unreadable source during eager fixture setup', () => withSourceFixture(({ root }) => {
+    expect(() => loadSourceSnapshot(root, { readSource() { throw new Error('EACCES synthetic read'); } })).toThrow(/EACCES/);
+  }));
+
+  it('rejects malformed roots and out-of-root lookup targets', () => withSourceFixture(({ root, sandbox }) => {
+    for (const malformed of [undefined, null, 42, '', '../relative', 'bad\0target']) {
+      expect(() => loadSourceSnapshot(malformed)).toThrow();
+    }
+    const snapshot = loadSourceSnapshot(root);
+    expect(() => snapshot.read(join(sandbox, 'outside.js'))).toThrow(/root|outside/i);
+    expect(() => snapshot.read(null)).toThrow();
+  }));
+
+  it.each([
+    ['duplicate', ['probe.js', 'probe.js']],
+    ['case-colliding', ['probe.js', 'PROBE.js']],
+    ['escaping', ['../outside.js']],
+  ])('rejects %s directory entries', (_kind, entries) => withSourceFixture(({ root }) => {
+    expect(() => loadSourceSnapshot(root, {
+      directoryEntries(dir) { return dir === realpathSync(join(root, 'src')) ? entries : readdirSync(dir); },
+    })).toThrow(/duplicate|collid|entry|escape|root/i);
+  }));
+
+  it('rejects descendant links and symlinked root ancestors', () => withSourceFixture(({ root, sandbox }) => {
+    const outside = join(sandbox, 'outside');
+    mkdirSync(outside); writeFileSync(join(outside, 'foreign.js'), 'export const foreign = true;');
+    const descendant = join(root, 'src/linked');
+    symlinkSync(outside, descendant, 'junction');
+    try { expect(() => loadSourceSnapshot(root)).toThrow(/symlink|link/i); }
+    finally { unlinkSync(descendant); }
+    const ancestor = join(sandbox, 'alias');
+    symlinkSync(sandbox, ancestor, 'junction');
+    try { expect(() => loadSourceSnapshot(join(ancestor, 'checkout'))).toThrow(/symlink|link/i); }
+    finally { unlinkSync(ancestor); }
+  }));
+
+  it('rejects absent snapshot entries without reading an alternate file', () => withSourceFixture(({ root }) => {
+    const snapshot = loadSourceSnapshot(root), added = join(root, 'src/late.js');
+    writeFileSync(added, 'export const late = true;');
+    expect(() => snapshot.read(added)).toThrow(/snapshot entry/i);
+  }));
+
+  it('discovers newly added modules on each fresh snapshot invocation', () => withSourceFixture(({ root }) => {
+    const first = loadSourceSnapshot(root), added = join(root, 'src/unseen.js');
+    writeFileSync(added, 'export const unseen = true;');
+    const second = loadSourceSnapshot(root);
+    expect(first.files).not.toContain(added);
+    expect(second.files).toContain(added);
+    expect(second.read(added)).toContain('unseen');
+  }));
+});
+
+describe('synthetic retirement ratchets', () => {
+  it('rejects a newly introduced forbidden worker file', () => withSourceFixture(({ root }) => {
+    mkdirSync(join(root, 'src/workers'));
+    writeFileSync(join(root, 'src/workers/actionWorker.js'), 'export const worker = true;');
+    loadSourceSnapshot(root);
+    expect(() => expect(existsSync(join(root, 'src/workers/actionWorker.js'))).toBe(false)).toThrow();
+  }));
+
+  it.each([
+    ['worker import', 'import { startActionWorker } from "./workers/actionWorker.js";', /actionWorker|startActionWorker/],
+    ['enqueue', 'enqueueAction({ id: 1 });', /enqueueAction\s*\(/],
+    ['stub success', 'return { ok: true, result: { stub: true } };', /stub:\s*true/],
+    ['direct fake success', 'prisma.action.update({ data: { status: "EXECUTED_SUCCESS" } });', /data:\s*\{[^}]*EXECUTED_SUCCESS/],
+  ])('fails the existing forbidden-code assertion for %s', (_name, text, pattern) => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/unseen-offender.js'), text);
+    const snapshot = loadSourceSnapshot(root);
+    expect(filesWhereCode(pattern, snapshot)).toEqual(['/src/unseen-offender.js']);
+    expect(() => expect(filesWhereCode(pattern, snapshot)).toEqual([])).toThrow();
+  }));
+
+  it('excludes comments and test files while detecting executable forbidden code', () => withSourceFixture(({ root }) => {
+    writeFileSync(join(root, 'src/comments.js'), '// actionWorker enqueueAction() stub: true\n/* startActionWorker stub: true */\nexport const safe = true;');
+    writeFileSync(join(root, 'src/ignored.test.js'), 'startActionWorker();');
+    const snapshot = loadSourceSnapshot(root);
+    expect(filesWhereCode(/actionWorker|startActionWorker|enqueueAction|stub:\s*true/, snapshot)).toEqual([]);
+  }));
 });
