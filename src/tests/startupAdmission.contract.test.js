@@ -177,7 +177,7 @@ beforeAll(() => {
   walk(new URL('src/', root));
 });
 const source = path => sources.get(fileURLToPath(new URL(path, root)));
-describe('runtime isolation and preserved unsafe baseline — not an operational PASS', () => {
+describe('runtime isolation and source-only credential repair removal — not an operational PASS', () => {
   it('candidate is import-free, with no runtime I/O, clocks, environment or startup execution', () => {
     const candidate = source('src/services/startup/startupAdmission.js');
     expect(candidate).toBeTruthy();
@@ -197,7 +197,7 @@ describe('runtime isolation and preserved unsafe baseline — not an operational
       'src/models/chatSession.js': 'a576f0bc473cb9167293b79b9122894bb81d7a25',
       'src/models/userContext.js': '04261772174bb107ca6cbe14dc2df821ded2d65f',
       'src/models/project.js': 'b4182fa480a91e6578111f7683634dcede5e5efe',
-      'src/models/credential.js': 'e474748e98d8d3f842d5a5861929d547f9d69d26',
+      'src/models/credential.js': '4fd9e1dd12f68e68c982f089f31e95dd898abd77',
       'src/services/execution/schemaReadiness.js': '55eb55c11eb4a61d6e82a27286037f9640fa0967',
     };
     for (const [path, hash] of Object.entries(pins)) {
@@ -205,14 +205,21 @@ describe('runtime isolation and preserved unsafe baseline — not an operational
       expect(createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex'), path).toBe(hash);
     }
   });
-  it('inventories all four current ensures and backfill as forbidden future automatic work', () => {
+  it('pins four remaining legacy boot ensures and refuses automatic credential backfill', () => {
     expect(forbiddenAutomaticWork).toEqual(['ensureChatSessionSchema', 'ensureUserContextSchema', 'ensureProjectSchema', 'ensureCredentialSchema', 'backfillWorkspaceIds']);
     expect(Object.isFrozen(forbiddenAutomaticWork)).toBe(true);
     for (const name of forbiddenAutomaticWork.slice(0, 4)) {
       expect(source('src/server.js')).toContain(`${name}().catch`);
     }
-    expect(source('src/models/credential.js')).toContain('await backfillWorkspaceIds(sql)');
-    expect(source('src/models/credential.js')).toContain('UPDATE marcom_credentials SET is_active = false');
+    expect(source('src/models/credential.js')).not.toContain('backfillWorkspaceIds');
+    const credential = source('src/models/credential.js');
+    const start = credential.indexOf('export async function ensureCredentialSchema()');
+    const end = credential.indexOf('// ── PUBLIC API', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const ensureOnly = credential.slice(start, end);
+    expect([...ensureOnly.matchAll(/await sql`/g)]).toHaveLength(8);
+    expect(ensureOnly).not.toMatch(/\b(?:UPDATE|DELETE|INSERT)\s+(?:INTO\s+|FROM\s+)?marcom_credentials\b/i);
     expect(source('src/server.js').indexOf('app.listen(')).toBeLessThan(source('src/server.js').indexOf('ensureChatSessionSchema().catch'));
     expect(source('src/workers/index.js')).toContain('const executionWorker = startExecutionWorker()');
   });
