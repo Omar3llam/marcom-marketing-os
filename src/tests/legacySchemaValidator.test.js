@@ -51,7 +51,7 @@ describe('03B-1A explicit diagnostic fails closed before I/O', () => {
     // Isolated module copy exercises the fixed-path hash seal; repository authority is untouched.
     const copy=join(dir,'scripts','legacy-schema');mkdirSync(copy,{recursive:true});
     writeFileSync(join(copy,'contract.mjs'),readFileSync(new URL('../../scripts/legacy-schema/contract.js',import.meta.url),'utf8'));
-    writeFileSync(join(copy,'manifest.v1.json'),readFileSync(manifestPath));
+    writeFileSync(join(copy,'manifest.v2.json'),readFileSync(manifestPath));
     const isolated=await import(/* @vite-ignore */ pathToFileURL(join(copy,'contract.mjs')).href);
     expect(()=>isolated.loadContract({bindings})).toThrow('Unapproved manifest');
   });
