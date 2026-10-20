@@ -87,8 +87,6 @@ export async function ensureCredentialSchema() {
         ON marcom_credentials (workspace_id, platform)
     `;
     logger.info('[credentials] schema ensured ✓');
-
-    await backfillWorkspaceIds(sql);
   } catch (err) {
     const code = err?.code || err?.sqlState;
 
@@ -98,68 +96,6 @@ export async function ensureCredentialSchema() {
     } else {
       logger.warn({ code, msg: err.message }, '[credentials] ensureSchema failed');
     }
-  }
-}
-
-// ── PHASE 12c BACKFILL — relate v1 creds → v4 workspace via the shared uid ──
-// One-time, idempotent. marcom_credentials.user_id == users."clerkId" (both the
-// Firebase uid) is the ONLY relation between the v1 (project) and v4 (workspace)
-// worlds. After it runs once, NULL-workspace rows are stamped and the UPDATE
-// matches 0 on every later boot. REPORTS BEFORE IT WRITES (a credential bug has
-// burned us four times — instrument, don't assume).
-async function backfillWorkspaceIds(sql) {
-  try {
-    const [toMatch, orphaned, dupGroups] = await Promise.all([
-      sql`SELECT COUNT(*)::int AS n FROM marcom_credentials c JOIN users u ON u."clerkId" = c.user_id WHERE c.workspace_id IS NULL`,
-      sql`SELECT COUNT(*)::int AS n FROM marcom_credentials c LEFT JOIN users u ON u."clerkId" = c.user_id WHERE c.workspace_id IS NULL AND u.id IS NULL`,
-      sql`SELECT COUNT(*)::int AS n FROM (
-            SELECT u."workspaceId", c.platform
-            FROM marcom_credentials c JOIN users u ON u."clerkId" = c.user_id
-            GROUP BY u."workspaceId", c.platform HAVING COUNT(*) > 1
-          ) g`,
-    ]);
-    logger.info(
-      { toMatch: toMatch[0].n, orphaned: orphaned[0].n, dupGroups: dupGroups[0].n },
-      '[credentials] 12c backfill — pre-write census',
-    );
-    if (orphaned[0].n > 0) {
-      logger.warn({ orphaned: orphaned[0].n }, '[credentials] 12c backfill — orphaned creds (no matching user) stay NULL and will NEVER reconcile — investigate');
-    }
-    if (toMatch[0].n === 0) {
-      logger.debug('[credentials] 12c backfill — nothing to stamp (already related)');
-      return;
-    }
-
-    await sql`
-      UPDATE marcom_credentials c SET workspace_id = u."workspaceId"::text, updated_at = NOW()
-      FROM users u WHERE u."clerkId" = c.user_id AND c.workspace_id IS NULL
-    `;
-
-    // One-account-per-(workspace, platform): keep the most-recent active row,
-    // deactivate the losers — a REAL data decision for any workspace that genuinely
-    // connected two accounts on one channel pre-rule, so log exactly what we drop.
-    const deactivated = await sql`
-      UPDATE marcom_credentials SET is_active = false, updated_at = NOW()
-      WHERE id IN (
-        SELECT id FROM (
-          SELECT id, ROW_NUMBER() OVER (
-            PARTITION BY workspace_id, platform ORDER BY updated_at DESC, created_at DESC
-          ) AS rn
-          FROM marcom_credentials WHERE workspace_id IS NOT NULL AND is_active = true
-        ) ranked WHERE rn > 1
-      )
-      RETURNING id, workspace_id, platform
-    `;
-    if (deactivated.length > 0) {
-      logger.warn(
-        { count: deactivated.length, rows: deactivated.map((r) => ({ id: r.id, workspaceId: r.workspace_id, platform: r.platform })) },
-        '[credentials] 12c backfill — deactivated duplicate rows (one-account-per-channel rule)',
-      );
-    }
-    logger.info('[credentials] 12c backfill complete ✓');
-  } catch (err) {
-    // The v4 "users" table may be absent in a pure-v1 deployment — non-fatal.
-    logger.warn({ code: err?.code, msg: err.message }, '[credentials] 12c backfill skipped/failed (non-fatal)');
   }
 }
 

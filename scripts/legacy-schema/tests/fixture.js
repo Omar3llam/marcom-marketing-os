@@ -17,7 +17,7 @@ export function fixtureDdl() {
     ['src/models/chatSession.js','export async function ensureChatSessionSchema()', '// ── Helpers'],
     ['src/models/userContext.js','export async function ensureUserContextSchema()', '// ── Save'],
     ['src/models/project.js','export async function ensureProjectSchema()', '// ── CRUD'],
-    ['src/models/credential.js','export async function ensureCredentialSchema()', 'async function backfillWorkspaceIds'],
+    ['src/models/credential.js','export async function ensureCredentialSchema()', '// ── PUBLIC API'],
   ]) {
     const source=readFileSync(new URL(file,ROOT),'utf8');
     const start=source.indexOf(from),end=source.indexOf(to,start);
@@ -62,7 +62,7 @@ export async function fixtureManifest(sql) {
   const catalog={...await collectStructure(sql),...await collectAuthority(sql,bindings)};
   let encoded=JSON.stringify(catalog);
   for(const [key,value] of Object.entries(bindings))encoded=encoded.replaceAll(value,'${'+key+'}');
-  return {version:'legacy-native-v1',sourceCommit:'94232a32433de5f77b7d02874e9839f52a084b91',
+  return {version:'legacy-native-v2',sourceCommit:'6ee98edda008fd8370e6d871b23e03922006577d',
     provenance:'Reviewed candidate from exact source DDL on synthetic PG17.11; NOT a production baseline. No credential DML executed.',
     source:sourceInventory(),catalog:JSON.parse(encoded)};
 }
