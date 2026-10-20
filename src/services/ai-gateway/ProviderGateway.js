@@ -65,11 +65,9 @@ const RETRYABLE_ERRORS = new Set([
 
 // Metering helper, loaded lazily and ONCE.
 //
-// Lazy for the same reason resolvePlan lazily imports prisma: lib/prisma.js
-// calls $connect() at module load, so importing this eagerly would put a DB
-// connection behind every module — and every test — that merely touches the
-// gateway. Memoized so the resolution happens once per process rather than once
-// per AI call, and so concurrent callers observe the same module instance.
+// Loading usage metering only on demand avoids importing DB-dependent code in
+// callers that never record an AI attempt. Prisma now connects lazily on the
+// first query, not at import. Memoized so concurrent callers share one module.
 let usageModule = null;
 function loadUsageRecorder() {
   usageModule ??= import('../../lib/aiUsage.js');
@@ -136,9 +134,8 @@ async function resolvePlan({ plan, workspaceId }) {
   if (plan) return plan;
   if (!workspaceId) return null;
   try {
-    // Lazy import: keeps merely importing the gateway free of a DB coupling —
-    // lib/prisma.js $connect()s at module load, so importing it eagerly would drag
-    // that side effect into every module (and test) that touches the gateway.
+    // Resolve a workspace plan on demand, not during gateway module import.
+    // Prisma's first query is the deliberate DB operation; no eager $connect().
     const { prisma } = await import('../../lib/prisma.js');
     const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { plan: true } });
     return ws?.plan ?? null;

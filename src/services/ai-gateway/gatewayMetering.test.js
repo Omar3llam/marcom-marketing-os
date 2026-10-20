@@ -6,10 +6,9 @@
 // fallback writes TWO rows, because two providers were billed for one piece of
 // work. That is the number the cost view exists to show.
 //
-// Metering is fire-and-forget through a LAZY import (lib/prisma.js $connect()s
-// at module load, so an eager import would put a DB connection behind every
-// module that touches the gateway). The write therefore lands a microtask after
-// execute() resolves — hence vi.waitFor rather than a bare assertion.
+// Metering is fire-and-forget through a LAZY import. Prisma has no import-time
+// connection side effect; the first DB query is made only when metering runs.
+// The write lands a microtask after execute() resolves, so use vi.waitFor.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
