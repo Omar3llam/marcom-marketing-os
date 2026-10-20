@@ -1,0 +1,2205 @@
+{
+  "version": "legacy-native-v2",
+  "sourceCommit": "6ee98edda008fd8370e6d871b23e03922006577d",
+  "provenance": "Reviewed synthetic-only native-catalog candidate inherited byte-for-byte from frozen legacy-native-v1. Version 2 pins a source-only removal of automatic startup credential data backfill. Eight credential DDL statements and all other native source/catalog/migration checksum contracts remain unchanged. NOT a production DB baseline, operator execution permission, or runtime-admission proof.",
+  "source": {
+    "sources": {
+      "scripts/migrate.js": "b89360be975096e265a2e418d8276e61ba1223c0988f4dcc750c5039f5bfd65f",
+      "src/models/chatSession.js": "8cdf6f04ca0f19ee986fd4798be05e3d09483fd492312d71700d074746a26fc8",
+      "src/models/userContext.js": "621fef3757085e7fb767c99c5442ffbdb0e3e4c80b0193017fba4f691f20059c",
+      "src/models/project.js": "9aafa26820dc0e6b4d8c837ad0697d500b36e3f7fa6f541a1db00736db9a1758",
+      "src/models/credential.js": "f27eb4b33159033e735e2d5642275b3eb2511185f8b069832c65fc2a009da34b",
+      "prisma/schema.prisma": "3902b2cd3503e31e58d6857a4a8e2a8ae11667c0434064359cdf51ad8f78fcf2"
+    },
+    "migrations": [
+      {
+        "name": "20260517000000_init",
+        "checksum": "255ec6a25f0a415fd552b07591fca9390cc500ba8c5b2ef1d7d00379aa8b3405"
+      },
+      {
+        "name": "20260518000000_create_execution_requests",
+        "checksum": "f388465b07fea31cd974e5f6cf2208b996712a34f7088c391d5079da44c0ad7a"
+      },
+      {
+        "name": "20260518100000_create_execution_requests_table",
+        "checksum": "e92f25f8e826ecd4650319c44353f3b2a7a9d152a17d6adcd0d588d2428f82ad"
+      },
+      {
+        "name": "20260520094700_phase_11b_occ_infrastructure",
+        "checksum": "0df35c9519730b7ad19cbd3024c989c701dabc30e770f13839d565a6fb8c55ed"
+      },
+      {
+        "name": "20260520110553_add_execution_transitions",
+        "checksum": "c05189ef774a3faa81b13f74539a59777a4d1cb9c6bfda66ec82f3b57b23e9ff"
+      },
+      {
+        "name": "20260524000000_add_execution_metrics",
+        "checksum": "5090f1bcfb654b03990ad67173ba05d33063a92ac4e50665772aeb96d2f48b24"
+      },
+      {
+        "name": "20260524120000_pr20_decision_memory_foundation",
+        "checksum": "e09db1ca033c31670fcb954bd23c1cbab79c58e0dab67f71c73536582dc66487"
+      },
+      {
+        "name": "20260524230000_add_artifacts_and_approvals",
+        "checksum": "167d56377938b32eb0f51b8ac27ac249c1d3d4381ab2cfa809f3a053dfe0c814"
+      },
+      {
+        "name": "20260525000000_add_approval_decision_analytics",
+        "checksum": "bd7ab49a0649eb5a1b753a64a959bbd9bc8d9e4ff77e0ddfc7f6d3c7d42c711f"
+      },
+      {
+        "name": "20260526000000_add_outcome_attribution",
+        "checksum": "8e751af132fb5f5f7e6d36fea855a256349511a62d20cf746d811000d69deda0"
+      },
+      {
+        "name": "20260526120000_fix_workspace_isolation_campaign_state",
+        "checksum": "1727dc7821ea5318e2a92ecc6a887cb1ac14b93eeff25a4900a257689052451a"
+      },
+      {
+        "name": "20260527000000_add_reinforcement_snapshots",
+        "checksum": "95084e2f225d6f7780078ef00a0a1fe9e4047cd44643d0a46c52568b02d65e70"
+      },
+      {
+        "name": "20260531000000_add_execution_checkpoints",
+        "checksum": "b75673c36988f634abf289444d00aa3e04561af002d92d98e492d091a1b4aa02"
+      },
+      {
+        "name": "20260602205200_add_currency_to_campaign_state",
+        "checksum": "b601fd8e38e4d553130c7f9d420c5dc5fdf00c3d560e7d06dde8938c055c5df6"
+      },
+      {
+        "name": "20260603000000_add_currency_to_workspace",
+        "checksum": "b204e7d0b6e1e526cab66e94ece5ea447d85699475f6ecefbbb6cb6e45501329"
+      },
+      {
+        "name": "20260603210000_add_campaign_name",
+        "checksum": "49f599c46c46fc31a4b77a01f71f5bebf1935d4b7b5d0e644fdb564eec6cffc2"
+      },
+      {
+        "name": "20260606000000_entity_graph_metric_snapshot",
+        "checksum": "ba859ee5b1ddec979bc7ad1e817de67f37f409571561450ee750c72919514a33"
+      },
+      {
+        "name": "20260606010000_phase2_verdict_intelligence",
+        "checksum": "a5db91b078fb1405ff2250b01dcd4d76fc6add3fbf23b27f422383279d2ff219"
+      },
+      {
+        "name": "20260607000000_phase3_allocation",
+        "checksum": "1a103b656a8fbfcfcd67d43334a55a84445e4d910b4bc7a21391d4192d5d425e"
+      },
+      {
+        "name": "20260608000000_phase4_testing_os",
+        "checksum": "1405214f1ac0e5f9b9558658183a6814a7ae06c3e8313e86ba65b87f5efa1a2e"
+      },
+      {
+        "name": "20260609000000_phase5_memory_moat",
+        "checksum": "23aa5149fa941a02ca910c2acf4445892c0764f55a5cd713086e5690f7dfd9ed"
+      },
+      {
+        "name": "20260610000000_phase6_planning_os",
+        "checksum": "ec9e4668b61e5a5e0fafc71a9cc0e7c7eb03f748d927d0916c98af6df67f1e7d"
+      },
+      {
+        "name": "20260611000000_phase7_measurement_os",
+        "checksum": "759859b03b47681ab75530bb21d3ee1abbe16ab76606dd89608ff5d7b97fbba8"
+      },
+      {
+        "name": "20260612000000_phase8_collaboration_os",
+        "checksum": "a77528ea9eaf945f16c700f50ce9ca7ca8f096afc042cb9809fd437855f672c3"
+      },
+      {
+        "name": "20260613000000_phase9_agentic_os",
+        "checksum": "3b84dfcad61fe29d05daa6c9902496cbb549aa664f1a25169735ce2e49a1bc87"
+      },
+      {
+        "name": "20260615000000_drop_integration_model",
+        "checksum": "cae333531b7ad65f38d2ae25c9befd3e46a7862655e58c7e2d956050118b7ff8"
+      },
+      {
+        "name": "20260623000000_add_incrementality_source_test",
+        "checksum": "a3cb45c1ce14715a3409d36861642e6d923a79cfbde259c2829d57fdfa94fc6b"
+      },
+      {
+        "name": "20260629000000_add_invitation_model",
+        "checksum": "56ae82920d63ac6fc2b72ca0c512e20e4403ac39bfa5440eda8460cbf85e04f0"
+      },
+      {
+        "name": "20260702000000_add_onboarding_prefs_to_workspace",
+        "checksum": "8c3614725b503e5ee571c59dd21496ffa233c7aed6ac37c2f49da65e5d341f37"
+      },
+      {
+        "name": "20260702010000_add_objective_to_campaign",
+        "checksum": "319bf4c0894f96dcfb4148eab23765f919e306dbd5b5402c1df249e3855aed3f"
+      },
+      {
+        "name": "20260707000000_add_content_generation",
+        "checksum": "b737895f8c12b10b396cc2115d6594ae2e7a4cafaf83a181f13082b21989be89"
+      },
+      {
+        "name": "20260709000000_add_campaign_reasoning",
+        "checksum": "4079b53f5ed70e53f78f35385b8ba1daef5711c2658723975d47572be1f4bbac"
+      },
+      {
+        "name": "20260710000000_add_ai_insight_to_loop_run",
+        "checksum": "a287ff977ba64798290e60acb9e375b59decbc22757b5c971a56e0ba296c1fd9"
+      },
+      {
+        "name": "20260714000000_add_reach_to_metric_snapshot",
+        "checksum": "e730bef5b75451c6e879de0792fbd55457aab8cbf010334e9c08b331a7fce337"
+      },
+      {
+        "name": "20260715000000_add_plan_to_workspace",
+        "checksum": "e2242519ec232de56e4a4a35680ccf24d5e52eb0f19c1acb369d36f158be6d2d"
+      },
+      {
+        "name": "20260717000000_backfill_migration_lag_columns",
+        "checksum": "5ebcfd573e7517261875f7dd56eb8d988489b5ee7b6062fdb973b7778ee752d6"
+      },
+      {
+        "name": "20260727000000_add_admin_audit_log",
+        "checksum": "9e5c517a1f4b341386a535920826c56d22d6d8ea0735cb52ff595fa98b7a914f"
+      },
+      {
+        "name": "20260728000000_add_ai_usage_log",
+        "checksum": "17c29c79a93bfb3d1eb5eda364f7cefe1f27ea0a824ded9d2a1487c634d331c1"
+      },
+      {
+        "name": "20260729000000_add_delete_workspace_audit_type",
+        "checksum": "ba3d5f4db4b436f163d0f703d3f73c024dbe848bf47dc2a8ffd965f9ff781c35"
+      },
+      {
+        "name": "20260730000000_add_decision_lifecycle",
+        "checksum": "86ddc7f65344fb15411ccb1384be15b1405074ce8aa6f3cc6ca6d04649f124f1"
+      },
+      {
+        "name": "20260731000000_add_decision_similarity_fields",
+        "checksum": "7b2f14685319d4fe907639d363a932835f0bca34d4a61ae269d876de9f5cbc22"
+      },
+      {
+        "name": "20260802000000_add_funnel_intelligence",
+        "checksum": "5c7d883ce9153a44eaaa88fef11c0d74793da70159d765609cbf01bbee222363"
+      },
+      {
+        "name": "20260803000000_add_ad_platform_created_time",
+        "checksum": "916d749a980cf4eb218f183489534956f8ede59cfe96d7f64f7873383b36837f"
+      },
+      {
+        "name": "20260806000000_add_decision_human_signals",
+        "checksum": "a358495a6c0530cd048f7fe69ecc5b08b0d048495312afcb869156c2d8ebd1bd"
+      },
+      {
+        "name": "20260807000000_add_decision_reasoning_snapshot",
+        "checksum": "8e39cf0fcc315cfa29faafcbfdb3ef9b9b6bbac61912d099a8ed4b099523860a"
+      },
+      {
+        "name": "20260811000000_add_measurement_window_provenance",
+        "checksum": "9b27fd1a9f619e60d4e5aaf96311fac95c295ea2bacb48f2deb08738332025c5"
+      },
+      {
+        "name": "20260812000000_measurement_window_in_snapshot_identity",
+        "checksum": "d1a9385a59355657d4692681e701a90cac6fcbe1e0d436a91c6682ccc8483f1d"
+      },
+      {
+        "name": "20260815000000_add_decision_evidence_reference",
+        "checksum": "965d4a928e705764d696dc12e2826bd9940c894d2dea91a073aa1a6fe1301c2d"
+      },
+      {
+        "name": "20260816000000_add_outcome_provenance",
+        "checksum": "c04c058534fb17ece34bf85490493bd76034b47d52b3cfbceedab2b60da95461"
+      },
+      {
+        "name": "20260817000000_add_entity_canonical_uniqueness",
+        "checksum": "1eb73e5b52456ec9250c977bcfbb6dd4c626af9ba86c00754559b9bc0aa56c3b"
+      },
+      {
+        "name": "20260817120000_add_execution_decision_attribution",
+        "checksum": "bbc16ade00fad2161bd76263f3221935af422761c75182afad4aa01def25c45e"
+      },
+      {
+        "name": "20260817130000_pattern_confidence_nullable",
+        "checksum": "8377b4007b0c9f1bd4de8c96a14e1a0398725700afb762b1ac1dc375774443be"
+      },
+      {
+        "name": "20260818000000_r11_backfill_collab_role",
+        "checksum": "f1f03976b1faa477e8a74ff8389db571c26a492212b321bf0a161340cbb0631d"
+      },
+      {
+        "name": "20260818010000_r11_workspace_scoped_idempotency",
+        "checksum": "3d5c99fc6b0c1a279402756e2f33ecba71838bb4f908aa0384cca389f9c74d2f"
+      },
+      {
+        "name": "20260818020000_r11_server_assigned_cohort",
+        "checksum": "c4337f98b9e280c74a064f16d647e4970aa79a96ee02703cd79b9dfcfba8b481"
+      },
+      {
+        "name": "20260818030000_r12_1c_execution_request_workspace_fk",
+        "checksum": "ccaa158eea0c2fc01f9176388bf972cb5e3d2631d71458a14fd0eafcfde05404"
+      },
+      {
+        "name": "20260818040000_r12_1e_enum_reconciliation",
+        "checksum": "ce4b2963511e7288ffae1a4cd0e2e0769185694639458c2cdacd442804644ded"
+      },
+      {
+        "name": "20260818050000_r12_1d_loop_run_ai_insight_rename",
+        "checksum": "ac98b72f0fe71f4faabb6337bcd0258226774ec948f28b1e67d0b75ff9a52d95"
+      },
+      {
+        "name": "20260819000000_r13_human_judgment",
+        "checksum": "e52baaa8ff18eaa2d764b6fa37dfdbc958406898a535ccda6432d8d0891c2e27"
+      },
+      {
+        "name": "20260820000000_b4a_execution_provenance",
+        "checksum": "86eeb1351da879456dae67503503cc366fd5bea253fc719c49b2e7b196e34875"
+      },
+      {
+        "name": "20260820100000_c1_learning_intervention_eligibility",
+        "checksum": "401b2e8ecd07476a3baf35f76d909a13d21a48ae78c88120014c5c67925f7526"
+      },
+      {
+        "name": "20260823000000_sc1_campaignstate_closure",
+        "checksum": "9a414119edd196918b7ecb3a0eb1b00dc52a1cfeac1d5bbf25c47ab2f4127297"
+      },
+      {
+        "name": "20260823090000_sc2_action_closure",
+        "checksum": "bcc50d1f856d9394bd43be82920a3ce871e09a638a46490b2edf9163422cef61"
+      },
+      {
+        "name": "20260823100000_sc3_decisionmemory_closure",
+        "checksum": "c04f8c3fb3a432ef2d7ad2c0853e5a63164742d029dcd946af5e26172a8827c4"
+      },
+      {
+        "name": "20260823110000_sc4_oauthtoken_closure",
+        "checksum": "a75737c3bd3b0ae66162782ea89f987d7e08aeabecd01d8cd9589cbd81dfa3ca"
+      },
+      {
+        "name": "20260824000000_b4e5_non_daily_partial_identity",
+        "checksum": "b43c2cde10f5065afe6c0c75cbada34cee4346e9e8daec8f831d793a8e5c47bc"
+      },
+      {
+        "name": "20260901120000_c02_guardrail_hit_identity",
+        "checksum": "6be1b273c67780680aef7c4675b1ab331df70c7e311acffe1b8aa5da46dcd92f"
+      },
+      {
+        "name": "20260903120000_c05_promotion_authorization",
+        "checksum": "b0c57d181dfcaef0b3696befdfb8e432804606e45e45eb680ece391555c2f2bb"
+      },
+      {
+        "name": "20260904120000_c18_plan_promotion_lifecycle",
+        "checksum": "792f2515f00f96b2863513013a01eae121ab17bed983cd800b94937af37289a6"
+      },
+      {
+        "name": "20260905120000_c10_decision_class",
+        "checksum": "326fc551d0704263690e4399ddeec01c01927bac4ed4a778584d872375b2ae86"
+      },
+      {
+        "name": "20260905130000_c16_memory_provenance",
+        "checksum": "cb83aeb35a41fbf5a561f44e0c9821ad1087fd0a47d888b174491f1a7c66f01a"
+      },
+      {
+        "name": "20260922000000_currency_provenance",
+        "checksum": "601daeb7fafc39221ff39b4438ac9afd5e49ba51724c1fd04a7f85748d0d943c"
+      },
+      {
+        "name": "20260923120000_phase6_goal_insufficient_evidence",
+        "checksum": "28f066612f8519a490c36d1afef33d728f874a97313f07843c405228dc097abe"
+      },
+      {
+        "name": "20260924000000_paid_media_spend_window_provenance",
+        "checksum": "345f0bf18fc3bbefbd055c7ae003ebae252525a1db5740f103a7af131cea3000"
+      },
+      {
+        "name": "20260924090000_allocationplan_blended_efficiency_storage",
+        "checksum": "83b84e452228990d40bfd6f5246008a7c7706d0c1845e32bcaa851f86063ad95"
+      },
+      {
+        "name": "20261015000000_canonical_provenance_v1",
+        "checksum": "367293ea86b331ec00a7437ee1a60125bd3bb9e062f2dede1a80a72a02efb16c"
+      }
+    ]
+  },
+  "catalog": {
+    "tables": [
+      {
+        "relname": "marcom_credentials",
+        "relkind": "r",
+        "relpersistence": "p",
+        "relispartition": false,
+        "reloptions": null,
+        "relreplident": "d",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false,
+        "owner": "${owner}"
+      },
+      {
+        "relname": "marcom_projects",
+        "relkind": "r",
+        "relpersistence": "p",
+        "relispartition": false,
+        "reloptions": null,
+        "relreplident": "d",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false,
+        "owner": "${owner}"
+      },
+      {
+        "relname": "marcom_sessions",
+        "relkind": "r",
+        "relpersistence": "p",
+        "relispartition": false,
+        "reloptions": null,
+        "relreplident": "d",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false,
+        "owner": "${owner}"
+      },
+      {
+        "relname": "marcom_user_context",
+        "relkind": "r",
+        "relpersistence": "p",
+        "relispartition": false,
+        "reloptions": null,
+        "relreplident": "d",
+        "relrowsecurity": false,
+        "relforcerowsecurity": false,
+        "owner": "${owner}"
+      }
+    ],
+    "columns": [
+      {
+        "relname": "marcom_credentials",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "project_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "user_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "platform",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "access_token_enc",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "refresh_token_enc",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "account_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "scopes",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "expires_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "workspace_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "last_synced_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "is_active",
+        "type": "boolean",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true",
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "health",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": null
+      },
+      {
+        "relname": "marcom_credentials",
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": null
+      },
+      {
+        "relname": "marcom_projects",
+        "attname": "project_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_projects",
+        "attname": "user_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_projects",
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_projects",
+        "attname": "context",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_projects",
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_projects",
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "session_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "user_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "current_mode",
+        "type": "smallint",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "1",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "current_section",
+        "type": "smallint",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "current_service",
+        "type": "smallint",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "context_locked",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "context_summary",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "conversation_history",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'[]'::jsonb",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "service_history",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'[]'::jsonb",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "content_interrogation_log",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "campaign_analysis_log",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "hybrid_raw_data",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'active'::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "last_updated",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "title",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_sessions",
+        "attname": "project_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_user_context",
+        "attname": "user_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null,
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_user_context",
+        "attname": "context",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text",
+        "collation": "\"default\""
+      },
+      {
+        "relname": "marcom_user_context",
+        "attname": "saved_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()",
+        "collation": null
+      }
+    ],
+    "constraints": [
+      {
+        "relname": "marcom_credentials",
+        "conname": "marcom_credentials_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "marcom_credentials",
+        "conname": "marcom_credentials_project_id_platform_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (project_id, platform)"
+      },
+      {
+        "relname": "marcom_projects",
+        "conname": "marcom_projects_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (project_id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "conname": "marcom_sessions_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "conname": "marcom_sessions_session_id_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (session_id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "conname": "marcom_sessions_status_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'locked'::text, 'error'::text])))"
+      },
+      {
+        "relname": "marcom_user_context",
+        "conname": "marcom_user_context_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (user_id)"
+      }
+    ],
+    "indexes": [
+      {
+        "relname": "marcom_credentials",
+        "name": "idx_marcom_credentials_user",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_marcom_credentials_user ON public.marcom_credentials USING btree (user_id)"
+      },
+      {
+        "relname": "marcom_credentials",
+        "name": "idx_marcom_credentials_workspace",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_marcom_credentials_workspace ON public.marcom_credentials USING btree (workspace_id, platform)"
+      },
+      {
+        "relname": "marcom_credentials",
+        "name": "marcom_credentials_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE UNIQUE INDEX marcom_credentials_pkey ON public.marcom_credentials USING btree (id)"
+      },
+      {
+        "relname": "marcom_credentials",
+        "name": "marcom_credentials_project_id_platform_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE UNIQUE INDEX marcom_credentials_project_id_platform_key ON public.marcom_credentials USING btree (project_id, platform)"
+      },
+      {
+        "relname": "marcom_projects",
+        "name": "idx_projects_user_id",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_projects_user_id ON public.marcom_projects USING btree (user_id)"
+      },
+      {
+        "relname": "marcom_projects",
+        "name": "idx_projects_user_updated",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_projects_user_updated ON public.marcom_projects USING btree (user_id, updated_at DESC)"
+      },
+      {
+        "relname": "marcom_projects",
+        "name": "marcom_projects_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE UNIQUE INDEX marcom_projects_pkey ON public.marcom_projects USING btree (project_id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "name": "idx_sessions_project_id",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_sessions_project_id ON public.marcom_sessions USING btree (project_id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "name": "idx_sessions_session_id",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_sessions_session_id ON public.marcom_sessions USING btree (session_id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "name": "idx_sessions_user_id",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_sessions_user_id ON public.marcom_sessions USING btree (user_id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "name": "idx_sessions_user_lastupdated",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE INDEX idx_sessions_user_lastupdated ON public.marcom_sessions USING btree (user_id, last_updated DESC)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "name": "marcom_sessions_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE UNIQUE INDEX marcom_sessions_pkey ON public.marcom_sessions USING btree (id)"
+      },
+      {
+        "relname": "marcom_sessions",
+        "name": "marcom_sessions_session_id_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE UNIQUE INDEX marcom_sessions_session_id_key ON public.marcom_sessions USING btree (session_id)"
+      },
+      {
+        "relname": "marcom_user_context",
+        "name": "marcom_user_context_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indislive": true,
+        "definition": "CREATE UNIQUE INDEX marcom_user_context_pkey ON public.marcom_user_context USING btree (user_id)"
+      }
+    ],
+    "triggers": [
+      {
+        "relname": "marcom_sessions",
+        "tgname": "trg_touch_last_updated",
+        "tgenabled": "O",
+        "tgisinternal": false,
+        "definition": "CREATE TRIGGER trg_touch_last_updated BEFORE UPDATE ON public.marcom_sessions FOR EACH ROW EXECUTE FUNCTION public.touch_last_updated()"
+      }
+    ],
+    "functions": [
+      {
+        "proname": "touch_last_updated",
+        "arguments": "",
+        "owner": "${owner}",
+        "lanname": "plpgsql",
+        "returns": "trigger",
+        "prosecdef": false,
+        "proleakproof": false,
+        "proisstrict": false,
+        "provolatile": "v",
+        "proparallel": "u",
+        "proconfig": null,
+        "prosrc": "\n    BEGIN\n      NEW.last_updated = NOW();\n      RETURN NEW;\n    END;\n    "
+      }
+    ],
+    "extensions": [
+      {
+        "extname": "pgcrypto",
+        "extversion": "1.3",
+        "nspname": "public",
+        "owner": "${owner}",
+        "extrelocatable": true
+      }
+    ],
+    "sequences": [],
+    "policies": [],
+    "prerequisites": [
+      {
+        "relname": "users",
+        "attname": "clerkId",
+        "type": "text",
+        "attnotnull": false
+      },
+      {
+        "relname": "users",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true
+      },
+      {
+        "relname": "users",
+        "attname": "workspaceId",
+        "type": "uuid",
+        "attnotnull": true
+      },
+      {
+        "relname": "workspaces",
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true
+      }
+    ],
+    "prerequisiteKeys": [
+      {
+        "relname": "users",
+        "conname": "users_clerkId_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (\"clerkId\")"
+      },
+      {
+        "relname": "users",
+        "conname": "users_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "users",
+        "conname": "users_workspaceId_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (\"workspaceId\") REFERENCES public.workspaces(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "workspaces",
+        "conname": "workspaces_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      }
+    ],
+    "schemas": [
+      {
+        "nspname": "public",
+        "owner": "pg_database_owner"
+      }
+    ],
+    "database": [
+      {
+        "owner": "${owner}",
+        "encoding": "UTF8",
+        "datlocprovider": "c",
+        "datcollate": "C",
+        "datctype": "C",
+        "datcollversion": null
+      }
+    ],
+    "acl": [
+      {
+        "kind": "database",
+        "object": "<target>",
+        "grantor": "${owner}",
+        "grantee": "PUBLIC",
+        "privilege_type": "CONNECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "database",
+        "object": "<target>",
+        "grantor": "${owner}",
+        "grantee": "PUBLIC",
+        "privilege_type": "TEMPORARY",
+        "is_grantable": false
+      },
+      {
+        "kind": "database",
+        "object": "<target>",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "CONNECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "database",
+        "object": "<target>",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "CREATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "database",
+        "object": "<target>",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TEMPORARY",
+        "is_grantable": false
+      },
+      {
+        "kind": "function",
+        "object": "touch_last_updated()",
+        "grantor": "${owner}",
+        "grantee": "PUBLIC",
+        "privilege_type": "EXECUTE",
+        "is_grantable": false
+      },
+      {
+        "kind": "function",
+        "object": "touch_last_updated()",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "EXECUTE",
+        "is_grantable": false
+      },
+      {
+        "kind": "schema",
+        "object": "public",
+        "grantor": "pg_database_owner",
+        "grantee": "PUBLIC",
+        "privilege_type": "USAGE",
+        "is_grantable": false
+      },
+      {
+        "kind": "schema",
+        "object": "public",
+        "grantor": "pg_database_owner",
+        "grantee": "pg_database_owner",
+        "privilege_type": "CREATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "schema",
+        "object": "public",
+        "grantor": "pg_database_owner",
+        "grantee": "pg_database_owner",
+        "privilege_type": "USAGE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "MAINTAIN",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "REFERENCES",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRIGGER",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRUNCATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_credentials",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "MAINTAIN",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "REFERENCES",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRIGGER",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRUNCATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_projects",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "MAINTAIN",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "REFERENCES",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRIGGER",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRUNCATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_sessions",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "MAINTAIN",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "REFERENCES",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRIGGER",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "TRUNCATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${owner}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "DELETE",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "INSERT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "kind": "table",
+        "object": "marcom_user_context",
+        "grantor": "${owner}",
+        "grantee": "${runtime}",
+        "privilege_type": "UPDATE",
+        "is_grantable": false
+      }
+    ],
+    "columnAcl": [],
+    "defaultAcl": [],
+    "roleFacts": [
+      {
+        "rolname": "${auditor}",
+        "rolsuper": false,
+        "rolinherit": true,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": true,
+        "rolreplication": false,
+        "rolbypassrls": false
+      },
+      {
+        "rolname": "${owner}",
+        "rolsuper": false,
+        "rolinherit": true,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": false,
+        "rolreplication": false,
+        "rolbypassrls": false
+      },
+      {
+        "rolname": "${runtime}",
+        "rolsuper": false,
+        "rolinherit": true,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "rolcanlogin": true,
+        "rolreplication": false,
+        "rolbypassrls": false
+      }
+    ],
+    "memberships": [],
+    "roleSettings": [],
+    "effective": [
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "DELETE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "INSERT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "SELECT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_credentials",
+        "privilege": "UPDATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "DELETE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "INSERT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "SELECT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_projects",
+        "privilege": "UPDATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "DELETE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "INSERT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "SELECT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_sessions",
+        "privilege": "UPDATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "DELETE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "INSERT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "SELECT",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${auditor}",
+        "relname": "marcom_user_context",
+        "privilege": "UPDATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "MAINTAIN",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "REFERENCES",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "TRIGGER",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "TRUNCATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_credentials",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "MAINTAIN",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "REFERENCES",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "TRIGGER",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "TRUNCATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_projects",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "MAINTAIN",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "REFERENCES",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "TRIGGER",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "TRUNCATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_sessions",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "MAINTAIN",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "REFERENCES",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "TRIGGER",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "TRUNCATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${owner}",
+        "relname": "marcom_user_context",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_credentials",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_projects",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_sessions",
+        "privilege": "UPDATE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "DELETE",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "INSERT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "MAINTAIN",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "REFERENCES",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "SELECT",
+        "allowed": true
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "TRIGGER",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "TRUNCATE",
+        "allowed": false
+      },
+      {
+        "rolname": "${runtime}",
+        "relname": "marcom_user_context",
+        "privilege": "UPDATE",
+        "allowed": true
+      }
+    ],
+    "capabilities": [
+      {
+        "rolname": "${auditor}",
+        "schema_usage": true,
+        "schema_create": false,
+        "db_connect": true,
+        "db_create": false,
+        "db_temp": true,
+        "owner_member": false
+      },
+      {
+        "rolname": "${owner}",
+        "schema_usage": true,
+        "schema_create": true,
+        "db_connect": true,
+        "db_create": true,
+        "db_temp": true,
+        "owner_member": true
+      },
+      {
+        "rolname": "${runtime}",
+        "schema_usage": true,
+        "schema_create": false,
+        "db_connect": true,
+        "db_create": false,
+        "db_temp": true,
+        "owner_member": false
+      }
+    ]
+  }
+}
