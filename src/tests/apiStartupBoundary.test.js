@@ -51,6 +51,9 @@ function runProbe(cli = false) {
       close() { return Promise.resolve(); } add() { return deny('queues'); }
     };
     bull.Worker = class { constructor() { deny('workers'); } };
+    globalThis.__apiStartupBull = bull;
+    const bullExports = Object.keys(bull).filter(key => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) && key !== 'default')
+      .map(key => 'export const ' + key + '=b.' + key + ';').join('');
     const dbUrl = pathToFileURL(${JSON.stringify(join(root, 'src/utils/db.js'))}).href;
     const queueUrl = pathToFileURL(${JSON.stringify(join(root, 'src/queues/index.js'))}).href;
     const serverUrl = pathToFileURL(${JSON.stringify(join(root, 'src/server.js'))});
@@ -63,7 +66,14 @@ function runProbe(cli = false) {
       routeStubs.set(new URL(match[2],serverUrl).href, "import {Router} from 'express';" + exports);
     }
     state.routesStubbed = routeStubs.size;
-    registerHooks({ load(url, context, next) {
+    registerHooks({
+      resolve(name, context, next) {
+        if (name === 'bullmq') return { url:'lumi-api-test:bullmq', shortCircuit:true };
+        return next(name, context);
+      },
+      load(url, context, next) {
+      if (url === 'lumi-api-test:bullmq') return { format:'module', shortCircuit:true,
+        source:'const b=globalThis.__apiStartupBull;' + bullExports };
       if (routeStubs.has(url)) return { format:'module', shortCircuit:true, source:routeStubs.get(url) };
       if (url === dbUrl) return { format:'module', shortCircuit:true, source:
         'const s=globalThis.__apiStartupProbe; export function getDb(){s.counts.getDb++; return async()=>{s.counts.sql++; if(s.sqlFailure)throw Error("synthetic-DDL-denied"); return []}}; export async function closeDb(){}; export function isDbAvailable(){return true}' };

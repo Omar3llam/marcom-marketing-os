@@ -48,8 +48,10 @@ graph timed out under the initial Vitest import fixture. Focused startup cases
 use20 inert route handlers, intercepted DB and installed Redis/BullMQ mocks;
 real server/registry/model bodies execute. They are synthetic ordering/refusal
 tests, not production proof or request-route certification. A separate external
-fresh-process probe imports the **complete installed graph without route/source
-substitution**, intercepting sockets/listen/Redis/BullMQ/Prisma I/O. Both Redis
+fresh-process probe imports the **complete application graph without application
+or route source substitution**, intercepting sockets/listen/Redis/BullMQ/Prisma I/O.
+Native ESM export shims ensure constructor/query interception applies to the same
+import bindings as the application. Both Redis
 configured/disabled imports and actual CLI paths are measured; deliberate counter
 controls detect HTTP, socket, Queue, Worker and Prisma activity. The import probe
 ends its observation window explicitly; actual CLI probes must exit themselves.
@@ -76,14 +78,15 @@ none is represented as RED proof. Fixture corrections kept timeout limits intact
 | Unchanged `npm run test:full` with REQUIRE_DB=1 | **7,537 pass / 0 fail / 0 skip**. Isolated PostgreSQL17.11, Prisma5.22.0, Node24.20.0; unchanged discovery,12 workers and test-owned76-migration provisioning. |
 | Complete installed graph / CLI observations | Four PASS observations, all activity counters0; imports exit0 after explicit observation end, actual CLI exits1 naturally. |
 | Instrumentation controls | Five PASS controls; exactly the intended forbidden operation detected in each. |
-| `npm run check`; `npm run boot-check` | PASS:878 syntax checks;877 parses and full server static graph link. No runtime boot claim. |
+| Additional native ESM controls | Three PASS controls for Queue, Worker and Prisma imports; each catches exactly its intended operation. |
+| `npm run check`; `npm run boot-check` | PASS:878 syntax checks;878 tracked parses and full server static graph link. No runtime boot claim. |
 | `npm run lint`; `npm run arch-check:backend`; `npm run security-check:backend` | PASS:0 errors /32 existing lint warnings;0 failures /5 existing architecture warnings;0 security failures /warnings. |
 | `npm run build:backend` | PASS: Prisma generation, syntax validation and static graph linking; no build-time migration or UI artifact. |
 
 The full suite uses the previously approved **isolated local test provisioning
 only** permission; it does not authorize production migration or recovery. The
-first candidate port55567 was occupied and rejected before init/SQL. The new owned
-physical lab uses loopback55487, system ID `7699425360894514868`, dedicated synthetic
+first candidate port55567 was occupied and rejected before init/SQL. The final owned
+physical lab uses loopback55489, system ID `7699428886001061800`, dedicated synthetic
 role/databases. No application .env or inherited DB/provider credentials. Offline
 dependency reuse has42-source parity; fresh install is separately required in CI.
 The repository network guard is unchanged; external Node journals additionally
@@ -95,6 +98,19 @@ exit0; PID file absent and listener closed. Physical files are retained; no recu
 deletion workaround of the earlier policy rejection. No existing DB was used.
 Final static gates, hosted job steps, exact immutable head and archive SHA256 are
 recorded in the Draft PR. Historical/initial failures remain alongside final results.
+
+### Instrumentation correction retained in the evidence
+
+Additional native ESM controls failed on the initial head `70bec7f4`: CommonJS
+cache replacement did not intercept the application's native named imports for
+BullMQ/Prisma. Those zero constructor/query counters were insufficient evidence.
+The failed controls and all original results are preserved in the initial-head
+subdirectory, including its stopped PG17 lab on55487. The runtime implementation
+did not change. The focused fixture and external probes now intercept native ESM
+bindings explicitly; corrected native controls all pass. Final RED was reproduced
+against an isolated archived baseline with the corrected fixture, then focused,
+full PG17 and static/build verification were repeated. Earlier-head CI is historical
+and is not carried forward to the final head.
 
 ## Release prerequisites and rollback
 
