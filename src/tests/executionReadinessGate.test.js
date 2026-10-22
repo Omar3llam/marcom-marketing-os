@@ -18,6 +18,8 @@
 import {
   describe, it, expect, vi, beforeAll, afterAll, beforeEach,
 } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 let captured = null;
 vi.mock('bullmq', () => ({
@@ -52,6 +54,32 @@ const raw = (s) => prisma.$executeRawUnsafe(s);
 
 /** The migration this image ships last — the one a lagging database lacks. */
 const LATEST = shippedMigrations().at(-1);
+const checksum = name => createHash('sha256').update(readFileSync(
+  new URL(`../../prisma/migrations/${name}/migration.sql`, import.meta.url),
+)).digest('hex');
+const matchingRows = () => shippedMigrations().map(migration_name => ({
+  migration_name, checksum: checksum(migration_name), applied_steps_count: 1,
+  finished: true, rolled_back: false, clean_log: true, ordered: true,
+}));
+const FUTURE = '29990101000000_from_the_future';
+
+// Test-owned receipts only, restored exactly even after a RED assertion fails.
+async function withReceiptMutation(statement, fn) {
+  const rows = await prisma.$queryRaw`SELECT * FROM _prisma_migrations WHERE migration_name=${LATEST}`;
+  expect(rows).toHaveLength(1);
+  try {
+    await statement();
+    __resetReadinessCache();
+    return await fn();
+  } finally {
+    await prisma.$executeRaw`DELETE FROM _prisma_migrations WHERE migration_name=${LATEST} OR migration_name=${FUTURE}`;
+    const r = rows[0];
+    await prisma.$executeRaw`INSERT INTO _prisma_migrations
+      (id,checksum,migration_name,started_at,finished_at,logs,rolled_back_at,applied_steps_count)
+      VALUES (${r.id},${r.checksum},${r.migration_name},${r.started_at},${r.finished_at},${r.logs},${r.rolled_back_at},${r.applied_steps_count})`;
+    __resetReadinessCache();
+  }
+}
 
 let seq = 0;
 async function seedQueued() {
@@ -141,6 +169,69 @@ describe.skipIf(!ENABLED)('B5-01R‴ · worker schema readiness gate', () => {
 
   beforeEach(() => { executeMetaAction.mockClear(); __resetReadinessCache(); });
 
+  it('records actual Prisma deploy receipt semantics and exact shipped bytes', async () => {
+    const receipts = await prisma.$queryRaw`SELECT migration_name,checksum,applied_steps_count,
+      started_at,finished_at,rolled_back_at,logs FROM _prisma_migrations ORDER BY migration_name`;
+    expect(receipts.map(r => r.migration_name)).toEqual(shippedMigrations());
+    console.info('PRISMA_RECEIPT_EVIDENCE', JSON.stringify({
+      count: receipts.length, steps: [...new Set(receipts.map(r => r.applied_steps_count))],
+      checksumMatches: receipts.filter(r => r.checksum === checksum(r.migration_name)).length,
+    }));
+    for (const r of receipts) {
+      expect(r.checksum).toBe(checksum(r.migration_name));
+      expect(Number.isInteger(r.applied_steps_count) && r.applied_steps_count > 0).toBe(true);
+      expect(r.finished_at.getTime()).toBeGreaterThanOrEqual(r.started_at.getTime());
+      expect(r.rolled_back_at).toBeNull();
+      expect(r.logs === null || r.logs === '').toBe(true);
+    }
+  });
+
+  const badReceipts = [
+    ['checksum mismatch', () => prisma.$executeRaw`UPDATE _prisma_migrations SET checksum=${'0'.repeat(64)} WHERE migration_name=${LATEST}`],
+    ['rolled back completion', () => prisma.$executeRaw`UPDATE _prisma_migrations SET rolled_back_at=finished_at WHERE migration_name=${LATEST}`],
+    ['failed incomplete receipt', () => prisma.$executeRaw`UPDATE _prisma_migrations SET finished_at=NULL,logs='synthetic failure' WHERE migration_name=${LATEST}`],
+    ['zero applied steps', () => prisma.$executeRaw`UPDATE _prisma_migrations SET applied_steps_count=0 WHERE migration_name=${LATEST}`],
+    ['negative applied steps', () => prisma.$executeRaw`UPDATE _prisma_migrations SET applied_steps_count=-1 WHERE migration_name=${LATEST}`],
+    ['unexpected multiple applied steps', () => prisma.$executeRaw`UPDATE _prisma_migrations SET applied_steps_count=2 WHERE migration_name=${LATEST}`],
+    ['completion before start', () => prisma.$executeRaw`UPDATE _prisma_migrations SET started_at=finished_at+interval '1 second' WHERE migration_name=${LATEST}`],
+    ['future completion', () => prisma.$executeRaw`UPDATE _prisma_migrations SET finished_at=clock_timestamp()+interval '1 day' WHERE migration_name=${LATEST}`],
+    ['nonempty failure log', () => prisma.$executeRaw`UPDATE _prisma_migrations SET logs='synthetic failure' WHERE migration_name=${LATEST}`],
+    ...['successful', 'unresolved', 'rolled back'].map(kind => [kind + ' duplicate', () => prisma.$executeRaw`
+      INSERT INTO _prisma_migrations (id,checksum,migration_name,started_at,finished_at,logs,rolled_back_at,applied_steps_count)
+      SELECT gen_random_uuid()::text,checksum,migration_name,started_at,
+        CASE WHEN ${kind}='unresolved' THEN NULL ELSE finished_at END,
+        CASE WHEN ${kind}='unresolved' THEN 'synthetic failure' ELSE NULL END,
+        CASE WHEN ${kind}='rolled back' THEN finished_at ELSE NULL END,
+        CASE WHEN ${kind}='successful' THEN 1 ELSE 0 END
+      FROM _prisma_migrations WHERE migration_name=${LATEST}`]),
+    ...['failed', 'rolled back', 'zero steps', 'duplicate'].map(kind => ['non-clean newer receipt: ' + kind, async () => {
+      await prisma.$executeRaw`INSERT INTO _prisma_migrations
+        (id,checksum,migration_name,started_at,finished_at,logs,rolled_back_at,applied_steps_count)
+        VALUES (gen_random_uuid()::text,${'a'.repeat(64)},${FUTURE},now(),
+          CASE WHEN ${kind}='failed' THEN NULL ELSE now() END,
+          CASE WHEN ${kind}='failed' THEN 'synthetic failure' ELSE NULL END,
+          CASE WHEN ${kind}='rolled back' THEN now() ELSE NULL END,
+          CASE WHEN ${kind}='zero steps' THEN 0 ELSE 1 END)`;
+      if (kind === 'duplicate') await prisma.$executeRaw`INSERT INTO _prisma_migrations
+        SELECT gen_random_uuid()::text,checksum,finished_at,migration_name,logs,rolled_back_at,started_at,applied_steps_count
+        FROM _prisma_migrations WHERE migration_name=${FUTURE}`;
+    }]),
+  ];
+  it.each(badReceipts)('refuses %s before provider execution and preserves retry behavior', async (_name, mutate) => {
+    const id = await seedQueued();
+    await withReceiptMutation(mutate, async () => {
+      expect((await checkExecutionSchemaReady()).ready).toBe(false);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const result = await runAttempt(id, attempt);
+        expect(result.threw).toBe(true);
+        expect(result.code).toBe('SCHEMA_NOT_READY');
+      }
+      expect(executeMetaAction).toHaveBeenCalledTimes(0);
+      expect(await rawStatus(id)).toBe('QUEUED');
+    });
+    expect((await checkExecutionSchemaReady()).ready).toBe(true);
+  });
+
   // ── T1 · compatible schema ──────────────────────────────────────────────
   it('T1 — a compatible database is READY and executes normally', async () => {
     const state = await checkExecutionSchemaReady();
@@ -161,7 +252,7 @@ describe.skipIf(!ENABLED)('B5-01R‴ · worker schema readiness gate', () => {
     // into an outage, so the comparison is one-directional on purpose.
     await raw(
       'INSERT INTO _prisma_migrations (id, checksum, migration_name, finished_at, applied_steps_count)'
-      + " VALUES (gen_random_uuid()::text, 'b5r3', '29990101000000_from_the_future', now(), 1)",
+      + ` VALUES (gen_random_uuid()::text, '${'a'.repeat(64)}', '29990101000000_from_the_future', now(), 1)`,
     );
     try {
       const state = await checkExecutionSchemaReady();
@@ -250,7 +341,7 @@ describe.skipIf(!ENABLED)('B5-01R‴ · worker schema readiness gate', () => {
     const ready = {
       $queryRaw: async () => {
         calls += 1;
-        return shippedMigrations().map((migration_name) => ({ migration_name }));
+        return matchingRows();
       },
     };
     const before = calls;

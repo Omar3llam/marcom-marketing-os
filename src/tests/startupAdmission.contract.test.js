@@ -198,7 +198,7 @@ describe('runtime isolation and source-only credential repair removal — not an
       'src/models/userContext.js': '04261772174bb107ca6cbe14dc2df821ded2d65f',
       'src/models/project.js': 'b4182fa480a91e6578111f7683634dcede5e5efe',
       'src/models/credential.js': '4fd9e1dd12f68e68c982f089f31e95dd898abd77',
-      'src/services/execution/schemaReadiness.js': '55eb55c11eb4a61d6e82a27286037f9640fa0967',
+      'src/services/execution/schemaReadiness.js': '6e7ad6d402b2373126bfd0748bd80b3d45040eed',
     };
     for (const [path, hash] of Object.entries(pins)) {
       const content = source(path);
