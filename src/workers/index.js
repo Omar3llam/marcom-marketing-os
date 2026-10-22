@@ -9,6 +9,9 @@
 // behind the same Redis — BullMQ handles partitioning.
 // ============================================================
 import 'dotenv/config';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { verifyRedisReadiness, closeRedisConnection } from '../queues/connection.js';
 // R13-D / B3-C — the Action worker is RETIRED, not merely unused.
 //
 // It consumed the `actions` queue and dispatched through a stub executor
@@ -33,34 +36,63 @@ import { startSyncWorker }      from './syncWorker.js';
 import { startAgenticWorker }   from './agenticWorker.js';
 import { startNarrativeWorker } from './narrativeWorker.js';
 import { startMaintenanceWorker } from './maintenanceWorker.js';
-import { scheduleCampaignSync } from '../queues/index.js';
+import { scheduleCampaignSync, initializeQueues, closeQueues } from '../queues/index.js';
 import { logger }               from '../utils/logger.js';
 
-const executionWorker = startExecutionWorker();
-const syncWorker      = startSyncWorker();
-const agenticWorker   = startAgenticWorker();   // Phase 9 — proactive loop sweep
-const narrativeWorker = startNarrativeWorker(); // Phase 8 — weekly/monthly report cadence
-// Retention housekeeping. Always on — it deletes, it does not spend, and it
-// registers its own daily repeat.
-const maintenanceWorker = startMaintenanceWorker();
-
-// Schedule automatic campaign sync cron job (daily by default)
-scheduleCampaignSync()
-  .then(() => logger.info('[worker] campaign sync scheduled'))
-  .catch(err => logger.warn({ err: err.message }, '[worker] campaign sync schedule failed'));
-
-async function shutdown(signal) {
-  logger.info({ signal }, '[worker] shutting down');
-  await Promise.allSettled([
-    executionWorker.close(),
-    syncWorker.close(),
-    agenticWorker.close(),
-    narrativeWorker.close(),
-    maintenanceWorker.close(),
-  ]);
-  process.exit(0);
+// Redis integrity is necessary but cannot authorize tenant/provider operations.
+// No real whole-process qualification exists yet. This deliberate refusal has
+// no env flag or caller-supplied boolean bypass; a later reviewed slice must
+// supply the missing production proof boundary before consumers can be enabled.
+function requireQualifiedWorkerStartup() {
+  throw Object.assign(new Error('WORKER_ADMISSION_UNQUALIFIED'), { code: 'WORKER_ADMISSION_UNQUALIFIED' });
 }
-process.on('SIGINT',  () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-logger.info('[worker] all workers online');
+export async function startWorkerProcess() {
+  try {
+    await verifyRedisReadiness();
+    requireQualifiedWorkerStartup();
+    await initializeQueues();
+  } catch (err) {
+    closeRedisConnection();
+    throw err;
+  }
+
+  const executionWorker = startExecutionWorker();
+  const syncWorker      = startSyncWorker();
+  const agenticWorker   = startAgenticWorker();   // Phase 9 — proactive loop sweep
+  const narrativeWorker = startNarrativeWorker(); // Phase 8 — weekly/monthly report cadence
+  // Retention housekeeping. Always on — it deletes, it does not spend, and it
+  // registers its own daily repeat.
+  const maintenanceWorker = startMaintenanceWorker();
+
+  // Schedule automatic campaign sync cron job (daily by default)
+  scheduleCampaignSync()
+    .then(() => logger.info('[worker] campaign sync scheduled'))
+    .catch(err => logger.warn({ err: err.message }, '[worker] campaign sync schedule failed'));
+
+  async function shutdown(signal) {
+    logger.info({ signal }, '[worker] shutting down');
+    await Promise.allSettled([
+      executionWorker.close(),
+      syncWorker.close(),
+      agenticWorker.close(),
+      narrativeWorker.close(),
+      maintenanceWorker.close(),
+    ]);
+    await closeQueues();
+    closeRedisConnection();
+    process.exit(0);
+  }
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  logger.info('[worker] all workers online');
+}
+
+// Importing the entrypoint is inert. Only the explicit CLI attempts preflight.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  startWorkerProcess().catch(() => {
+    logger.error({ code: 'WORKER_STARTUP_REFUSED' }, '[worker] startup refused');
+    process.exitCode = 1;
+  });
+}

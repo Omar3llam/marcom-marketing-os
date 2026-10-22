@@ -12,9 +12,10 @@
 //   2. a failed sweep is surfaced, never swallowed — a sweep that silently did
 //      nothing is a table growing forever while the logs claim it was cleaned
 // ============================================================
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
 const cleanAiUsageLogs = vi.hoisted(() => vi.fn());
+const connection = vi.hoisted(() => ({ status: 'ready' }));
 const maintenanceQueue = vi.hoisted(() => ({
   add: vi.fn(),
   getRepeatableJobs: vi.fn(),
@@ -34,6 +35,9 @@ vi.mock('bullmq', () => ({
   Worker: class {},
   Queue: class {
     constructor(name) { this.name = name; }
+    on() { return this; }
+    async waitUntilReady() {}
+    async close() {}
     add(...args) { return maintenanceQueue.add(...args); }
     getRepeatableJobs(...args) { return maintenanceQueue.getRepeatableJobs(...args); }
     removeRepeatableByKey(...args) { return maintenanceQueue.removeRepeatableByKey(...args); }
@@ -41,12 +45,17 @@ vi.mock('bullmq', () => ({
 }));
 // REDIS_DISABLED must be false or every queue is null and the scheduler throws.
 vi.mock('../queues/connection.js', () => ({
-  bullConnection: {}, QUEUE_PREFIX: 'test', REDIS_DISABLED: false,
+  bullConnection: connection, QUEUE_PREFIX: 'test', REDIS_DISABLED: false,
+  verifyRedisReadiness: async () => ({ connection, evictionPolicy: 'noeviction', workerAdmission: 'NOT_QUALIFIED' }),
+  closeRedisConnection: vi.fn(),
 }));
 
 import { logger } from '../utils/logger.js';
 import { runMaintenanceJob } from './maintenanceWorker.js';
-import { scheduleAiUsageCleanup, AI_USAGE_CLEANUP_JOB } from '../queues/index.js';
+import { scheduleAiUsageCleanup, AI_USAGE_CLEANUP_JOB, initializeQueues } from '../queues/index.js';
+
+// Explicit producer activation replaces the former import-time Queue creation.
+beforeAll(async () => { await initializeQueues(); });
 
 const added = () => maintenanceQueue.add.mock.calls.at(-1);
 

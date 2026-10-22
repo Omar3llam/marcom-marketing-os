@@ -17,19 +17,6 @@ import { REDIS_DISABLED, bullConnection } from '../../queues/connection.js';
 
 export const statusRouter = Router();
 
-// Queue registry: stable name → the (possibly null) BullMQ Queue instance.
-// R13-D / B3-C — 'actions' is gone with the worker that drained it. An admin
-// panel listing a queue no process consumes reports depth 0 forever, which
-// reads as health rather than as absence.
-const QUEUES = {
-  'observer':      observerQueue,
-  'campaign-sync': syncQueue,
-  'executions':    executionQueue,
-  'agentic':       agenticQueue,
-  'narrative':     narrativeQueue,
-  'maintenance':   maintenanceQueue,
-};
-
 async function dbStatus() {
   const startedAt = Date.now();
   try {
@@ -53,10 +40,20 @@ async function redisStatus() {
 }
 
 async function queueStatus() {
+  // Read live ESM bindings per request, after initialization or cleanup.
+  // R13-D / B3-C: the retired 'actions' queue remains absent.
+  const queues = {
+    'observer':      observerQueue,
+    'campaign-sync': syncQueue,
+    'executions':    executionQueue,
+    'agentic':       agenticQueue,
+    'narrative':     narrativeQueue,
+    'maintenance':   maintenanceQueue,
+  };
   const out = {};
   // Sequential by design: a handful of light getJobCounts calls, not a fan-out
   // over an unbounded set (so the arch-check N+1 heuristic stays quiet too).
-  for (const [name, queue] of Object.entries(QUEUES)) {
+  for (const [name, queue] of Object.entries(queues)) {
     if (!queue) {
       out[name] = { disabled: true };
       continue;
