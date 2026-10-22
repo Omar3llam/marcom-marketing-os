@@ -59,10 +59,6 @@ import { requireAdmin }       from './middleware/requireAdmin.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { getFirebaseAdminReadiness } from './utils/firebaseAdmin.js';
-import { ensureChatSessionSchema } from './models/chatSession.js';
-import { ensureUserContextSchema } from './models/userContext.js';
-import { ensureProjectSchema }     from './models/project.js';
-import { ensureCredentialSchema }  from './models/credential.js';
 import { config }           from './config.js';
 import { initializeQueues, closeQueues } from './queues/index.js';
 import { REDIS_DISABLED, closeRedisConnection } from './queues/connection.js';
@@ -467,40 +463,19 @@ app.use(errorHandler);
 // ────────────────────────────────────────────────────────────
 
 // ── START + GRACEFUL SHUTDOWN ────────────────────────────────
+// No qualified real whole-process proof issuer exists. Synthetic admission
+// fixtures and lab observers cannot authorize serving or Queue activation.
+// A later independently reviewed implementation must establish that authority.
+// There is deliberately no caller argument, callback or environment bypass.
+function requireQualifiedApiStartup() {
+  throw Object.assign(new Error('API_ADMISSION_UNQUALIFIED'), { code: 'API_ADMISSION_UNQUALIFIED' });
+}
+
 export async function startServer() {
-  if (!REDIS_DISABLED) {
-    try {
-      await initializeQueues();
-    } catch {
-      logger.warn({ code: 'QUEUES_UNAVAILABLE' }, 'Queue initialization refused; queue-dependent routes remain unavailable');
-    }
-  }
+  requireQualifiedApiStartup();
+  if (!REDIS_DISABLED) await initializeQueues();
   const server = app.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port, host: '0.0.0.0', env: config.nodeEnv }, 'MARCOM v4 online');
-
-    // Try to connect to DB and run schema migrations.
-    // In dev mode, if DB is unavailable, just log and continue.
-    const sql = getDb();
-    if (sql) {
-      // Idempotent migration for the chat-history feature — adds the title
-      // column + per-user index if they don't exist. Non-fatal on failure.
-      ensureChatSessionSchema().catch(err =>
-        logger.warn({ err: err.message }, 'ensureChatSessionSchema failed at startup')
-      );
-      ensureUserContextSchema().catch(err =>
-        logger.warn({ err: err.message }, 'ensureUserContextSchema failed at startup')
-      );
-      ensureProjectSchema().catch(err =>
-        logger.warn({ err: err.message }, 'ensureProjectSchema failed at startup')
-      );
-      ensureCredentialSchema().catch(err =>
-        logger.warn({ err: err.message }, 'ensureCredentialSchema failed at startup')
-      );
-    } else if (config.nodeEnv === 'development') {
-      logger.info('[DEV MODE] PostgreSQL bypassed. Phase 1 AI/Meta endpoints will work without DB.');
-    } else {
-      logger.error('DATABASE_URL is required in production. Server started but DB-dependent routes will fail.');
-    }
   });
 
   async function shutdown(signal) {
@@ -524,10 +499,11 @@ export async function startServer() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
-  startServer().catch(() => {
+  startServer().catch(err => {
     closeRedisConnection();
-    logger.error({ code: 'API_STARTUP_FAILED' }, 'API startup failed');
-    process.exitCode = 1;
+    logger.error({ code: err?.code === 'API_ADMISSION_UNQUALIFIED' ? err.code : 'API_STARTUP_FAILED' }, 'API startup refused');
+    // Existing import-time in-memory timers must not keep a refused CLI alive.
+    process.exit(1);
   });
 }
 

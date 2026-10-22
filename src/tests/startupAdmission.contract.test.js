@@ -190,9 +190,9 @@ describe('runtime isolation and source-only credential repair removal — not an
       expect(text, path).not.toMatch(/startupAdmission|evaluateStartupAdmission/);
     }
   });
-  it('pins reviewed Redis startup boundaries and unchanged health, execution and model code', () => {
+  it('pins reviewed API/Redis startup boundaries and unchanged health, execution and model code', () => {
     const pins = {
-      'src/server.js': '3e55cfe30b660431d64ec22f3ea73a538dcbbe8f',
+      'src/server.js': '2a8ea0d90847230069845ff9dd45c75fdc172562',
       'src/workers/index.js': '6ca97c365a03ba07058eb468cfe9db367644c1e0',
       'src/models/chatSession.js': 'a576f0bc473cb9167293b79b9122894bb81d7a25',
       'src/models/userContext.js': '04261772174bb107ca6cbe14dc2df821ded2d65f',
@@ -205,11 +205,11 @@ describe('runtime isolation and source-only credential repair removal — not an
       expect(createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex'), path).toBe(hash);
     }
   });
-  it('pins four remaining legacy boot ensures and refuses automatic credential backfill', () => {
+  it('forbids all four legacy boot ensures and automatic credential backfill', () => {
     expect(forbiddenAutomaticWork).toEqual(['ensureChatSessionSchema', 'ensureUserContextSchema', 'ensureProjectSchema', 'ensureCredentialSchema', 'backfillWorkspaceIds']);
     expect(Object.isFrozen(forbiddenAutomaticWork)).toBe(true);
     for (const name of forbiddenAutomaticWork.slice(0, 4)) {
-      expect(source('src/server.js')).toContain(`${name}().catch`);
+      expect(source('src/server.js')).not.toContain(name);
     }
     expect(source('src/models/credential.js')).not.toContain('backfillWorkspaceIds');
     const credential = source('src/models/credential.js');
@@ -220,7 +220,11 @@ describe('runtime isolation and source-only credential repair removal — not an
     const ensureOnly = credential.slice(start, end);
     expect([...ensureOnly.matchAll(/await sql`/g)]).toHaveLength(8);
     expect(ensureOnly).not.toMatch(/\b(?:UPDATE|DELETE|INSERT)\s+(?:INTO\s+|FROM\s+)?marcom_credentials\b/i);
-    expect(source('src/server.js').indexOf('app.listen(')).toBeLessThan(source('src/server.js').indexOf('ensureChatSessionSchema().catch'));
+    const startup = source('src/server.js').slice(source('src/server.js').indexOf('export async function startServer()'));
+    expect(startup.indexOf('requireQualifiedApiStartup();')).toBeGreaterThan(-1);
+    expect(startup.indexOf('requireQualifiedApiStartup();')).toBeLessThan(startup.indexOf('await initializeQueues()'));
+    expect(startup.indexOf('requireQualifiedApiStartup();')).toBeLessThan(startup.indexOf('app.listen('));
+    expect(startup).not.toContain('QUEUES_UNAVAILABLE');
     expect(source('src/workers/index.js')).toContain('const executionWorker = startExecutionWorker()');
     const worker = source('src/workers/index.js');
     expect(worker.indexOf('await verifyRedisReadiness()')).toBeLessThan(worker.indexOf('const executionWorker = startExecutionWorker()'));
