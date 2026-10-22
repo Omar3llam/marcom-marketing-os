@@ -190,10 +190,10 @@ describe('runtime isolation and source-only credential repair removal — not an
       expect(text, path).not.toMatch(/startupAdmission|evaluateStartupAdmission/);
     }
   });
-  it('pins existing listener, health, worker, execution and model code unchanged', () => {
+  it('pins reviewed Redis startup boundaries and unchanged health, execution and model code', () => {
     const pins = {
-      'src/server.js': '669b2c1e47be3cdc809791d6964c74a795d71911',
-      'src/workers/index.js': '79417697c7f6c1df648bbfce751f2a878851cde7',
+      'src/server.js': '3e55cfe30b660431d64ec22f3ea73a538dcbbe8f',
+      'src/workers/index.js': '6ca97c365a03ba07058eb468cfe9db367644c1e0',
       'src/models/chatSession.js': 'a576f0bc473cb9167293b79b9122894bb81d7a25',
       'src/models/userContext.js': '04261772174bb107ca6cbe14dc2df821ded2d65f',
       'src/models/project.js': 'b4182fa480a91e6578111f7683634dcede5e5efe',
@@ -222,5 +222,8 @@ describe('runtime isolation and source-only credential repair removal — not an
     expect(ensureOnly).not.toMatch(/\b(?:UPDATE|DELETE|INSERT)\s+(?:INTO\s+|FROM\s+)?marcom_credentials\b/i);
     expect(source('src/server.js').indexOf('app.listen(')).toBeLessThan(source('src/server.js').indexOf('ensureChatSessionSchema().catch'));
     expect(source('src/workers/index.js')).toContain('const executionWorker = startExecutionWorker()');
+    const worker = source('src/workers/index.js');
+    expect(worker.indexOf('await verifyRedisReadiness()')).toBeLessThan(worker.indexOf('const executionWorker = startExecutionWorker()'));
+    expect(worker.indexOf('requireQualifiedWorkerStartup();')).toBeLessThan(worker.indexOf('await initializeQueues()'));
   });
 });

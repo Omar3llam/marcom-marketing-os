@@ -1,119 +1,78 @@
-// ============================================================
-// MARCOM / Lumi — Shared Redis connection for BullMQ
-// ------------------------------------------------------------
-// Resilience policy:
-//   - In production, refuse to fall back to localhost. If
-//     REDIS_URL is missing or points at localhost, mark the
-//     queue subsystem DISABLED and export a sentinel `null`
-//     connection. Routes that need Redis return a 503 instead
-//     of letting BullMQ spam reconnect errors every 2 s.
-//   - In development, ALSO disable Redis if not explicitly
-//     configured. This allows Phase 1 AI/Meta endpoints to
-//     work without spamming ECONNREFUSED errors. Devs can
-//     set REDIS_URL to enable queues when needed.
-//   - Always cap reconnect attempts at 5 so a misconfig can't
-//     fill the log stream.
-// ============================================================
-import IORedis  from 'ioredis';
+// Importing this module never opens a socket or runs a Redis command.
+// Queue activation must explicitly await verifyRedisReadiness(). This proves
+// only the current Redis connection/policy, never permission to run a Worker.
+import IORedis from 'ioredis';
 import { logger } from '../utils/logger.js';
 
-const isProd  = process.env.NODE_ENV === 'production';
-const isDev   = process.env.NODE_ENV === 'development';
-const rawUrl  = process.env.REDIS_URL;
+const rawUrl = process.env.REDIS_URL;
 const isLocal = !rawUrl || /^redis:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|$)/i.test(rawUrl);
+export const REDIS_DISABLED = !rawUrl || (['production', 'development'].includes(process.env.NODE_ENV) && isLocal);
+export const QUEUE_PREFIX = process.env.BULLMQ_PREFIX || 'lumi';
+const READINESS_TIMEOUT_MS = 5000;
+let probing = false;
+let pending = null;
 
-// Disable Redis if:
-// 1. Production + no valid REDIS_URL
-// 2. Development + REDIS_URL missing OR pointing to localhost
-//    (graceful degradation for AI-only mode by default)
-export const REDIS_DISABLED = (isProd && isLocal) || (isDev && isLocal);
-export const QUEUE_PREFIX   = process.env.BULLMQ_PREFIX || 'lumi';
+// lazyConnect is essential: middleware can retain this client reference without
+// connecting during import. Do not construct a BullMQ Queue at module scope.
+export const bullConnection = REDIS_DISABLED ? null : new IORedis(rawUrl, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  lazyConnect: true,
+  connectTimeout: READINESS_TIMEOUT_MS,
+  // Only an explicitly awaited probe may connect/retry. A reconnected socket
+  // cannot silently reuse the eviction-policy observation from an old session.
+  retryStrategy: times => probing && times <= 5 ? Math.min(times * 500, 3000) : null,
+  reconnectOnError: () => false,
+});
 
-let _conn = null;
+bullConnection?.on('error', () => {
+  // Redis errors may contain connection URLs/authentication details.
+  logger.warn({ code: 'REDIS_CONNECTION_ERROR' }, '[bullmq:redis] connection error');
+});
 
-if (REDIS_DISABLED) {
-  if (isDev) {
-    logger.info(
-      '[DEV MODE] Redis/BullMQ bypassed. Running in stateless AI mode (queue-dependent routes will skip writes).',
-    );
-  } else {
-    logger.warn(
-      { reason: rawUrl ? 'REDIS_URL points at localhost' : 'REDIS_URL not set' },
-      '[bullmq:redis] DISABLED — queue-dependent routes will return 503 until a real REDIS_URL is configured',
-    );
-  }
-} else {
-  const url = rawUrl || 'redis://localhost:6379';
-  _conn = new IORedis(url, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck:     false,
-    lazyConnect:          true,
-    // Cap reconnect attempts so a misconfigured prod can't spam
-    // the log stream every 2s. After 5 fails, give up.
-    retryStrategy: (times) => {
-      if (times > 5) {
-        logger.warn({ attempts: times }, '[bullmq:redis] giving up on reconnect — set a valid REDIS_URL');
-        return null;   // stop retrying
-      }
-      return Math.min(times * 500, 3000);
-    },
-    reconnectOnError: () => false,
-  });
-
-  // De-duplicate identical errors — one warning per error code
-  // is plenty; we don't need 30 lines of the same ECONNREFUSED.
-  let _lastErrCode = null;
-  _conn.on('error', (err) => {
-    const code = err?.code || err?.message;
-    if (code === _lastErrCode) return;
-    _lastErrCode = code;
-    logger.warn({ code, msg: err?.message }, '[bullmq:redis] error');
-  });
-
-  // ── PRODUCTION SAFETY: Validate Redis eviction policy ─────────
-  // BullMQ stores job queue data in Redis. If the eviction policy
-  // is NOT 'noeviction', Redis will silently delete job data under
-  // memory pressure, causing jobs to disappear without any error.
-  //
-  // REQUIRED POLICY: noeviction
-  // DANGEROUS POLICIES: allkeys-lru, allkeys-lfu, volatile-lru, etc.
-  //
-  // On Render.com, configure via Dashboard → Redis → Advanced → maxmemory-policy
-  (async () => {
-    try {
-      await _conn.connect();
-      const config = await _conn.config('GET', 'maxmemory-policy');
-      const policy = config?.[1]; // ['maxmemory-policy', 'allkeys-lru']
-
-      if (policy !== 'noeviction') {
-        logger.error(
-          {
-            current_policy: policy,
-            required_policy: 'noeviction',
-            impact: 'BullMQ job data can be silently evicted under memory pressure',
-            fix: 'Set maxmemory-policy=noeviction in Redis config',
-          },
-          '❌ [bullmq:redis] DANGEROUS EVICTION POLICY DETECTED',
-        );
-
-        if (isProd) {
-          logger.fatal(
-            '[bullmq:redis] FATAL: Production Redis has wrong eviction policy. Jobs will be lost.',
-          );
-          // In strict mode, exit immediately to prevent silent job loss
-          // Uncomment the line below to enforce hard failure:
-          // process.exit(1);
-        }
-      } else {
-        logger.info({ policy }, '[bullmq:redis] eviction policy validated ✓');
-      }
-    } catch (err) {
-      logger.warn(
-        { err: err.message },
-        '[bullmq:redis] Could not validate eviction policy (connection may not be ready yet)',
-      );
-    }
-  })();
+function refusal(code) {
+  return Object.assign(new Error(code), { code });
 }
 
-export const bullConnection = _conn;
+export function closeRedisConnection() {
+  bullConnection?.disconnect();
+}
+
+export async function verifyRedisReadiness() {
+  if (!bullConnection) throw refusal('REDIS_UNAVAILABLE');
+  if (pending) return pending;
+  const connection = bullConnection;
+  let timer;
+  let cancelled = false;
+  probing = true;
+  pending = (async () => {
+    try {
+      return await Promise.race([
+        (async () => {
+          if (connection.status !== 'ready') await connection.connect();
+          if (cancelled) throw refusal('REDIS_READINESS_FAILED');
+          const config = await connection.config('GET', 'maxmemory-policy');
+          if (!Array.isArray(config) || config.length !== 2
+            || config[0] !== 'maxmemory-policy' || config[1] !== 'noeviction') {
+            throw refusal('REDIS_POLICY_UNQUALIFIED');
+          }
+          if (cancelled || connection.status !== 'ready') throw refusal('REDIS_READINESS_FAILED');
+          return Object.freeze({ connection, evictionPolicy: 'noeviction', workerAdmission: 'NOT_QUALIFIED' });
+        })(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            cancelled = true;
+            reject(refusal('REDIS_READINESS_FAILED'));
+          }, READINESS_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (err) {
+      closeRedisConnection();
+      throw refusal(err?.code === 'REDIS_POLICY_UNQUALIFIED' ? err.code : 'REDIS_READINESS_FAILED');
+    } finally {
+      clearTimeout(timer);
+      probing = false;
+    }
+  })();
+  try { return await pending; } finally { pending = null; }
+}

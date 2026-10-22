@@ -8,10 +8,13 @@
 // `if (!actionQueue)` and return 503.
 // ============================================================
 import { Queue } from 'bullmq';
+import { logger } from '../utils/logger.js';
 import {
   bullConnection,
   QUEUE_PREFIX,
   REDIS_DISABLED,
+  verifyRedisReadiness,
+  closeRedisConnection,
 } from './connection.js';
 
 // R13-D / B3-C — ACTION_QUEUE_NAME ('actions') is deliberately absent. Naming a
@@ -58,12 +61,58 @@ const queueOpts = {
 // Registering a queue nothing consumes would leave rows accumulating where a
 // future consumer could silently pick them up, so the registration goes with
 // the worker. Real mutations use `executionQueue` below.
-export const observerQueue  = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_NAME,  queueOpts);
-export const syncQueue      = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,      queueOpts);
-export const executionQueue = REDIS_DISABLED ? null : new Queue(EXECUTION_QUEUE_NAME, queueOpts);
-export const agenticQueue   = REDIS_DISABLED ? null : new Queue(AGENTIC_QUEUE_NAME,   queueOpts);
-export const narrativeQueue = REDIS_DISABLED ? null : new Queue(NARRATIVE_QUEUE_NAME, queueOpts);
-export const maintenanceQueue = REDIS_DISABLED ? null : new Queue(MAINTENANCE_QUEUE_NAME, queueOpts);
+export let observerQueue = null;
+export let syncQueue = null;
+export let executionQueue = null;
+export let agenticQueue = null;
+export let narrativeQueue = null;
+export let maintenanceQueue = null;
+let initializing = null;
+let registryEpoch = 0;
+
+// Live ESM bindings preserve existing request-time consumers and their 503 guards.
+// No Queue construction, connection or scheduling occurs during module import.
+export async function initializeQueues() {
+  if (initializing) return initializing;
+  const epoch = registryEpoch;
+  initializing = (async () => {
+    let connection;
+    try { ({ connection } = await verifyRedisReadiness()); }
+    catch (err) { await closeQueues(); throw err; }
+    if (connection !== bullConnection || REDIS_DISABLED) throw new Error('REDIS_UNAVAILABLE');
+    if (executionQueue) return;
+    const created = [];
+    let timer;
+    try {
+      for (const name of [OBSERVER_QUEUE_NAME, SYNC_QUEUE_NAME, EXECUTION_QUEUE_NAME,
+        AGENTIC_QUEUE_NAME, NARRATIVE_QUEUE_NAME, MAINTENANCE_QUEUE_NAME]) {
+        const queue = new Queue(name, queueOpts);
+        queue.on('error', () => logger.error({ code: 'QUEUE_CONNECTION_ERROR' }, '[bullmq] queue error'));
+        created.push(queue);
+      }
+      await Promise.race([
+        Promise.all(created.map(queue => queue.waitUntilReady())),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('QUEUE_READINESS_TIMEOUT')), 5000); }),
+      ]);
+      if (epoch !== registryEpoch || connection.status !== 'ready') throw new Error('QUEUE_INITIALIZATION_CANCELLED');
+      [observerQueue, syncQueue, executionQueue, agenticQueue, narrativeQueue, maintenanceQueue] = created;
+    } catch {
+      closeRedisConnection();
+      await Promise.allSettled(created.map(queue => queue.close()));
+      throw new Error('QUEUE_INITIALIZATION_FAILED');
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  try { await initializing; } finally { initializing = null; }
+}
+
+export async function closeQueues() {
+  registryEpoch += 1;
+  const queues = [observerQueue, syncQueue, executionQueue, agenticQueue, narrativeQueue, maintenanceQueue];
+  observerQueue = syncQueue = executionQueue = agenticQueue = narrativeQueue = maintenanceQueue = null;
+  await Promise.allSettled(queues.filter(Boolean).map(queue => queue.close()));
+}
 
 // ── Helper: enqueue an ExecutionRequest ──────────────────────
 // Called by meta.js after PENDING → QUEUED transition.
