@@ -17,7 +17,9 @@
 // A ratchet on an accident is a floor, not a policy. This file is the policy.
 //
 // ── WHAT "COMPATIBLE" MEANS HERE ────────────────────────────────────────────
-// Every migration SHIPPED IN THIS IMAGE is recorded applied in the database.
+// Every migration SHIPPED IN THIS IMAGE has one clean completed receipt whose
+// checksum matches the actual shipped SQL bytes. All receipts, including newer
+// ones, must be unique and clean; an unknown name alone is not incompatibility.
 //
 // The comparison is deliberately one-directional. A database carrying MORE
 // migrations than the image is READY: that is the normal state during a rollout
@@ -47,7 +49,8 @@
 // One SELECT. This never applies a migration, never alters schema, never writes
 // history, never touches an execution row.
 // ============================================================
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { prisma } from '../../lib/prisma.js';
@@ -79,6 +82,9 @@ export function shippedMigrations(dir = MIGRATIONS_DIR) {
  */
 export async function checkExecutionSchemaReady(client = prisma) {
   const shipped = shippedMigrations();
+  if (!shipped.length) throw new Error('shipped migration sources are missing');
+  const checksums = new Map(shipped.map(name => [name, createHash('sha256')
+    .update(readFileSync(resolve(MIGRATIONS_DIR, name, 'migration.sql'))).digest('hex')]));
   // A tagged template, never the Unsafe variant. This query takes no input at
   // all, so the pre-built string bought nothing — it only kept the one shape
   // that becomes an injection the day someone adds a filter to it, which is why
@@ -86,21 +92,38 @@ export async function checkExecutionSchemaReady(client = prisma) {
   // SQL, which is the point above: no model, no projection, no dependency on
   // the generated client agreeing with the database (I3).
   const rows = await client.$queryRaw`
-    SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL
+    SELECT migration_name,checksum,applied_steps_count,
+      finished_at IS NOT NULL AS finished,rolled_back_at IS NOT NULL AS rolled_back,
+      logs IS NULL OR logs='' AS clean_log,
+      started_at IS NOT NULL AND finished_at>=started_at AND finished_at<=clock_timestamp() AS ordered
+    FROM public._prisma_migrations
   `;
-  const applied = new Set(rows.map((r) => r.migration_name));
+  const counts = new Map();
+  for (const row of rows) counts.set(row.migration_name, (counts.get(row.migration_name) || 0) + 1);
+  // Prisma5.22 migrate deploy on PG17 records one applied deployment step,
+  // including multi-statement migration76. Zero/other counts do not establish
+  // that execution here. Resolve/recovery histories are not auto-normalized.
+  const invalid = new Set(rows.filter(r => typeof r.migration_name !== 'string' || !r.migration_name
+    || counts.get(r.migration_name) !== 1 || r.finished !== true || r.rolled_back !== false
+    || r.clean_log !== true || r.ordered !== true || r.applied_steps_count !== 1
+    || typeof r.checksum !== 'string' || !/^[a-f0-9]{64}$/.test(r.checksum)
+    || (checksums.has(r.migration_name) && r.checksum !== checksums.get(r.migration_name)))
+    .map(r => r.migration_name));
+  const applied = new Set(rows.filter(r => !invalid.has(r.migration_name)).map(r => r.migration_name));
   const missing = shipped.filter((m) => !applied.has(m));
   return {
-    ready: missing.length === 0,
+    ready: missing.length === 0 && invalid.size === 0,
     missing,
+    invalidCount: invalid.size,
     shippedCount: shipped.length,
     appliedCount: applied.size,
   };
 }
 
-// Memoised on SUCCESS ONLY. A database that has caught up cannot fall behind
-// again within one process lifetime, so a ready answer is permanent and costs
-// one query per worker. A NOT-READY answer is never cached: the next job
+// Memoised on SUCCESS ONLY. A ready answer remains permanent and costs
+// one query per worker. This historical cache policy is deliberately unchanged:
+// first success is not continuous history/freshness or whole-process admission.
+// A NOT-READY answer is never cached: the next job
 // re-asks, which is how recovery happens when the backend's migration lands.
 // No timer, no poll loop, no sleep — the only moment readiness matters is the
 // moment a job arrives (B5-01R‴ I5).
@@ -130,6 +153,12 @@ export async function assertExecutionSchemaReady(client = prisma) {
   }
 
   if (!result.ready) {
+    if (result.invalidCount) {
+      throw new SchemaNotReadyError(
+        'execution migration history is unqualified: ambiguous or invalid receipts. Refusing to execute.',
+        { missing: result.missing },
+      );
+    }
     const shown = result.missing.slice(0, 5);
     throw new SchemaNotReadyError(
       `database is behind this worker: ${result.missing.length} of ${result.shippedCount} `
