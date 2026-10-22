@@ -23,7 +23,8 @@ The read-only Redis observation accepts exactly CONFIG GET maxmemory-policy /
 noeviction on the actual ready client; missing, malformed, denied, unsafe or
 timed-out observations refuse. Its returned client reference is the identity
 binding, not a serialized authorization token. Probe and queue preparation each
-have a five-second deadline. No global Redis command timeout is imposed on
+have a five-second readiness deadline, with a separate one-second best-effort
+queue cleanup budget. No global Redis command timeout is imposed on
 BullMQ's blocking commands. Late probe completion cannot issue CONFIG after
 timeout. Errors log fixed codes, never Redis URLs or provider error messages.
 
@@ -155,3 +156,55 @@ After any future cutover, restarting an old binary can restore import-time Redis
 operations and unqualified Worker activation: that is not a qualified rollback.
 Use a separately reviewed fallback binary/runbook; no automatic rollback,
 inverse DDL or receipt rewriting is implied. Stop at Draft PR / independent review.
+
+## PR #606 independent-review corrections
+
+Reviewed head `039c479a1715df117f9947207ff0ec450b1c3380`; master remains
+`1be71c336de09bb8231ab88309b4d1d03b398022`. Corrections address F-1/F-2 in
+[review 5611239014](https://github.com/Omar3llam/marcom-marketing-os/pull/606#pullrequestreview-5611239014).
+
+Corrective delta: `src/routes/admin/status.js` reads live registry bindings inside
+each status request. New `src/routes/admin/status.lifecycle.test.js` imports the
+real router before initialization and exercises the real auth/admin guards:
+disabled → six actual counts → disabled, per-queue failure isolation, anonymous 401
+and non-admin 403. Response keys and mount authorization remain unchanged.
+
+`src/queues/index.js` bounds best-effort close attempts to one second. Every close
+is attempted, synchronous throws and late rejections are consumed, and deadline
+expiry disconnects the shared client. Bindings clear before public cleanup;
+failed readiness never publishes them. The registry epoch is also checked before
+constructing Queues after an awaited Redis probe, preventing cancelled late work.
+Four added `src/queues/startupBoundary.test.js` cases cover hanging close after
+readiness timeout, hanging explicit cleanup, late cancelled probe and synchronous
+close throws. All original assertions and timeout limits remain.
+
+| Verification on corrective source | Actual result |
+|---|---|
+| RED: `npm run test:fast -- src/routes/admin/status.lifecycle.test.js src/queues/startupBoundary.test.js --reporter=json --outputFile=<evidence>/focused-red.json` | **27 pass / 6 fail / 0 skip**: two stale-status failures; readiness+cleanup still pending, explicit cleanup still pending, six constructions after cancellation, synchronous close error escaping. |
+| Same command, GREEN output file | **33 pass / 0 fail / 0 skip**, same tests/assertions/timeouts. |
+| Expanded fast regression: boundary, workers, rate-limit/replay stores, execution/auth/admin routes, admission contract and Prisma import guard | **665 pass / 0 fail / 99 skip**, 45 files; DB skips covered separately below. Exact path arguments in invocation receipt. |
+| `npm run test:full -- --reporter=json --outputFile=<evidence>/full-green.json` | **7,522 pass / 0 fail / 0 skip**, 465 files, exit0, REQUIRE_DB=1; unchanged discovery and 12-worker isolated provisioning with all 76 migrations. |
+| `npm run check`; `npm run boot-check` | PASS: 877 syntax checks; 876 parses and full server static graph link. |
+| `npm run lint`; `npm run arch-check:backend`; `npm run security-check:backend` | PASS: 0 errors / 32 existing lint warnings; 0 failures / 5 existing architecture warnings; 0 security failures / warnings. |
+| `npm run build:backend` | PASS: Prisma generation, syntax check and static graph linking; no build-time migration. |
+
+New physical PostgreSQL17.11 lab: loopback55566, system ID
+`7699408304509212840`, dedicated synthetic role/databases, Prisma5.22.0 and
+Node24.20.0. Preflight binds physical/process/SQL identities before testing.
+No inherited credentials or application .env; unchanged repository network guard
+plus external command/socket journals. The suite removed its template/worker and
+fixture databases; only postgres/template0/template1 remained. pg_ctl stop exited0,
+postmaster.pid is absent and the listener closed. Physical lab files are retained;
+no recursive-deletion workaround of the earlier policy rejection was attempted.
+
+External `lumi-pr606-review-fixes` evidence preserves original RED JSON and test
+sources, GREEN JSON, command/exit receipts, journals, lab identity and teardown.
+The Draft PR records final source/diff hashes, package checksum, local static gates
+and actual hosted job steps on its new immutable head. Earlier-head CI is historical.
+
+The cleanup bound limits waiting; it cannot prove a broken BullMQ close actually
+released every resource. Real Redis fault/recovery is NOT_TESTED. No new polling,
+global command timeout, retry change, Worker activation or admission bypass.
+Job/schedule bodies, OAuth, auth/tenant/execution implementation, schema and frontend
+are unchanged by this correction. No persistent data rollback is needed; reverting
+these fixes restores the two reviewed defects. All release/B/C blockers above remain.

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const f = vi.hoisted(() => ({
   clients: [], queues: [], events: [], policy: ['maxmemory-policy', 'noeviction'],
   connectError: null, configError: null, holdConnect: null, holdQueue: null,
+  holdClose: null, closeThrows: false,
   starts: Array.from({ length: 5 }, () => vi.fn(() => ({ close: vi.fn() }))),
 }));
 vi.mock('ioredis', () => ({ default: class {
@@ -29,7 +30,10 @@ vi.mock('bullmq', () => ({
   Queue: class {
     constructor(name, options) {
       this.name = name; this.options = options; f.queues.push(this);
-      this.add = vi.fn(); this.close = vi.fn(async () => {});
+      this.add = vi.fn(); this.close = vi.fn(() => {
+        if (f.closeThrows) throw new Error('synthetic close failed synchronously');
+        return f.holdClose || Promise.resolve();
+      });
       this.waitUntilReady = vi.fn(async () => { if (f.holdQueue) await f.holdQueue; });
       this.on = vi.fn(() => this);
     }
@@ -51,6 +55,7 @@ beforeEach(() => {
   f.clients = []; f.queues = []; f.events = [];
   f.policy = ['maxmemory-policy', 'noeviction'];
   f.connectError = null; f.configError = null; f.holdConnect = null; f.holdQueue = null;
+  f.holdClose = null; f.closeThrows = false;
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
@@ -159,6 +164,71 @@ describe('explicit Redis readiness is necessary, never Worker authority', () => 
     await expect(q.enqueueExecution({})).rejects.toThrow('unavailable');
     await expect(q.scheduleCampaignSync()).rejects.toThrow('unavailable');
     expect(f.events).toEqual([]); expect(f.queues).toEqual([]);
+  });
+  it('refuses within readiness plus cleanup budgets even when close never settles', async () => {
+    const q = await import('./index.js');
+    vi.useFakeTimers();
+    let releaseReady, rejectClose;
+    f.holdQueue = new Promise(resolve => { releaseReady = resolve; });
+    f.holdClose = new Promise((_, reject) => { rejectClose = reject; });
+    let outcome = 'pending';
+    const pending = q.initializeQueues().then(() => { outcome = 'published'; }, err => { outcome = err.message; });
+    try {
+      await vi.advanceTimersByTimeAsync(5001);
+      expect(q.executionQueue).toBeNull();
+      for (const queue of f.queues) expect(queue.close).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1001);
+      expect(outcome).toBe('QUEUE_INITIALIZATION_FAILED');
+      expect(q.maintenanceQueue).toBeNull();
+      expect(f.clients[0].disconnect).toHaveBeenCalled();
+    } finally {
+      // Late readiness/cleanup settlement must be consumed without publishing.
+      releaseReady(); rejectClose(new Error('synthetic late close rejection'));
+      await pending;
+    }
+    expect(f.queues).toHaveLength(6);
+    expect(q.executionQueue).toBeNull();
+    for (const queue of f.queues) expect(queue.add).not.toHaveBeenCalled();
+    for (const start of f.starts) expect(start).not.toHaveBeenCalled();
+  });
+  it('bounds explicit cleanup and clears queue bindings before waiting for close', async () => {
+    const q = await import('./index.js');
+    await q.initializeQueues();
+    vi.useFakeTimers();
+    let releaseClose;
+    f.holdClose = new Promise(resolve => { releaseClose = resolve; });
+    let settled = false;
+    const closing = q.closeQueues().then(() => { settled = true; });
+    expect(q.executionQueue).toBeNull();
+    try {
+      await vi.advanceTimersByTimeAsync(1001);
+      expect(settled).toBe(true);
+      expect(f.clients[0].disconnect).toHaveBeenCalled();
+    } finally { releaseClose(); await closing; }
+    expect(q.executionQueue).toBeNull();
+  });
+  it('does not construct queues when a cancelled Redis probe completes late', async () => {
+    const q = await import('./index.js');
+    let releaseConnect;
+    f.holdConnect = new Promise(resolve => { releaseConnect = resolve; });
+    const pending = q.initializeQueues();
+    const refusal = expect(pending).rejects.toThrow('QUEUE_INITIALIZATION_FAILED');
+    await q.closeQueues();
+    releaseConnect();
+    await refusal;
+    expect(f.queues).toHaveLength(0);
+    expect(q.executionQueue).toBeNull();
+    expect(f.clients[0].disconnect).toHaveBeenCalled();
+  });
+  it('attempts every cleanup even when close throws synchronously', async () => {
+    const q = await import('./index.js');
+    vi.useFakeTimers(); f.closeThrows = true;
+    f.holdQueue = new Promise(() => {});
+    const refusal = expect(q.initializeQueues()).rejects.toThrow('QUEUE_INITIALIZATION_FAILED');
+    await vi.advanceTimersByTimeAsync(5001);
+    await refusal;
+    expect(q.executionQueue).toBeNull();
+    for (const queue of f.queues) expect(queue.close).toHaveBeenCalledTimes(1);
   });
   it('activates the original six producer queues only through the awaited initializer', async () => {
     const q = await import('./index.js');

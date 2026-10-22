@@ -70,6 +70,24 @@ export let maintenanceQueue = null;
 let initializing = null;
 let registryEpoch = 0;
 
+async function cleanupQueues(queues) {
+  let timer;
+  try {
+    // Consume synchronous failures and late rejections from every close attempt.
+    const completed = await Promise.race([
+      Promise.allSettled(queues.filter(Boolean).map(queue => Promise.resolve().then(() => queue.close())))
+        .then(() => true),
+      new Promise(resolve => { timer = setTimeout(() => resolve(false), 1000); }),
+    ]);
+    if (!completed) {
+      closeRedisConnection();
+      logger.warn({ code: 'QUEUE_CLEANUP_TIMEOUT' }, '[bullmq] queue cleanup deadline reached');
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Live ESM bindings preserve existing request-time consumers and their 503 guards.
 // No Queue construction, connection or scheduling occurs during module import.
 export async function initializeQueues() {
@@ -84,6 +102,7 @@ export async function initializeQueues() {
     const created = [];
     let timer;
     try {
+      if (epoch !== registryEpoch) throw new Error('QUEUE_INITIALIZATION_CANCELLED');
       for (const name of [OBSERVER_QUEUE_NAME, SYNC_QUEUE_NAME, EXECUTION_QUEUE_NAME,
         AGENTIC_QUEUE_NAME, NARRATIVE_QUEUE_NAME, MAINTENANCE_QUEUE_NAME]) {
         const queue = new Queue(name, queueOpts);
@@ -98,7 +117,7 @@ export async function initializeQueues() {
       [observerQueue, syncQueue, executionQueue, agenticQueue, narrativeQueue, maintenanceQueue] = created;
     } catch {
       closeRedisConnection();
-      await Promise.allSettled(created.map(queue => queue.close()));
+      await cleanupQueues(created);
       throw new Error('QUEUE_INITIALIZATION_FAILED');
     } finally {
       clearTimeout(timer);
@@ -111,7 +130,7 @@ export async function closeQueues() {
   registryEpoch += 1;
   const queues = [observerQueue, syncQueue, executionQueue, agenticQueue, narrativeQueue, maintenanceQueue];
   observerQueue = syncQueue = executionQueue = agenticQueue = narrativeQueue = maintenanceQueue = null;
-  await Promise.allSettled(queues.filter(Boolean).map(queue => queue.close()));
+  await cleanupQueues(queues);
 }
 
 // ── Helper: enqueue an ExecutionRequest ──────────────────────
