@@ -120,17 +120,13 @@ export async function checkExecutionSchemaReady(client = prisma) {
   };
 }
 
-// Memoised on SUCCESS ONLY. A ready answer remains permanent and costs
-// one query per worker. This historical cache policy is deliberately unchanged:
-// first success is not continuous history/freshness or whole-process admission.
-// A NOT-READY answer is never cached: the next job
-// re-asks, which is how recovery happens when the backend's migration lands.
-// No timer, no poll loop, no sleep — the only moment readiness matters is the
-// moment a job arrives (B5-01R‴ I5).
-let readyOnce = false;
+// CP-02: every invocation observes current receipts using its own client.
+// Neither success nor refusal is cached, so a later attempt can detect drift
+// or recover. This observation is not continuous authorization, transaction-wide
+// physical binding or whole-process admission. No timer, polling or background I/O.
 
-/** Test seam. Production never calls this. */
-export function __resetReadinessCache() { readyOnce = false; }
+/** Compatibility test seam. No runtime cache remains to reset. */
+export function __resetReadinessCache() {}
 
 /**
  * FAIL CLOSED. Throws SchemaNotReadyError unless every shipped migration is
@@ -140,8 +136,6 @@ export function __resetReadinessCache() { readyOnce = false; }
  * must not act against.
  */
 export async function assertExecutionSchemaReady(client = prisma) {
-  if (readyOnce) return;
-
   let result;
   try {
     result = await checkExecutionSchemaReady(client);
@@ -168,6 +162,4 @@ export async function assertExecutionSchemaReady(client = prisma) {
       { missing: result.missing },
     );
   }
-
-  readyOnce = true;
 }

@@ -69,7 +69,6 @@ async function withReceiptMutation(statement, fn) {
   expect(rows).toHaveLength(1);
   try {
     await statement();
-    __resetReadinessCache();
     return await fn();
   } finally {
     await prisma.$executeRaw`DELETE FROM _prisma_migrations WHERE migration_name=${LATEST} OR migration_name=${FUTURE}`;
@@ -114,7 +113,7 @@ async function runAttempt(executionId, attemptsMade = 0) {
   try {
     return { threw: false, value: await captured(makeJob(executionId, attemptsMade)) };
   } catch (err) {
-    return { threw: true, code: err.code ?? null, message: String(err.message ?? err) };
+    return { threw: true, code: err.code ?? null, message: String(err.message ?? err), skipRetry: err.skipRetry === true };
   }
 }
 
@@ -328,25 +327,121 @@ describe.skipIf(!ENABLED)('B5-01R‴ · worker schema readiness gate', () => {
       .rejects.toThrow(/_prisma_migrations" does not exist/);
   }, 60_000);
 
-  it('T5b — a ready answer is cached, a refusal never is', async () => {
-    // Recovery without a timer, a poll loop or a sleep: the next job re-asks.
-    let calls = 0;
-    const lagging = {
-      $queryRaw: async () => { calls += 1; return []; },   // nothing applied
-    };
-    await expect(assertExecutionSchemaReady(lagging)).rejects.toThrow(SchemaNotReadyError);
-    await expect(assertExecutionSchemaReady(lagging)).rejects.toThrow(SchemaNotReadyError);
-    expect(calls, 'a NOT-READY answer must be re-asked, or the worker can never recover').toBe(2);
+  it('CP-02 — after a successful job, current invalid history refuses every later retry', async () => {
+    const successful = await seedQueued();
+    expect((await runAttempt(successful)).threw).toBe(false);
+    expect(executeMetaAction).toHaveBeenCalledTimes(1);
+    expect(await rawStatus(successful)).toBe('EXECUTED_SUCCESS');
 
-    const ready = {
-      $queryRaw: async () => {
-        calls += 1;
-        return matchingRows();
+    const queued = await seedQueued();
+    const callsBefore = executeMetaAction.mock.calls.length;
+    await withReceiptMutation(
+      () => prisma.$executeRaw`UPDATE _prisma_migrations SET checksum=${'0'.repeat(64)} WHERE migration_name=${LATEST}`,
+      async () => {
+        // No reset after the successful job or receipt mutation: the next
+        // attempt must observe current history in the same Worker process.
+        const attempts = [];
+        for (let attempt = 0; attempt < 3; attempt++) attempts.push(await runAttempt(queued, attempt));
+        expect(executeMetaAction.mock.calls.length - callsBefore, 'no provider call after history drift').toBe(0);
+        expect(attempts.every(result => result.threw && result.code === 'SCHEMA_NOT_READY' && !result.skipRetry)).toBe(true);
+        expect(await rawStatus(queued)).toBe('QUEUED');
+        expect(await prisma.executionTransition.count({ where: { executionId: queued } })).toBe(0);
       },
-    };
-    const before = calls;
-    await assertExecutionSchemaReady(ready);
-    await assertExecutionSchemaReady(ready);
-    expect(calls - before, 'a READY answer is permanent for the process lifetime').toBe(1);
-  }, 60_000);
+    );
+    // Restoring the test-owned receipt permits the same queued job to recover.
+    const recovered = await runAttempt(queued, 2);
+    expect(recovered.threw, recovered.message ?? '').toBe(false);
+    expect(executeMetaAction).toHaveBeenCalledTimes(callsBefore + 1);
+    expect(await rawStatus(queued)).toBe('EXECUTED_SUCCESS');
+  });
+});
+
+describe('CP-02 · per-invocation receipt observation (injected clients, no database)', () => {
+  beforeEach(() => { __resetReadinessCache(); });
+
+  const changedLast = changes => rows => {
+    Object.assign(rows.at(-1), changes);
+    return rows;
+  };
+  const extra = changes => rows => [...rows, {
+    ...rows[0], migration_name: FUTURE, checksum: 'a'.repeat(64), ...changes,
+  }];
+  const drift = [
+    ['checksum mismatch', changedLast({ checksum: '0'.repeat(64) })],
+    ['missing receipt', rows => rows.slice(0, -1)],
+    ['incomplete receipt', changedLast({ finished: false })],
+    ['failed receipt', changedLast({ finished: false, clean_log: false })],
+    ['rolled back receipt', changedLast({ rolled_back: true })],
+    ['duplicate receipt', rows => [...rows, { ...rows.at(-1) }]],
+    ['zero steps', changedLast({ applied_steps_count: 0 })],
+    ['negative steps', changedLast({ applied_steps_count: -1 })],
+    ['multiple steps', changedLast({ applied_steps_count: 2 })],
+    ['invalid chronology', changedLast({ ordered: false })],
+    ['nonempty failure log', changedLast({ clean_log: false })],
+    ['failed additional receipt', extra({ finished: false, clean_log: false })],
+    ['rolled back additional receipt', extra({ rolled_back: true })],
+    ['zero-step additional receipt', extra({ applied_steps_count: 0 })],
+    ['duplicate additional receipt', rows => {
+      const newer = extra({})(rows);
+      return [...newer, { ...newer.at(-1) }];
+    }],
+  ];
+
+  it.each(drift)('refuses %s after a successful check without resetting', async (_label, mutate) => {
+    const client = { $queryRaw: vi.fn()
+      .mockResolvedValueOnce(matchingRows())
+      .mockResolvedValueOnce(mutate(matchingRows())) };
+    await expect(assertExecutionSchemaReady(client)).resolves.toBeUndefined();
+    await expect(assertExecutionSchemaReady(client)).rejects.toMatchObject({
+      name: 'SchemaNotReadyError', code: 'SCHEMA_NOT_READY',
+    });
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed when a previously successful client cannot read history', async () => {
+    const failure = new Error('synthetic receipt read unavailable');
+    const client = { $queryRaw: vi.fn().mockResolvedValueOnce(matchingRows()).mockRejectedValueOnce(failure) };
+    await assertExecutionSchemaReady(client);
+    await expect(assertExecutionSchemaReady(client)).rejects.toMatchObject({
+      code: 'SCHEMA_NOT_READY', cause: failure,
+      message: expect.stringContaining('could not be determined'),
+    });
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads and refuses client B even after client A succeeded', async () => {
+    const a = { $queryRaw: vi.fn().mockResolvedValue(matchingRows()) };
+    const b = { $queryRaw: vi.fn().mockResolvedValue(changedLast({ checksum: '0'.repeat(64) })(matchingRows())) };
+    await assertExecutionSchemaReady(a);
+    await expect(assertExecutionSchemaReady(b)).rejects.toThrow(SchemaNotReadyError);
+    expect(a.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(b.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('concurrent clients each read their own history after a previous success', async () => {
+    const previous = { $queryRaw: vi.fn().mockResolvedValue(matchingRows()) };
+    await assertExecutionSchemaReady(previous);
+    const a = { $queryRaw: vi.fn().mockResolvedValue(matchingRows()) };
+    const b = { $queryRaw: vi.fn().mockResolvedValue(changedLast({ finished: false })(matchingRows())) };
+    const results = await Promise.allSettled([assertExecutionSchemaReady(a), assertExecutionSchemaReady(b)]);
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1]).toMatchObject({ status: 'rejected', reason: { code: 'SCHEMA_NOT_READY' } });
+    expect(a.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(b.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads both successful and refused histories, including healthy database-ahead recovery', async () => {
+    const client = { $queryRaw: vi.fn()
+      .mockResolvedValueOnce(matchingRows())
+      .mockResolvedValueOnce(matchingRows())
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(extra({})(matchingRows())) };
+    await assertExecutionSchemaReady(client);
+    await assertExecutionSchemaReady(client);
+    await expect(assertExecutionSchemaReady(client)).rejects.toThrow(SchemaNotReadyError);
+    await expect(assertExecutionSchemaReady(client)).rejects.toThrow(SchemaNotReadyError);
+    await expect(assertExecutionSchemaReady(client)).resolves.toBeUndefined();
+    expect(client.$queryRaw).toHaveBeenCalledTimes(5);
+  });
 });
