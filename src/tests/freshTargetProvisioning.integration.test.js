@@ -23,8 +23,9 @@ vi.mock('node:child_process', async importOriginal => {
 
 const enabled = process.env.REQUIRE_DB === '1';
 const commandDirs = [];
-const command = (exe, args, env = process.env) => {
+const command = (exe, args, env = process.env, observe) => {
   const options = { env, encoding: 'utf8', timeout: 20000, windowsHide: true };
+  const started = observe ? { tick: performance.now(), at: new Date().toISOString() } : null;
   let r;
   if (process.platform === 'win32' && basename(exe).replace(/\.exe$/i, '') === 'pg_ctl' && args.at(-1) === 'start') {
     // The Windows daemon inherits piped output handles; spawnSync can time out
@@ -35,11 +36,91 @@ const command = (exe, args, env = process.env) => {
     finally { closeSync(stdout); closeSync(stderr); }
     r.stdout = readFileSync(out, 'utf8'); r.stderr = readFileSync(err, 'utf8');
   } else r = spawnSync(exe, args, options);
+  observe?.({ startedAt: started.at, finishedAt: new Date().toISOString(), elapsedMs: performance.now() - started.tick,
+    exitCode: r.status, signal: r.signal ?? null, spawnError: r.error?.code ?? null });
   if (r.error || r.status !== 0) throw Error(`Fresh lab command failed: ${exe} (${r.status}): ${r.error?.code || r.stderr}`);
   return r.stdout.trim();
 };
 const freePort = () => new Promise(resolve => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
 const clusters = [], clients = [], certificateDirs = [];
+let diagnosticDeadline = 0, diagnosticRemainingMs = 2000;
+
+// CP-01: read-only, fixed-count observations AFTER the original assertion.
+// Never wait for absence, change its result, print raw inspect/errors, or remove a container.
+function dockerLifecycleDiagnostic(id, createCommand) {
+  const host = ['--host', 'unix:///var/run/docker.sock'];
+  const label = 'lumi.fresh-target.synthetic';
+  const emit = record => { try { console.info('CP01_DOCKER_LIFECYCLE', JSON.stringify({ id: /^[a-f0-9]{64}$/.test(id) ? id : null, ...record })); } catch { /* original errors must survive */ } };
+  const date = value => typeof value === 'string' && /^[0-9T:Z.+-]{1,64}$/.test(value) ? value : null;
+  const inspectFormat = '{"id":{{json .Id}},"image":{{json .Image}},"label":{{json (index .Config.Labels "lumi.fresh-target.synthetic")}},'
+    + '"created":{{json .Created}},"startedAt":{{json .State.StartedAt}},"status":{{json .State.Status}},'
+    + '"running":{{json .State.Running}},"dead":{{json .State.Dead}},"exitCode":{{json .State.ExitCode}},'
+    + '"autoRemove":{{json .HostConfig.AutoRemove}},"finishedAt":{{json .State.FinishedAt}}}';
+  function query(phase, args, decode, teardown = false) {
+    if (!/^[a-f0-9]{64}$/.test(id)) return { phase, failure: 'OWNERSHIP_ID_UNQUALIFIED', exists: null };
+    const timeout = Math.floor(teardown ? Math.min(250, diagnosticRemainingMs, diagnosticDeadline - performance.now()) : 500);
+    if (timeout < 1) return { phase, skipped: 'DIAGNOSTIC_BUDGET', exists: null };
+    const started = performance.now(), startedAt = new Date().toISOString();
+    let r;
+    try {
+      r = spawnSync('docker', [...host, ...args], { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 32768, windowsHide: true });
+      const meta = { phase, startedAt, finishedAt: new Date().toISOString(), elapsedMs: performance.now() - started,
+        exitCode: r.status, signal: r.signal ?? null, spawnError: r.error?.code ?? null };
+      if (r.error || r.status !== 0) {
+        // A daemon/CLI error is UNKNOWN, not absence. Recognize only this exact owned-ID miss.
+        const absent = !r.error && r.status === 1 && args[0] === 'inspect'
+          && new RegExp(`^(?:Error(?: response from daemon)?: )?No such (?:object|container):\\s*${id}$`, 'i').test((r.stderr ?? '').trim());
+        return { ...meta, exists: absent ? false : null, failure: absent ? null : 'COMMAND_FAILED' };
+      }
+      try { return { ...meta, ...decode(r.stdout) }; }
+      catch { return { ...meta, failure: 'OUTPUT_UNQUALIFIED', exists: null }; }
+    } catch { return { phase, startedAt, failure: 'DIAGNOSTIC_EXCEPTION', exists: null }; }
+    finally { if (teardown) diagnosticRemainingMs -= performance.now() - started; }
+  }
+  const inspect = (phase, teardown = false) => query(phase, ['inspect', '--type', 'container', '--format', inspectFormat, id], stdout => {
+    const s = JSON.parse(stdout);
+    if (s.id !== id) throw Error('Unqualified identity');
+    return { exists: true, image: /^sha256:[a-f0-9]{64}$/.test(s.image) ? s.image : null,
+      ownershipLabel: { key: label, matches: s.label === 'true' }, created: date(s.created), startedAt: date(s.startedAt),
+      status: ['created', 'restarting', 'running', 'removing', 'paused', 'exited', 'dead'].includes(s.status) ? s.status : null,
+      running: typeof s.running === 'boolean' ? s.running : null, dead: typeof s.dead === 'boolean' ? s.dead : null,
+      containerExitCode: Number.isInteger(s.exitCode) ? s.exitCode : null,
+      autoRemove: typeof s.autoRemove === 'boolean' ? s.autoRemove : null, finishedAt: date(s.finishedAt) };
+  }, teardown);
+  const initial = inspect('initial');
+  const versions = query('version', ['version', '--format', '{"client":{{json .Client.Version}},"server":{{json .Server.Version}}}'], stdout => {
+    const v = JSON.parse(stdout);
+    if (![v.client, v.server].every(s => typeof s === 'string' && /^[0-9A-Za-z.+_-]{1,80}$/.test(s))) throw Error('Unqualified version');
+    return { client: v.client, server: v.server };
+  });
+  emit({ phase: 'created', createCommand, initial, versions });
+  return {
+    afterStop(stopCommand, originalPsCommand, originalPresence, originalAssertion) {
+      try {
+        // No diagnostic command or output occurs between docker stop and the original ps/assertion.
+        const observations = [inspect('after-stop-1', true), inspect('after-stop-2', true)];
+        const actions = ['create', 'start', 'kill', 'die', 'stop', 'destroy'];
+        const until = new Date().toISOString();
+        const events = query('events', ['events', '--filter', 'type=container', '--filter', `container=${id}`,
+          ...actions.flatMap(action => ['--filter', `event=${action}`]), '--since', createCommand.startedAt, '--until', until,
+          '--format', '{"id":{{json .Actor.ID}},"action":{{json .Action}},"timeNano":"{{.TimeNano}}"}'], stdout => {
+          const lines = stdout.trim() ? stdout.trim().split('\n') : [];
+          const records = lines.slice(0, 50).map(line => JSON.parse(line));
+          if (records.some(r => r.id !== id || !actions.includes(r.action) || !/^\d{1,24}$/.test(r.timeNano))) throw Error('Unqualified event');
+          return { until, records, truncated: lines.length > 50, retentionLimit: 256 };
+        }, true);
+        const final = inspect('final', true);
+        const ids = originalPresence?.split('\n').filter(Boolean) ?? [];
+        const qualified = ids.every(value => /^[a-f0-9]{12,64}$/.test(value) && id.startsWith(value));
+        emit({ phase: 'teardown', stopCommand, originalPsCommand,
+          originalPresence: qualified ? originalPresence ?? null : null, originalPresenceQualified: qualified,
+          originalAssertion, observations, events, final,
+          cleanup: { originalAssertion, finalOwnedPresence: final.exists, mutationCommandsAdded: 0 },
+          diagnosticBudgetRemainingMs: Math.max(0, diagnosticRemainingMs) });
+      } catch { emit({ phase: 'teardown', originalAssertion, failure: 'DIAGNOSTIC_EXCEPTION' }); }
+    },
+  };
+}
 async function physicalCluster() {
   const bin = process.env.FRESH_TARGET_TEST_PG_BIN;
   let port, stop, evidence, certificatePaths;
@@ -56,12 +137,27 @@ async function physicalCluster() {
     // CI's explicitly approved postgres:17 service supplies this cached image.
     // Never pull/install/fall back to a remote database from a test.
     if (process.platform !== 'linux') throw Error('Supply an explicit local PG17 binary directory');
-    const docker = args => command('docker', ['--host', 'unix:///var/run/docker.sock', ...args]);
+    const docker = (args, observe) => command('docker', ['--host', 'unix:///var/run/docker.sock', ...args], process.env, observe);
     docker(['image', 'inspect', 'postgres:17']);
+    let createCommand, diagnostic;
     const id = docker(['run', '--pull=never', '--rm', '-d', '--label', 'lumi.fresh-target.synthetic=true',
-      '-e', 'POSTGRES_USER=lab_fresh_admin', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-e', 'POSTGRES_INITDB_ARGS=--no-locale --encoding=UTF8', '-p', '127.0.0.1::5432', 'postgres:17']);
-    stop = () => { docker(['stop', '-t', '5', id]); expect(docker(['ps', '-aq', '--filter', `id=${id}`])).toBe(''); };
+      '-e', 'POSTGRES_USER=lab_fresh_admin', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-e', 'POSTGRES_INITDB_ARGS=--no-locale --encoding=UTF8', '-p', '127.0.0.1::5432', 'postgres:17'], r => { createCommand = r; });
+    stop = () => {
+      let stopResult, psResult, presence, assertion = 'NOT_REACHED';
+      const stopArgs = ['stop', '-t', '5', id], psArgs = ['ps', '-aq', '--filter', `id=${id}`];
+      try {
+        docker(stopArgs, r => { stopResult = r; });
+        presence = docker(psArgs, r => { psResult = r; });
+        assertion = 'FAIL';
+        expect(presence).toBe('');
+        assertion = 'PASS';
+      } finally {
+        diagnostic?.afterStop({ command: ['docker', '--host', 'unix:///var/run/docker.sock', ...stopArgs], ...stopResult },
+          { command: ['docker', '--host', 'unix:///var/run/docker.sock', ...psArgs], ...psResult }, presence, assertion);
+      }
+    };
     clusters.push({ stop });
+    diagnostic = dockerLifecycleDiagnostic(id, createCommand);
     port = Number(docker(['port', id, '5432/tcp']).split(':').at(-1));
     evidence = { container: id, image: docker(['inspect', '--format', '{{.Image}}', id]) };
     certificatePaths = (cert, key) => {
@@ -117,6 +213,7 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     await lab.admin`GRANT EXECUTE ON FUNCTION pg_control_system() TO lumi_backend_migrator`;
   }, 30000);
   afterAll(async () => {
+    diagnosticDeadline = performance.now() + 12000; diagnosticRemainingMs = 2000; // within the unchanged 15s hook
     for (const q of clients.reverse()) await q.end({ timeout: 2 }).catch(() => {});
     for (const c of clusters.reverse()) c.stop();
     for (const dir of certificateDirs) rmSync(dir, { recursive: true, force: true });
