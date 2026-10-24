@@ -29,14 +29,15 @@ vi.mock('../../lib/prisma.js', () => {
 });
 
 import { prisma } from '../../lib/prisma.js';
+import axios from 'axios';
 import { resolveCredential } from '../connectors/credentialStore.js';
-import { concludeTest, startTest, recordVariantMetrics, resolveVerdict, parseVariantInsights } from './TestTrackerService.js';
+import { concludeTest, startTest, recordVariantMetrics, refreshFromMeta, resolveVerdict, parseVariantInsights } from './TestTrackerService.js';
 import { verdictToActionType }  from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
 
 function testRow({ metric = 'CTR', dimension = 'HOOK', entityLevel = 'ADSET', variants }) {
   return {
-    id: 'test-1', workspaceId: 'ws-1', entityId: 'ent-1', entityLevel,
+    id: 'test-1', workspaceId: 'ws-1', entityId: 'ent-1', entityLevel, status: 'RUNNING',
     dimension, metric, currency: 'USD', variants,
   };
 }
@@ -172,4 +173,83 @@ describe('parseVariantInsights — Meta decimal → minor units', () => {
     );
     expect(out).toEqual({ impressions: 1000, clicks: 30, conversions: 5, spendMinor: 5000, revenueMinor: 12500 });
   });
+});
+
+describe('CP-03A lifecycle integrity', () => {
+  const running = () => testRow({ variants: [
+    variant('v-a', 'A', true, 50000, 800), variant('v-b', 'B', false, 50000, 1050),
+  ] });
+
+  it('a second conclusion refuses before another refresh, Decision or Memory write', async () => {
+    const row = running();
+    row.variants.forEach((v) => { v.metaEntityId = v.id; });
+    prisma.testExperiment.findFirst.mockResolvedValue(row);
+    prisma.testExperiment.update.mockImplementation(async ({ data }) => Object.assign(row, data));
+    resolveCredential.mockResolvedValue({ accessToken: 'test-only' });
+    axios.get.mockResolvedValue({ data: { data: [{ impressions: '50000', clicks: '1050', spend: '0' }] } });
+    await concludeTest('ws-1', 'test-1');
+    const refreshCalls = axios.get.mock.calls.length;
+    await expect(concludeTest('ws-1', 'test-1')).rejects.toMatchObject({ code: 'TEST_CONFLICT' });
+    expect(axios.get).toHaveBeenCalledTimes(refreshCalls);
+    expect(prisma.decision.create).toHaveBeenCalledTimes(1);
+    expect(prisma.decisionMemoryEntry.create).toHaveBeenCalledTimes(1);
+  });
+
+  for (const status of ['CONCLUDED', 'ABANDONED']) {
+    for (const operation of [startTest, recordVariantMetrics, refreshFromMeta, concludeTest]) {
+      it(`${operation.name} refuses ${status} without writes or credential access`, async () => {
+        prisma.testExperiment.findFirst.mockResolvedValue({ ...running(), status });
+        await expect(operation('ws-1', 'test-1', [{ variantId: 'v-a', clicks: 1 }]))
+          .rejects.toMatchObject({ code: 'TEST_CONFLICT' });
+        expect(prisma.testExperiment.update).not.toHaveBeenCalled();
+        expect(prisma.testVariant.update).not.toHaveBeenCalled();
+        expect(resolveCredential).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  it('a repeated start returns conflict and preserves the original start time', async () => {
+    const row = { ...running(), status: 'PROPOSED' };
+    prisma.testExperiment.findFirst.mockResolvedValue(row);
+    prisma.testExperiment.update.mockImplementation(async ({ data }) => Object.assign(row, data));
+    await startTest('ws-1', 'test-1');
+    const startedAt = row.startedAt;
+    await expect(startTest('ws-1', 'test-1')).rejects.toMatchObject({ code: 'TEST_CONFLICT' });
+    expect(row.startedAt).toBe(startedAt);
+    expect(prisma.testExperiment.update).toHaveBeenCalledTimes(1);
+  });
+
+  for (const field of ['impressions', 'clicks', 'conversions', 'spendMinor', 'revenueMinor']) {
+    for (const value of [-1, 0.5, NaN, Infinity, -Infinity, 2147483648, '10']) {
+      it(`rejects ${field}=${String(value)} before any batch write`, async () => {
+        prisma.testExperiment.findFirst.mockResolvedValue(running());
+        await expect(recordVariantMetrics('ws-1', 'test-1', [
+          { variantId: 'v-a', clicks: 10 }, { variantId: 'v-b', [field]: value },
+        ])).rejects.toMatchObject({ code: 'INVALID_TEST_METRICS' });
+        expect(prisma.testVariant.update).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  it('accepts integer endpoints and conversions above clicks without an invented attribution rule', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue(running());
+    await expect(recordVariantMetrics('ws-1', 'test-1', [{
+      variantId: 'v-a', impressions: 2147483647, clicks: 0, conversions: 10, spendMinor: 0, revenueMinor: 2147483647,
+    }])).resolves.toEqual({ updated: 1 });
+  });
+
+  it('refuses invalid stored evidence rather than concluding it', async () => {
+    const row = running(); row.variants[0].clicks = -1;
+    prisma.testExperiment.findFirst.mockResolvedValue(row);
+    await expect(concludeTest('ws-1', 'test-1', { refresh: false }))
+      .rejects.toMatchObject({ code: 'INVALID_TEST_METRICS' });
+    expect(prisma.decision.create).not.toHaveBeenCalled();
+    expect(prisma.decisionMemoryEntry.create).not.toHaveBeenCalled();
+  });
+
+  for (const input of [{ clicks: '1.5' }, { spend: 'Infinity' }, { spend: '-1' }, { impressions: '2147483648' }]) {
+    it(`rejects malformed Meta evidence ${JSON.stringify(input)}`, () => {
+      expect(() => parseVariantInsights(input, 'USD')).toThrow();
+    });
+  }
 });
