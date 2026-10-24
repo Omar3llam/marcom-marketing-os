@@ -134,6 +134,7 @@ testingRouter.post('/tests/:id/start', requireOperator, async (req, res) => {
     return res.json({ workspaceId: wsId, test });
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
+    if (err.code === 'TEST_CONFLICT') return res.status(409).json({ error: 'TestConflict', message: err.message });
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] start failed');
     return res.status(500).json({ error: 'TestStartFailed', message: 'Request failed' });
   }
@@ -154,6 +155,8 @@ testingRouter.post('/tests/:id/metrics', requireOperator, async (req, res) => {
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
+    if (err.code === 'TEST_CONFLICT') return res.status(409).json({ error: 'TestConflict', message: err.message });
+    if (err.code === 'INVALID_TEST_METRICS') return res.status(400).json({ error: 'InvalidTestMetrics', message: err.message });
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] metrics failed');
     return res.status(500).json({ error: 'TestMetricsFailed', message: 'Request failed' });
   }
@@ -175,6 +178,8 @@ testingRouter.post('/tests/:id/conclude', requireOperator, async (req, res) => {
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
+    if (err.code === 'TEST_CONFLICT') return res.status(409).json({ error: 'TestConflict', message: err.message });
+    if (err.code === 'INVALID_TEST_METRICS') return res.status(400).json({ error: 'InvalidTestMetrics', message: err.message });
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] conclude failed');
     return res.status(500).json({ error: 'TestConcludeFailed', message: 'Request failed' });
   }
