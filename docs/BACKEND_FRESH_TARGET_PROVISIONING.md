@@ -4,6 +4,70 @@ Status: code-only candidate for independent review. **No hosted provisioning,
 database creation, deployment or runtime activation is authorized by this PR.**
 Backend Gates B/C remain BLOCKED. Historical Neon resources remain untouched.
 
+## 03B-9A test-only protocol qualification candidate
+
+The three `freshTargetBindingProtocol*` files under `src/tests/` are synthetic
+fixtures and tests, not a replacement migration executor. No production module
+imports the candidate, and this slice does not change the provisioning refusal,
+approval authority, native/permission profile, startup admission or runtime.
+
+The fixture places an invoker `DO` assertion and the authorized payload into one
+PostgreSQL Simple Query (`Q`) message. It checks system identifier, database OID
+and name, PG17, authenticated session user and effective role using
+`IS DISTINCT FROM`; any mismatch raises before the payload. Invalid or NULL
+claims fail before dispatch. Catalog observers use separate administrative
+connections outside the candidate's measured wire window.
+
+A loopback-only plaintext protocol fixture reassembles actual TCP bytes into
+PostgreSQL messages, records each Q's length, SHA256 and base64 bytes, and routes
+whole Q messages independently to two test-owned physical clusters. This models
+backend switching without assuming session affinity. It is not a certified
+pooler and cannot establish safety of an intermediary that splits/reorders SQL,
+forges identity responses or terminates TLS. The raw trace omits authentication
+and cancellation key material. No private keys are created by this fixture.
+
+The separate-prequery negative control intentionally writes synthetic data to
+the wrong lab target, proving that the control can observe the original hazard.
+The candidate must instead raise before B's payload; complete catalog, receipt,
+ACL and synthetic application snapshots are compared independently. Database
+OIDs are cluster-local and may coincide across clusters; the system/OID tuple,
+not a globally unique OID assumption, identifies the target.
+
+Compatibility experiments submit all 76 original migration payloads unchanged,
+including migration76's embedded BEGIN/COMMIT, then the 26 existing legacy DDL
+statements and reviewed ownership/grant phases. Receipt records in that
+experiment are explicitly **TEST_CANDIDATE_NOT_PRISMA**. Matching checksums,
+schema, successful fields and native profile do not prove equivalent Prisma
+timestamp/UUID/failure provenance or authorize a new receipt issuer. No migration
+file, source manifest, permission profile or production executor is changed.
+
+A failed candidate lease becomes terminal. Cancellation, failed explicit
+transactions, session advisory locks and loss of the commit acknowledgement are
+separate experiments; a failed response must never be interpreted as rollback
+of an already committed payload. The synthetic failure logger is an explicit
+separate experiment, not an automatic production repair/retry.
+
+No existing timeout or assertion is relaxed. Full verification requires the
+existing opt-in `REQUIRE_DB=1`, explicit owned native PG17 binaries on Windows,
+or the existing cached PG17 Docker image/local Unix socket on Linux. There is
+no remote fallback, image pull or dependency installation in these fixtures.
+Physical IDs, raw protocol boundaries, RED/GREEN results, compatibility limits,
+failed runs and teardown belong in the accompanying immutable evidence report.
+
+Measured local qualification includes 20 focused tests with zero skips and an
+unchanged full backend run of 7,629 tests with zero failures or skips. Earlier
+fixture and full-run failures remain in the external 03B-9A evidence; they are
+not replaced by the passing run. Raw Query frames include all 76 exact migration
+payloads and the independently observed wrong-target refusal. These results
+qualify this test candidate only, not a production receipt issuer or transport.
+
+**Production implementation remains NO-GO** until independent review qualifies
+receipt issuer semantics, transport/directness, role transitions, connection
+lifetime and failure handling. Session/transaction/statement poolers, real DNS
+mutation, TLS interception and arbitrary SQL-aware proxies are not qualified by
+these local plaintext experiments. A future production file allowlist is only
+a proposal and needs Omar's separate explicit approval. Gates B/C stay BLOCKED.
+
 **Issue611 containment:** mutating provisioning accepts only the exact host
 `127.0.0.1` for an independently verified, directly connected owned synthetic
 local lab. Every valid nonliteral host (including `localhost`, other loopback
