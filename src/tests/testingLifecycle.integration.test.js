@@ -5,7 +5,7 @@ import postgres from 'postgres';
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dbAvailable } from './dbProbe.js';
+import { dbAvailable } from '../tests/dbProbe.js';
 
 vi.mock('../services/connectors/credentialStore.js', () => ({ resolveCredential: vi.fn() }));
 vi.mock('axios', () => ({ default: { get: vi.fn() } }));
@@ -54,18 +54,18 @@ describe.skipIf(!DB_OK)('CP-03A / isolated PostgreSQL experiment lifecycle', () 
     server.use(testingRouter);
     return server;
   }
-  async function blockedOn(table) {
+  async function blockedOn(table, { until = () => false, lockingRead = false } = {}) {
     const deadline = Date.now() + 1800;
     do {
       const waiting = await sql`SELECT pid, pg_blocking_pids(pid) AS blockers, query
         FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
-      const row = waiting.find((r) => r.query.includes(table) && r.blockers.length);
+      const row = waiting.find((r) => r.query.includes(table) && r.blockers.length && (!lockingRead || /FOR UPDATE/i.test(r.query)));
       if (row) {
-        console.log('CP03A_LOCK', JSON.stringify({ table, pid: row.pid, blockers: row.blockers }));
+        console.log('CP03A_LOCK', JSON.stringify({ table, pid: row.pid, blockers: row.blockers, lockingRead: /FOR UPDATE/i.test(row.query) }));
         return true;
       }
       await new Promise((r) => setTimeout(r, 10));
-    } while (Date.now() < deadline);
+    } while (!until() && Date.now() < deadline);
     return false;
   }
 
@@ -103,14 +103,13 @@ describe.skipIf(!DB_OK)('CP-03A / isolated PostgreSQL experiment lifecycle', () 
 
   it('two conclusions contending on an actual row lock commit exactly one result', async () => {
     const f = await fixture();
-    const gate = deferred(); let pending;
+    let pending;
     const owner = sql.begin(async (tx) => {
       await tx`SELECT id FROM test_experiments WHERE id = ${f.test.id}::uuid AND "workspaceId" = ${f.ws}::uuid FOR UPDATE`;
       pending = Promise.allSettled([concludeTest(f.ws, f.test.id, { refresh: false }), concludeTest(f.ws, f.test.id, { refresh: false })]);
-      try { expect(await blockedOn('test_experiments')).toBe(true); } finally { gate.resolve(); }
+      expect(await blockedOn('test_experiments')).toBe(true);
     });
     await owner;
-    await gate.promise;
     const outcomes = await pending;
     const actual = await counts(f);
     console.log('CP03A_CONCURRENT', JSON.stringify({ outcomes: outcomes.map((r) => r.status === 'fulfilled' ? 'COMMITTED' : r.reason.code), ...actual }));
@@ -132,7 +131,7 @@ describe.skipIf(!DB_OK)('CP-03A / isolated PostgreSQL experiment lifecycle', () 
     const second = concludeTest(f.ws, f.test.id);
     const outcomes = Promise.allSettled([first, second]);
     let locked;
-    try { locked = await blockedOn('test_experiments'); } finally { release.resolve(); }
+    try { locked = await blockedOn('test_experiments', { lockingRead: true }); } finally { release.resolve(); }
     const result = await outcomes;
     console.log('CP03A_META_RACE', JSON.stringify({ locked, calls: axios.get.mock.calls.length, outcomes: result.map((r) => r.status) }));
     expect(locked).toBe(true);
@@ -149,10 +148,11 @@ describe.skipIf(!DB_OK)('CP-03A / isolated PostgreSQL experiment lifecycle', () 
       await tx`SELECT id FROM test_variants WHERE id = ${a.id}::uuid FOR UPDATE`;
       metrics = recordVariantMetrics(f.ws, f.test.id, [{ variantId: a.id, clicks: 5000 }]);
       expect(await blockedOn('test_variants')).toBe(true);
-      conclusion = concludeTest(f.ws, f.test.id, { refresh: false });
+      let concluded = false;
+      conclusion = concludeTest(f.ws, f.test.id, { refresh: false }).finally(() => { concluded = true; });
       // GREEN waits on the parent lock. RED can finish its old readout while
       // the already-authorized metrics writer is still blocked on variant A.
-      await Promise.race([conclusion, blockedOn('test_experiments')]);
+      await blockedOn('test_experiments', { until: () => concluded, lockingRead: true });
     });
     await metrics;
     const out = await conclusion;
@@ -174,7 +174,7 @@ describe.skipIf(!DB_OK)('CP-03A / isolated PostgreSQL experiment lifecycle', () 
     const metrics = recordVariantMetrics(f.ws, f.test.id, [{ variantId: f.test.variants[0].id, clicks: 5000 }]);
     const results = Promise.allSettled([conclusion, metrics]);
     let locked;
-    try { locked = await blockedOn('test_experiments'); } finally { release.resolve(); }
+    try { locked = await blockedOn('test_experiments', { lockingRead: true }); } finally { release.resolve(); }
     const settled = await results;
     expect(locked).toBe(true);
     expect(settled[0].status).toBe('fulfilled');
@@ -239,6 +239,7 @@ describe.skipIf(!DB_OK)('CP-03A / isolated PostgreSQL experiment lifecycle', () 
     const out = await concludeTest(f.ws, f.test.id, { refresh: false });
     expect(out.readout.confidenceLabel).toBe('INCONCLUSIVE');
     expect(out.decisionId).toBeNull();
+    await expect(concludeTest(f.ws, f.test.id, { refresh: false })).rejects.toMatchObject({ code: 'TEST_CONFLICT' });
     expect(await counts(f)).toEqual({ decisions: 0, memory: 1 });
   });
 

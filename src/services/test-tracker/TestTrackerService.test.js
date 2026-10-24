@@ -22,6 +22,7 @@ vi.mock('../../lib/prisma.js', () => {
     decision:            { create: vi.fn() },
     decisionMemoryEntry: { create: vi.fn() },
     $transaction:        vi.fn(),
+    $queryRaw:           vi.fn(),
   };
   prisma.$transaction.mockImplementation(async (arg) =>
     (typeof arg === 'function' ? arg(prisma) : Promise.all(arg)));
@@ -52,6 +53,7 @@ beforeEach(() => {
   prisma.decisionMemoryEntry.create.mockResolvedValue({ id: 'mem-1' });
   prisma.testExperiment.update.mockResolvedValue({});
   prisma.testVariant.update.mockResolvedValue({});
+  prisma.$queryRaw.mockResolvedValue([{ id: 'test-1' }]);
   prisma.$transaction.mockImplementation(async (arg) =>
     (typeof arg === 'function' ? arg(prisma) : Promise.all(arg)));
 });
@@ -82,7 +84,9 @@ describe('concludeTest — confident winner closes the loop with a valid verdict
     expect(memData.isSustainable).toBe(true);
     // Test marked concluded; winner flagged
     expect(prisma.testExperiment.update.mock.calls[0][0].data.status).toBe('CONCLUDED');
-    expect(prisma.testVariant.update).toHaveBeenCalledWith({ where: { id: 'v-b' }, data: { isWinner: true } });
+    expect(prisma.testVariant.update).toHaveBeenCalledWith({
+      where: { id: 'v-b', testId: 'test-1', test: { workspaceId: 'ws-1' } }, data: { isWinner: true },
+    });
   });
 });
 
@@ -123,13 +127,13 @@ describe('resolveVerdict — reconciles verdict to a governance-valid action per
 
 describe('workspace isolation — the mutation paths refuse a cross-workspace id', () => {
   it('startTest authorizes by {id, workspaceId} then updates', async () => {
-    prisma.testExperiment.findFirst.mockResolvedValue({ id: 'test-1' });
+    prisma.testExperiment.findFirst.mockResolvedValue({ id: 'test-1', workspaceId: 'ws-1', status: 'PROPOSED' });
     await startTest('ws-1', 'test-1');
     expect(prisma.testExperiment.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'test-1', workspaceId: 'ws-1' } }),
     );
     expect(prisma.testExperiment.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'test-1' }, data: expect.objectContaining({ status: 'RUNNING' }) }),
+      expect.objectContaining({ where: { id: 'test-1', workspaceId: 'ws-1' }, data: expect.objectContaining({ status: 'RUNNING' }) }),
     );
   });
 
@@ -140,14 +144,16 @@ describe('workspace isolation — the mutation paths refuse a cross-workspace id
   });
 
   it('recordVariantMetrics writes only variants owned by the in-workspace test (forged id dropped)', async () => {
-    prisma.testExperiment.findFirst.mockResolvedValue({ id: 'test-1', variants: [{ id: 'v-a' }, { id: 'v-b' }] });
+    prisma.testExperiment.findFirst.mockResolvedValue({ id: 'test-1', workspaceId: 'ws-1', status: 'RUNNING', variants: [{ id: 'v-a' }, { id: 'v-b' }] });
     const out = await recordVariantMetrics('ws-1', 'test-1', [
       { variantId: 'v-a', clicks: 10 },
       { variantId: 'foreign-variant', clicks: 999 }, // belongs to another workspace's test
     ]);
     expect(out.updated).toBe(1);
     expect(prisma.testVariant.update).toHaveBeenCalledTimes(1);
-    expect(prisma.testVariant.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'v-a' } }));
+    expect(prisma.testVariant.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'v-a', testId: 'test-1', test: { workspaceId: 'ws-1' } },
+    }));
   });
 
   it('recordVariantMetrics throws (→404) when the id belongs to another workspace', async () => {
