@@ -6,11 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 const driver = vi.hoisted(() => vi.fn(() => { throw Error('private-credential-must-not-leak'); }));
+const migrationChild = vi.hoisted(() => vi.fn(() => { throw Error('unexpected migration child'); }));
 vi.mock('postgres', () => ({ default: driver }));
+vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal(), spawn: migrationChild }));
 import { loadFreshContract, digest, ROLES } from '../../scripts/fresh-target/contract.js';
-import { provisionFreshTarget } from '../../scripts/fresh-target/provision.js';
+import { provisionFreshTarget, inspectFreshTarget } from '../../scripts/fresh-target/provision.js';
 
-beforeEach(() => { driver.mockClear(); });
+beforeEach(() => { driver.mockClear(); migrationChild.mockClear(); });
 function request() {
   const approval = { version: 1, operation: 'PROVISION_EMPTY_PG17', expiresAt: Date.now() + 60000, artifactSha256: loadFreshContract().artifactSha256,
     target: { host: '127.0.0.1', port: 55559, database: 'lumi_fresh_unit', login: ROLES.migrator, serverAddress: '127.0.0.1', serverPort: 55559, systemIdentifier: '7699552998037871636', databaseOid: 16384, platformOwner: 'lumifresh_lab_admin' } };
@@ -64,10 +66,28 @@ describe('operator invocation refuses untrusted inputs before database I/O', () 
     expect((await provisionFreshTarget(r)).status).toBe('REFUSED'); expect(invoked).toBe(false);
     expect((await provisionFreshTarget(new Proxy(request(), {}))).status).toBe('REFUSED'); expect(driver).not.toHaveBeenCalled();
   });
-  it('uses strict TLS and a supplied CA for every non-loopback connection', async () => {
+  for (const host of ['localhost', 'LOCALHOST', '127.0.0.2', '127.1', '2130706433', '0x7f000001', '127.0.0.1.', 'example.test']) {
+    for (const suppliedCA of [false, true]) {
+      it(`refuses mutating ${host}, CA=${suppliedCA}, before driver or migration child activity`, async () => {
+        const r = request(); r.approval.target.host = host; r.url = r.url.replace('127.0.0.1', host);
+        if (suppliedCA) r.caPem = '-----BEGIN CERTIFICATE-----\nsynthetic\n-----END CERTIFICATE-----';
+        r.approvalSha256 = digest(JSON.stringify(r.approval));
+        expect(await provisionFreshTarget(r)).toEqual({ status: 'REFUSED', reason: 'MIGRATION_TARGET_BINDING_UNQUALIFIED', phase: 'INPUT',
+          scope: 'FRESH_TARGET_PROVISIONING_ONLY', runtimeAdmission: 'NOT_WIRED' });
+        expect(driver).not.toHaveBeenCalled(); expect(migrationChild).not.toHaveBeenCalled();
+      });
+    }
+  }
+  it('requires verified CA for non-loopback read-only inspection before connecting', async () => {
+    const r = request(); r.approval.target.host = 'localhost'; r.url = r.url.replace('127.0.0.1', 'localhost');
+    r.approvalSha256 = digest(JSON.stringify(r.approval));
+    expect(await inspectFreshTarget(r)).toMatchObject({ status: 'REFUSED', reason: 'VERIFIED_TLS_REQUIRED', phase: 'INPUT' });
+    expect(driver).not.toHaveBeenCalled(); expect(migrationChild).not.toHaveBeenCalled();
+  });
+  it('uses strict TLS and a supplied CA for every non-loopback read-only inspection', async () => {
     const r = request(); r.approval.target.host = 'example.test'; r.approval.target.serverAddress = '203.0.113.1'; r.url = r.url.replace('127.0.0.1', 'example.test');
     r.caPem = '-----BEGIN CERTIFICATE-----\nsynthetic\n-----END CERTIFICATE-----'; r.approvalSha256 = digest(JSON.stringify(r.approval));
-    const result = await provisionFreshTarget(r);
+    const result = await inspectFreshTarget(r);
     expect(driver).toHaveBeenCalledOnce(); expect(driver.mock.calls[0][1]).toMatchObject({ ssl: { rejectUnauthorized: true, ca: r.caPem }, max: 1, prepare: false });
     expect(result.status).toBe('REFUSED'); expect(JSON.stringify(result)).not.toMatch(/private|postgresql|password|example/);
   });

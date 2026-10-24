@@ -1,10 +1,10 @@
-import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import postgres from 'postgres';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, openSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import net from 'node:net';
 import { provisionFreshTarget, inspectFreshTarget } from '../../scripts/fresh-target/provision.js';
 import { loadFreshContract, digest, ROLES } from '../../scripts/fresh-target/contract.js';
@@ -15,17 +15,34 @@ import { verifyCanonicalProvenanceCatalog } from '../../scripts/verify-canonical
 import { seed, admit, level } from './canonicalProvenanceFixtures.js';
 import { sealTemplate } from './dbIsolation.js';
 
+const migrationChildren = vi.hoisted(() => []);
+vi.mock('node:child_process', async importOriginal => {
+  const original = await importOriginal();
+  return { ...original, spawn(...args) { migrationChildren.push(args); return original.spawn(...args); } };
+});
+
 const enabled = process.env.REQUIRE_DB === '1';
-const command = (exe, args) => {
-  const r = spawnSync(exe, args, { encoding: 'utf8', timeout: 20000, windowsHide: true });
-  if (r.status !== 0) throw Error(`Fresh lab command failed: ${exe} (${r.status}): ${r.stderr || r.error?.code}`);
+const commandDirs = [];
+const command = (exe, args, env = process.env) => {
+  const options = { env, encoding: 'utf8', timeout: 20000, windowsHide: true };
+  let r;
+  if (process.platform === 'win32' && basename(exe).replace(/\.exe$/i, '') === 'pg_ctl' && args.at(-1) === 'start') {
+    // The Windows daemon inherits piped output handles; spawnSync can time out
+    // after pg_ctl has exited0. Files preserve diagnostics without that wait.
+    const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-command-')); commandDirs.push(dir);
+    const out = join(dir, 'stdout'), err = join(dir, 'stderr'), stdout = openSync(out, 'w'), stderr = openSync(err, 'w');
+    try { r = spawnSync(exe, args, { ...options, stdio: ['ignore', stdout, stderr] }); }
+    finally { closeSync(stdout); closeSync(stderr); }
+    r.stdout = readFileSync(out, 'utf8'); r.stderr = readFileSync(err, 'utf8');
+  } else r = spawnSync(exe, args, options);
+  if (r.error || r.status !== 0) throw Error(`Fresh lab command failed: ${exe} (${r.status}): ${r.error?.code || r.stderr}`);
   return r.stdout.trim();
 };
 const freePort = () => new Promise(resolve => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
-const clusters = [], clients = [];
+const clusters = [], clients = [], certificateDirs = [];
 async function physicalCluster() {
   const bin = process.env.FRESH_TARGET_TEST_PG_BIN;
-  let port, stop, evidence;
+  let port, stop, evidence, certificatePaths;
   if (bin) {
     if (!command(join(bin, 'postgres'), ['--version']).includes(' 17.')) throw Error('PG17 binary required');
     const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-pg17-')); port = await freePort();
@@ -34,6 +51,7 @@ async function physicalCluster() {
     clusters.push({ stop });
     command(join(bin, 'pg_ctl'), ['-D', join(dir, 'data'), '-l', join(dir, 'postgres.log'), '-o', `-h 127.0.0.1 -p ${port}`, '-w', 'start']);
     evidence = { physicalDirectory: dir, physicalControl: command(join(bin, 'pg_controldata'), [join(dir, 'data')]) };
+    certificatePaths = (cert, key) => ({ cert, key });
   } else {
     // CI's explicitly approved postgres:17 service supplies this cached image.
     // Never pull/install/fall back to a remote database from a test.
@@ -46,6 +64,12 @@ async function physicalCluster() {
     clusters.push({ stop });
     port = Number(docker(['port', id, '5432/tcp']).split(':').at(-1));
     evidence = { container: id, image: docker(['inspect', '--format', '{{.Image}}', id]) };
+    certificatePaths = (cert, key) => {
+      docker(['cp', cert, `${id}:/tmp/lumi-server.crt`]); docker(['cp', key, `${id}:/tmp/lumi-server.key`]);
+      docker(['exec', '--user', '0', id, 'chmod', '600', '/tmp/lumi-server.key']);
+      docker(['exec', '--user', '0', id, 'chown', 'postgres:postgres', '/tmp/lumi-server.key']);
+      return { cert: '/tmp/lumi-server.crt', key: '/tmp/lumi-server.key' };
+    };
   }
   let admin;
   const until = Date.now() + 10000;
@@ -60,7 +84,16 @@ async function physicalCluster() {
   if (bin) expect(evidence.physicalControl).toContain(identity.system);
   console.info('FRESH_TARGET_PHYSICAL_LAB', JSON.stringify({ port, ...identity, ...evidence }));
   const open = (database, username) => { const q = postgres({ host: '127.0.0.1', port, database, username, password: () => '', ssl: false, max: 1, onnotice: () => {} }); clients.push(q); return q; };
-  return { admin, port, system: identity.system, open };
+  const enableTLS = async (cert, key) => {
+    const paths = certificatePaths(cert, key), literal = value => "'" + value.replaceAll('\\', '/').replaceAll("'", "''") + "'";
+    await admin.unsafe(`ALTER SYSTEM SET ssl_cert_file=${literal(paths.cert)}`);
+    await admin.unsafe(`ALTER SYSTEM SET ssl_key_file=${literal(paths.key)}`);
+    await admin`ALTER SYSTEM SET ssl='on'`; await admin`SELECT pg_reload_conf()`;
+    const until = Date.now() + 10000;
+    while (Date.now() < until) { const [r] = await admin`SHOW ssl`; if (r.ssl === 'on') return; }
+    throw Error('Owned lab TLS reload did not complete');
+  };
+  return { admin, port, system: identity.system, open, enableTLS };
 }
 
 describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () => {
@@ -86,6 +119,8 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
   afterAll(async () => {
     for (const q of clients.reverse()) await q.end({ timeout: 2 }).catch(() => {});
     for (const c of clusters.reverse()) c.stop();
+    for (const dir of certificateDirs) rmSync(dir, { recursive: true, force: true });
+    for (const dir of commandDirs) rmSync(dir, { recursive: true, force: true });
     console.info('FRESH_TARGET_LABS_STOPPED', clusters.length);
   }, 15000);
   async function target(encoding = 'UTF8') {
@@ -171,6 +206,94 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     for (const m of loadFreshContract().migrations) expect(rows.filter(r => r.migration_name === m.name && r.checksum === m.checksum && r.applied_steps_count === 1)).toHaveLength(1);
     await db.end();
     expect((await inspectFreshTarget(valid)).status).toBe('OBSERVED_MATCH');
+  }, 30000);
+  it('contains the trusted-TLS two-physical-target route before any connection or migration child', async () => {
+    const second = await physicalCluster(); expect(second.system).not.toBe(lab.system);
+    await sealTemplate(statement => second.admin.unsafe(statement), 'template0');
+    for (const [kind, name] of Object.entries(ROLES)) await second.admin.unsafe(`CREATE ROLE ${name} ${['migrator', 'runtime', 'auditor'].includes(kind) ? 'LOGIN' : 'NOLOGIN'} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
+    await second.admin`GRANT lumi_backend_owner,lumi_canonical_owner TO lumi_backend_migrator`;
+    await second.admin`GRANT lumi_canonical_app TO lumi_backend_runtime`;
+    await second.admin`GRANT EXECUTE ON FUNCTION pg_control_system() TO lumi_backend_migrator`;
+    const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-tls-')); certificateDirs.push(dir);
+    const config = join(dir, 'openssl.cnf'), ca = join(dir, 'ca.crt'), cert = join(dir, 'server.crt'), key = join(dir, 'server.key');
+    writeFileSync(config, '[req]\ndistinguished_name=dn\n[dn]\n');
+    const env = { ...process.env, OPENSSL_CONF: config };
+    const openssl = args => command(process.env.FRESH_TARGET_TEST_OPENSSL_BIN || 'openssl', args, env);
+    openssl(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=LUMI SYNTHETIC TEST CA',
+      '-keyout', join(dir, 'ca.key'), '-out', ca, '-addext', 'basicConstraints=critical,CA:TRUE']);
+    openssl(['req', '-new', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=localhost', '-keyout', key, '-out', join(dir, 'server.csr')]);
+    writeFileSync(join(dir, 'server.ext'), 'basicConstraints=critical,CA:FALSE\nsubjectAltName=DNS:localhost\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n');
+    openssl(['x509', '-req', '-in', join(dir, 'server.csr'), '-CA', ca, '-CAkey', join(dir, 'ca.key'), '-CAcreateserial',
+      '-days', '2', '-extfile', join(dir, 'server.ext'), '-out', cert]);
+    await Promise.all([lab.enableTLS(cert, key), second.enableTLS(cert, key)]);
+    const request = await target(), name = request.approval.target.database;
+    await second.admin.unsafe(`CREATE DATABASE "${name}" OWNER ${ROLES.owner} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C'`);
+    const bootstrap = second.open(name, 'lab_fresh_admin');
+    await bootstrap.unsafe(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
+    await bootstrap.unsafe(`GRANT CONNECT ON DATABASE "${name}" TO ${ROLES.migrator}`); await bootstrap.end();
+    const caPem = readFileSync(ca, 'utf8');
+    // Positive controls: both real endpoints authenticate TLS and their own
+    // physical identity; the existing populated target still inspects over TLS.
+    for (const physical of [lab, second]) {
+      const q = postgres({ host: 'localhost', port: physical.port, database: name, username: ROLES.migrator,
+        password: () => '', ssl: { rejectUnauthorized: true, ca: caPem }, max: 1, onnotice: () => {} }); clients.push(q);
+      try {
+        const [r] = await q`SELECT system_identifier::text AS system,(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS tls FROM pg_control_system()`;
+        expect(r).toEqual({ system: physical.system, tls: true });
+      } finally { await q.end({ timeout: 2 }); }
+    }
+    const inspection = { ...valid, approval: { ...valid.approval, target: { ...valid.approval.target, host: 'localhost' } },
+      url: valid.url.replace('127.0.0.1', 'localhost'), caPem }; reseal(inspection);
+    expect((await inspectFreshTarget(inspection)).status).toBe('OBSERVED_MATCH');
+    expect(migrationChildren.some(([, args]) => args.includes('migrate') && args.includes('deploy'))).toBe(true);
+    const snapshot = async physical => {
+      const q = physical.open(name, 'lab_fresh_admin');
+      try { return await q.begin('read only', async tx => {
+        await tx`SET LOCAL search_path=pg_catalog,pg_temp`;
+        const catalog = await collectCombinedCatalog(tx);
+        const receipts = catalog.tables.some(t => t.relname === '_prisma_migrations')
+          ? await tx`SELECT to_jsonb(m) AS receipt FROM public._prisma_migrations m ORDER BY id` : [];
+        return { catalog, receipts };
+      }); } finally { await q.end(); }
+    };
+    const before = await Promise.all([snapshot(lab), snapshot(second)]);
+    for (const state of before) { expect(state.catalog.tables).toEqual([]); expect(state.receipts).toEqual([]); }
+    const routes = [], sockets = new Set(), servers = [];
+    const accept = front => {
+      const physical = routes.length === 0 ? lab : second;
+      routes.push({ client: front.remoteAddress, listener: front.localAddress, system: physical.system });
+      const back = net.connect({ host: '127.0.0.1', port: physical.port }); sockets.add(front); sockets.add(back);
+      front.pipe(back); back.pipe(front); front.on('error', () => back.destroy()); back.on('error', () => front.destroy());
+      front.on('close', () => { back.destroy(); sockets.delete(front); }); back.on('close', () => sockets.delete(back));
+    };
+    let port;
+    try {
+      for (const host of ['127.0.0.1', '::1']) {
+        const server = net.createServer(accept); servers.push(server);
+        await new Promise((resolve, reject) => { server.once('error', reject); server.listen({ host, port: port || 0, ipv6Only: true }, resolve); });
+        port = server.address().port;
+      }
+    } catch (error) {
+      for (const socket of sockets) socket.destroy();
+      for (const server of servers.filter(s => s.listening)) await new Promise(resolve => server.close(resolve));
+      throw error;
+    }
+    request.approval.target.host = 'localhost'; request.approval.target.port = port;
+    request.url = `postgresql://${ROLES.migrator}@localhost:${port}/${name}`; request.caPem = caPem; reseal(request);
+    const childCount = migrationChildren.length, network = vi.spyOn(net.Socket.prototype, 'connect');
+    let result, networkCalls;
+    try { result = await provisionFreshTarget(request); networkCalls = network.mock.calls.length; }
+    finally {
+      network.mockRestore(); for (const socket of sockets) socket.destroy();
+      for (const server of servers) await new Promise(resolve => server.close(resolve));
+    }
+    const after = await Promise.all([snapshot(lab), snapshot(second)]);
+    console.info('FRESH_TLS_ROUTE_CONTAINMENT', JSON.stringify({ systems: [lab.system, second.system], routes, networkCalls,
+      migrationChildren: migrationChildren.length - childCount, result, before: before.map(s => digest(JSON.stringify(stable(s)))),
+      after: after.map(s => ({ digest: digest(JSON.stringify(stable(s))), tables: s.catalog.tables.map(t => t.relname), receipts: s.receipts })) }));
+    expect(result).toMatchObject({ status: 'REFUSED', reason: 'MIGRATION_TARGET_BINDING_UNQUALIFIED', phase: 'INPUT', runtimeAdmission: 'NOT_WIRED' });
+    expect(networkCalls).toBe(0); expect(routes).toEqual([]); expect(migrationChildren).toHaveLength(childCount);
+    expect(stable(after)).toEqual(stable(before));
   }, 30000);
   it('refuses repeated provisioning without changing receipts or creating application records', async () => {
     const q = lab.open(valid.approval.target.database, ROLES.migrator);

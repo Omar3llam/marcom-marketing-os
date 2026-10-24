@@ -4,6 +4,16 @@ Status: code-only candidate for independent review. **No hosted provisioning,
 database creation, deployment or runtime activation is authorized by this PR.**
 Backend Gates B/C remain BLOCKED. Historical Neon resources remain untouched.
 
+**Issue611 containment:** mutating provisioning accepts only the exact host
+`127.0.0.1` for an independently verified, directly connected owned synthetic
+local lab. Every valid nonliteral host (including `localhost`, other loopback
+addresses and aliases) returns `REFUSED / MIGRATION_TARGET_BINDING_UNQUALIFIED /
+INPUT` before constructing a database client, opening a network connection,
+starting a migration child or executing DDL. A CA or approval digest does not
+override this refusal. Invalid approval/source checks still fail first.
+Read-only `inspect` retains strict TLS and the existing full identity/native/
+receipt checks; it is not permission to access a hosted target.
+
 The owner ruled that historical records are disposable development/test data.
 This removes historical recovery from the replacement path; it does not permit
 deleting an existing resource or relaxing authentication, tenant or product truth.
@@ -139,11 +149,48 @@ To identify the review artifact, call `loadFreshContract()` and record its
 DDL statement hashes. Do not obtain it by accepting an operator manifest.
 
 Non-loopback postgres.js connections require CA and `rejectUnauthorized:true`.
-The Prisma child uses `sslmode=require`, `sslaccept=strict`, and the same CA.
-There is no plaintext fallback or operator SSL-mode override. These are
+The retained Prisma child configuration uses `sslmode=require`, `sslaccept=strict`,
+and the same CA, but nonloopback mutating execution is now refused before that
+child is reachable. There is no plaintext fallback or operator SSL-mode override. These are
 [Prisma's connector parameters](https://docs.prisma.io/docs/orm/v6/overview/databases/postgresql).
 Unit tests verify strict configuration/refusal; real hosted TLS qualification
-remains NOT_TESTED. Literal loopback is the disposable local-lab exception.
+remains NOT_TESTED. Literal `127.0.0.1` is only the direct owned local-lab
+exception; a local proxy/reroute must not be treated as direct target authority.
+
+## Migration-connection binding limitation and containment evidence
+
+Issue611's actual trusted-TLS route experiment verified physical target A in
+the operator session, then routed the separate Prisma connections to B. Both
+databases began empty. B received all76 exact migration receipts while A received
+the four legacy tables; the later PERMISSIONS refusal did not undo either
+transaction's writes. TLS authenticates the configured peer name/chain, not
+the independently approved physical systemID/databaseOID across new sessions.
+
+The containment withdraws this unqualified nonloopback mutating path; it does
+not repair the separate migration connection, certify literal-loopback proxies,
+or introduce hosted compatibility or runtime admission. Any future expansion
+must bind the actual DDL connection(s) to approved physical identity/DB/role.
+A separate pre-query, CA/hostname alone or post-write inspection is insufficient.
+No migration, native seal, permission profile or approval authority is relaxed.
+
+Regression coverage retains every direct provisioning/native/permission case,
+strict TLS configuration through read-only inspection, and invalid-source trust
+checks. New alias/CA unit cases assert refusal before driver/child construction.
+A real two-physical-cluster trusted-TLS route fixture records empty native
+catalogs/receipts before invocation, zero network/router/migration-child activity
+on refusal, and identical catalogs/receipts afterward. Both TLS endpoints and
+real TLS inspection have positive controls; the existing direct provision
+proves the migration-child observer is active. Existing timeout limits remain
+unchanged. Native Windows tests explicitly supply
+`FRESH_TARGET_TEST_OPENSSL_BIN`; Linux uses its installed `openssl`. No tool is
+installed or downloaded by the test. Temporary keys are destroyed after owned
+servers stop. Immutable RED/GREEN results and independent evidence belong to
+the focused containment PR; the earlier failed route evidence is preserved.
+Windows PG startup captures output in owned temporary files because inherited
+daemon pipes were measured to make `spawnSync` time out after exit0. The same
+20-second subprocess bound remains, and any subprocess error now fails the
+fixture regardless of status. No production code or timeout is changed by
+that test-harness correction.
 
 ## Execution and refusal
 

@@ -159,6 +159,8 @@ async function runFreshTarget(input, inspect) {
       || JSON.parse(readFileSync(new URL('node_modules/prisma/package.json', contract.root))).version !== '5.22.0') throw Error('DEPENDENCY_UNQUALIFIED');
     const t = validateApproval(input.approval, input.approvalSha256, input.url, contract.artifactSha256);
     const loopback = t.host === '127.0.0.1';
+    // The separate Prisma connection has no qualified physical target binding.
+    if (!inspect && !loopback) return answer('REFUSED', 'MIGRATION_TARGET_BINDING_UNQUALIFIED', phase);
     if (!loopback && (typeof input.caPem !== 'string' || !input.caPem.includes('-----BEGIN CERTIFICATE-----'))) throw Error('VERIFIED_TLS_REQUIRED');
     sql = postgres(input.url, { host: t.host, port: t.port, username: t.login, database: t.database,
       password: () => decodeURIComponent(new URL(input.url).password), ssl: loopback ? false : { rejectUnauthorized: true, ca: input.caPem },
