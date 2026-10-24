@@ -132,7 +132,18 @@ describe.skipIf(!DB_OK)('CP-03B / isolated PostgreSQL Holdout lifecycle', () => 
 
   it('a conclusion queued first freezes counts and the later writer conflicts', async () => {
     const f = await fixture(), entered = deferred(), release = deferred();
-    getEconomics.mockImplementationOnce(async () => { entered.resolve(); await release.promise; return economics(); });
+    const transaction = prisma.$transaction.bind(prisma);
+    // Pause AFTER the real locking query has acquired its PG row lock. The
+    // transaction and all SQL remain real; a separate connection proves wait.
+    vi.spyOn(prisma, '$transaction').mockImplementationOnce((operation, options) => transaction(async (tx) => operation(new Proxy(tx, {
+      get(target, key) {
+        if (key === '$queryRaw') return async (strings, ...values) => {
+          const result = await target.$queryRaw(strings, ...values);
+          entered.resolve(); await release.promise; return result;
+        };
+        return target[key];
+      },
+    })), options));
     const conclusion = concludeIncrementality(f.ws, f.test.id); await entered.promise;
     const metrics = recordCounts(f.ws, f.test.id, { ...observed, exposedConversions: 100 });
     const settled = Promise.allSettled([conclusion, metrics]); let locked;
@@ -143,6 +154,18 @@ describe.skipIf(!DB_OK)('CP-03B / isolated PostgreSQL Holdout lifecycle', () => 
     expect(results[0].status).toBe('fulfilled'); expect(results[1].reason).toMatchObject({ code: 'HOLDOUT_CONFLICT' });
     expect(frozen.exposedConversions).toBe(300);
     expect(frozen.liftPct).toBeCloseTo(20);
+  });
+
+  it('valid operator counts move DESIGNED to RUNNING and preserve startedAt on later updates', async () => {
+    const f = await fixture({ status: 'DESIGNED', startedAt: null, exposedUsers: 0, exposedConversions: 0, holdoutUsers: 0, holdoutConversions: 0 });
+    const first = await request(app(f)).post(`/incrementality/${f.test.id}/metrics`).send(observed);
+    expect(first.status).toBe(200); expect(first.body.test.status).toBe('RUNNING');
+    const started = (await current(f)).startedAt;
+    expect(started).not.toBeNull();
+    await recordCounts(f.ws, f.test.id, { ...observed, exposedConversions: 600 });
+    const updated = await current(f);
+    expect(updated.startedAt).toEqual(started); expect(updated.guardrails).toEqual(f.test.guardrails);
+    expect(updated.exposedConversions).toBe(600);
   });
 
   for (const status of ['DESIGNED', 'ABANDONED']) {

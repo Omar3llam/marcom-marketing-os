@@ -117,7 +117,7 @@ describe('recordCounts — the operator-entered observed result (DESIGNED → RU
 describe('concludeIncrementality — real readout only after counts are recorded', () => {
   it('refuses an unrun holdout (zero arms) cleanly — never a fabricated lift', async () => {
     prisma.incrementalityTest.findFirst.mockResolvedValue({
-      id: 't1', workspaceId: 'ws-1', channel: 'META',
+      id: 't1', workspaceId: 'ws-1', channel: 'META', status: 'RUNNING',
       exposedUsers: 0, exposedConversions: 0, holdoutUsers: 0, holdoutConversions: 0,
     });
     await expect(concludeIncrementality('ws-1', 't1')).rejects.toThrow(/no observed counts/i);
@@ -127,13 +127,14 @@ describe('concludeIncrementality — real readout only after counts are recorded
   it('reads a real causal lift from recorded counts and writes the loop', async () => {
     // exposed 300/5000 = 6.0%, holdout 250/5000 = 5.0% → +20% lift, CI clear of zero.
     prisma.incrementalityTest.findFirst.mockResolvedValue({
-      id: 't1', workspaceId: 'ws-1', channel: 'META', entityId: 'ent-1', entityLevel: 'CAMPAIGN',
+      id: 't1', workspaceId: 'ws-1', channel: 'META', status: 'RUNNING', entityId: 'ent-1', entityLevel: 'CAMPAIGN',
       exposedUsers: 5000, exposedConversions: 300, holdoutUsers: 5000, holdoutConversions: 250,
     });
     // Drive the real $transaction callback with a tx stub.
     const tx = {
+      $queryRaw: prisma.$queryRaw,
       decision:            { create: vi.fn().mockResolvedValue({ id: 'dec-1' }) },
-      incrementalityTest:  { update: vi.fn().mockResolvedValue({}) },
+      incrementalityTest:  { findFirst: prisma.incrementalityTest.findFirst, update: vi.fn().mockResolvedValue({}) },
       decisionMemoryEntry: { create: vi.fn().mockResolvedValue({ id: 'mem-1' }) },
     };
     prisma.$transaction.mockImplementation(async (fn) => fn(tx));

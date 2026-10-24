@@ -19,6 +19,46 @@ import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { projectIncrementalityTest, projectIncrementalityReadout } from './incrementalityProjection.js';
 
 const MEMORY_PREFIX = 'incrementality:';
+const COUNT_FIELDS = ['exposedUsers', 'exposedConversions', 'holdoutUsers', 'holdoutConversions'];
+const MAX_STORED_INT = 2147483647;
+const COUNT_BASIS = 'Operator-reported counts; randomization and measurement are not independently verified. Causal interpretation assumes a valid holdout design.';
+
+function holdoutError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+function validateCounts(counts) {
+  for (const field of COUNT_FIELDS) {
+    const value = counts[field];
+    if (!Number.isInteger(value) || value < 0 || value > MAX_STORED_INT) {
+      throw holdoutError('INVALID_HOLDOUT_COUNTS', `${field} must be a non-negative integer no greater than ${MAX_STORED_INT}`);
+    }
+  }
+  if (counts.exposedConversions > counts.exposedUsers) throw holdoutError('INVALID_HOLDOUT_COUNTS', 'exposedConversions cannot exceed exposedUsers');
+  if (counts.holdoutConversions > counts.holdoutUsers) throw holdoutError('INVALID_HOLDOUT_COUNTS', 'holdoutConversions cannot exceed holdoutUsers');
+}
+
+function assertConcludable(test) {
+  if (test.status !== 'RUNNING') throw holdoutError('HOLDOUT_CONFLICT', 'Holdout must be RUNNING to conclude; terminal results are immutable.');
+  validateCounts(test);
+  if (!(test.exposedUsers > 0) || !(test.holdoutUsers > 0)) {
+    throw holdoutError('NO_OBSERVED_COUNTS', 'No observed counts recorded — record holdout results before concluding');
+  }
+}
+
+// Both lifecycle writers lock the SAME workspace-owned parent before reading
+// authoritative counts. A foreign ID cannot acquire another workspace's lock.
+async function withLockedHoldout(workspaceId, testId, operation) {
+  return prisma.$transaction(async (tx) => {
+    const owned = await tx.$queryRaw`
+      SELECT id FROM public.incrementality_tests
+      WHERE id = ${testId}::uuid AND "workspaceId" = ${workspaceId}::uuid FOR UPDATE`;
+    if (!owned.length) throw new Error('Holdout test not found');
+    const test = await tx.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
+    if (!test) throw new Error('Holdout test not found');
+    return operation(tx, test);
+  }, { isolationLevel: 'ReadCommitted' });
+}
 
 /**
  * Pure: map a conclusive holdout readout to the DecisionMemoryEntry shape.
@@ -33,7 +73,7 @@ export function incrementalityToMemory(test, readout) {
     workspaceId:   test.workspaceId,
     entityId:      test.entityId ?? null,
     actionType:    `${MEMORY_PREFIX}${test.channel}`,
-    rationale,
+    rationale: `${COUNT_BASIS} ${rationale}`,
     // A causal, positive, confident lift is a sustainable learning.
     isSustainable: readout.conclusive && readout.confidenceLabel === 'HIGH',
   };
@@ -73,9 +113,8 @@ export async function listTests(workspaceId) {
 
 /**
  * Record a holdout's OBSERVED counts — the missing write organ. A holdout's
- * exposed/holdout user+conversion counts come from an actually-run experiment;
- * the operator records what they observed (user-owned measurements, real the
- * way a guardrail rule or an asserted AOV is real). Moves DESIGNED → RUNNING
+ * exposed/holdout user+conversion counts are reported by the operator, without
+ * independent verification of randomization or measurement. Moves DESIGNED → RUNNING
  * and stamps startedAt. Counts are validated and immutable once CONCLUDED.
  *
  * @returns {Promise<object>} the updated IncrementalityTest row
@@ -85,32 +124,26 @@ export async function recordCounts(workspaceId, testId, counts = {}) {
   if (!testId) throw new Error('recordCounts: testId required');
 
   const { exposedUsers, exposedConversions, holdoutUsers, holdoutConversions } = counts;
-  for (const [k, v] of Object.entries({ exposedUsers, exposedConversions, holdoutUsers, holdoutConversions })) {
-    if (!Number.isInteger(v) || v < 0) throw new Error(`recordCounts: ${k} must be a non-negative integer`);
-  }
-  if (exposedConversions > exposedUsers) throw new Error('recordCounts: exposedConversions cannot exceed exposedUsers');
-  if (holdoutConversions > holdoutUsers) throw new Error('recordCounts: holdoutConversions cannot exceed holdoutUsers');
+  const updated = await withLockedHoldout(workspaceId, testId, async (tx, test) => {
+    if (test.status !== 'DESIGNED' && test.status !== 'RUNNING') {
+      throw holdoutError('HOLDOUT_CONFLICT', 'Holdout observed counts are immutable after conclusion or abandonment.');
+    }
+    validateCounts(counts);
 
-  const test = await prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
-  if (!test) throw new Error('recordCounts: test not found');
-  if (test.status === 'CONCLUDED' || test.status === 'ABANDONED') {
-    throw new Error(`recordCounts: test is ${test.status} — observed counts are immutable`);
-  }
+    // Retain the non-terminal write predicate as an additional refusal guard,
+    // alongside the shared lifecycle lock and authoritative read above.
+    const res = await tx.incrementalityTest.updateMany({
+      where: { id: test.id, workspaceId, status: { in: ['DESIGNED', 'RUNNING'] } },
+      data: {
+        exposedUsers, exposedConversions, holdoutUsers, holdoutConversions,
+        status: 'RUNNING',
+        startedAt: test.startedAt ?? new Date(),
+      },
+    });
+    if (res.count === 0) throw holdoutError('HOLDOUT_CONFLICT', 'Holdout is no longer editable — observed counts are immutable');
 
-  // Atomic guard: filter the write on the non-terminal statuses so a conclude
-  // that flips the row to CONCLUDED between our read and write makes this a
-  // no-op (count 0) rather than silently overwriting a concluded result.
-  const res = await prisma.incrementalityTest.updateMany({
-    where: { id: test.id, status: { in: ['DESIGNED', 'RUNNING'] } },
-    data: {
-      exposedUsers, exposedConversions, holdoutUsers, holdoutConversions,
-      status: 'RUNNING',
-      startedAt: test.startedAt ?? new Date(),
-    },
+    return tx.incrementalityTest.findFirst({ where: { id: test.id, workspaceId } });
   });
-  if (res.count === 0) throw new Error('recordCounts: test is no longer editable — observed counts are immutable');
-
-  const updated = await prisma.incrementalityTest.findFirst({ where: { id: test.id, workspaceId } });
   logger.info({ workspaceId, testId }, '[IncrementalityService] observed counts recorded');
   return projectIncrementalityTest(updated);
 }
@@ -147,25 +180,27 @@ export async function getTest(workspaceId, testId) {
  */
 export async function concludeIncrementality(workspaceId, testId) {
   if (!workspaceId) throw new Error('concludeIncrementality: workspaceId required');
-  const test = await prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
-  if (!test) throw new Error('concludeIncrementality: test not found');
-  // Honest-empty guard: a holdout with no observed counts cannot be read out.
-  // Refuse cleanly here so the route returns a 409 — never a fabricated lift
-  // computed off zero/empty arms.
-  if (!(test.exposedUsers > 0) || !(test.holdoutUsers > 0)) {
-    throw new Error('concludeIncrementality: no observed counts recorded — record holdout results before concluding');
-  }
+  if (!testId) throw new Error('concludeIncrementality: testId required');
+  const candidate = await prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
+  if (!candidate) throw new Error('concludeIncrementality: test not found');
+  assertConcludable(candidate);
 
+  // Economics may read through the shared Prisma pool. Fetch it BEFORE taking
+  // the transaction connection so contending conclusions cannot exhaust the
+  // pool waiting for nested reads. This is not an authoritative count snapshot;
+  // status and counts are re-read/revalidated under the lock below. Existing
+  // publication still marks the monetary valuation basis unproven.
   const { economics } = await getEconomics(workspaceId);
-  const readout = readIncrementality({
-    exposed: { users: test.exposedUsers, conversions: test.exposedConversions },
-    holdout: { users: test.holdoutUsers, conversions: test.holdoutConversions },
-    aovMinor: economics.aovMinor,
-  });
+  const result = await withLockedHoldout(workspaceId, testId, async (tx, test) => {
+    assertConcludable(test);
+    const readout = readIncrementality({
+      exposed: { users: test.exposedUsers, conversions: test.exposedConversions },
+      holdout: { users: test.holdoutUsers, conversions: test.holdoutConversions },
+      aovMinor: economics.aovMinor,
+    });
 
-  const mem = incrementalityToMemory(test, readout);
+    const mem = incrementalityToMemory(test, readout);
 
-  const result = await prisma.$transaction(async (tx) => {
     let decisionId = null;
     // Only a CONFIDENT positive causal lift becomes a proposed action.
     if (readout.conclusive && (readout.confidenceLabel === 'HIGH' || readout.confidenceLabel === 'MEDIUM') && test.entityId) {
@@ -183,7 +218,7 @@ export async function concludeIncrementality(workspaceId, testId) {
     }
 
     await tx.incrementalityTest.update({
-      where: { id: test.id },
+      where: { id: test.id, workspaceId },
       data: {
         status: 'CONCLUDED', concludedAt: new Date(),
         liftPct: readout.liftPct, ciLow: readout.ci[0], ciHigh: readout.ci[1],
@@ -194,9 +229,12 @@ export async function concludeIncrementality(workspaceId, testId) {
     });
 
     const memory = await tx.decisionMemoryEntry.create({ data: { ...mem, decisionId } });
-    return { decisionId, memoryId: memory.id };
+    return {
+      decisionId, memoryId: memory.id,
+      readout: projectIncrementalityReadout({ ...readout, rationale: `${COUNT_BASIS} ${readout.rationale}` }),
+    };
   });
 
-  logger.info({ workspaceId, testId, conclusive: readout.conclusive, decisionId: result.decisionId }, '[IncrementalityService] concluded — loop closed');
-  return { readout: projectIncrementalityReadout(readout), memoryId: result.memoryId, decisionId: result.decisionId };
+  logger.info({ workspaceId, testId, conclusive: result.readout.conclusive, decisionId: result.decisionId }, '[IncrementalityService] concluded — loop closed');
+  return result;
 }

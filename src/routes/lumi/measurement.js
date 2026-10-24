@@ -120,6 +120,8 @@ measurementRouter.post('/incrementality/:id/metrics', requireStrategist, async (
     return res.json({ workspaceId: wsId, test });
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'HoldoutNotFound', message: err.message });
+    if (err.code === 'HOLDOUT_CONFLICT') return res.status(409).json({ error: 'HoldoutConflict', message: err.message });
+    if (err.code === 'INVALID_HOLDOUT_COUNTS') return res.status(400).json({ error: 'BadCounts', message: err.message });
     if (/must be|cannot exceed|immutable/i.test(err.message)) return res.status(400).json({ error: 'BadCounts', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/measurement] record counts failed');
     return res.status(500).json({ error: 'RecordCountsFailed', message: 'Request failed' });
@@ -137,6 +139,8 @@ measurementRouter.post('/incrementality/:id/conclude', requireStrategist, async 
     return res.status(201).json({ workspaceId: wsId, ...result });
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'HoldoutNotFound', message: err.message });
+    if (err.code === 'HOLDOUT_CONFLICT') return res.status(409).json({ error: 'HoldoutConflict', message: err.message });
+    if (err.code === 'INVALID_HOLDOUT_COUNTS') return res.status(400).json({ error: 'BadCounts', message: err.message });
     if (/no observed counts/i.test(err.message)) return res.status(409).json({ error: 'NoObservedCounts', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/measurement] conclude failed');
     return res.status(500).json({ error: 'ConcludeFailed', message: 'Request failed' });
