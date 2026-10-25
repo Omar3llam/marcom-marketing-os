@@ -74,8 +74,8 @@ export function incrementalityToMemory(test, readout) {
     entityId:      test.entityId ?? null,
     actionType:    `${MEMORY_PREFIX}${test.channel}`,
     rationale: `${COUNT_BASIS} ${rationale}`,
-    // A causal, positive, confident lift is a sustainable learning.
-    isSustainable: readout.conclusive && readout.confidenceLabel === 'HIGH',
+    // Lift and confidence do not measure outcome durability.
+    isSustainable: null,
   };
 }
 

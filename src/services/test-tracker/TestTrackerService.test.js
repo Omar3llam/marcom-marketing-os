@@ -35,6 +35,8 @@ import { resolveCredential } from '../connectors/credentialStore.js';
 import { concludeTest, startTest, recordVariantMetrics, refreshFromMeta, resolveVerdict, parseVariantInsights } from './TestTrackerService.js';
 import { verdictToActionType }  from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
+import { buildMemoryInputs } from '../test-generator/TestGeneratorService.js';
+import { generateAgenda } from '../test-generator/testGeneratorEngine.js';
 
 function testRow({ metric = 'CTR', dimension = 'HOOK', entityLevel = 'ADSET', variants }) {
   return {
@@ -81,12 +83,25 @@ describe('concludeTest — confident winner closes the loop with a valid verdict
     const memData = prisma.decisionMemoryEntry.create.mock.calls[0][0].data;
     expect(memData.actionType).toBe('test:HOOK');
     expect(memData.decisionId).toBe('dec-1');
-    expect(memData.isSustainable).toBe(true);
+    expect(memData.isSustainable).toBeNull(); // Confidence does not measure durability.
     // Test marked concluded; winner flagged
     expect(prisma.testExperiment.update.mock.calls[0][0].data.status).toBe('CONCLUDED');
     expect(prisma.testVariant.update).toHaveBeenCalledWith({
       where: { id: 'v-b', testId: 'test-1', test: { workspaceId: 'ws-1' } }, data: { isWinner: true },
     });
+  });
+
+  it('a confident result with unmeasured durability remains neutral in the next agenda', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue(testRow({
+      variants: [variant('v-a', 'A', true, 50000, 800), variant('v-b', 'B', false, 50000, 1050)],
+    }));
+    await concludeTest('ws-1', 'test-1', { refresh: false });
+    const written = prisma.decisionMemoryEntry.create.mock.calls[0][0].data;
+    const suggestions = generateAgenda({
+      entities: [{ entityId: 'ent-1', metrics: { ctr: 0.5, spendMinor: 10000 } }],
+      memory: buildMemoryInputs([written]),
+    });
+    expect(suggestions.find((s) => s.dimension === 'HOOK').rationale).toContain('memory ×1).');
   });
 });
 

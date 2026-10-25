@@ -46,35 +46,47 @@ export async function resolvePrediction({ predictionId, workspaceId, actualBreac
   // whichever workspace the prediction belonged to — learning attributed to an
   // account that never made the forecast.
   if (!workspaceId) throw new Error('resolvePrediction: workspaceId required');
-  const p = await prisma.fatiguePrediction.findFirst({ where: { id: predictionId, workspaceId } });
-  if (!p) throw new Error(`resolvePrediction: prediction ${predictionId} not found`);
-  if (p.resolvedAt) return p; // already resolved (idempotent)
+  const result = await prisma.$transaction(async (tx) => {
+    // Only the owned parent can be locked. READ COMMITTED then observes the
+    // winner's committed resolution after a competing resolver releases it.
+    const owned = await tx.$queryRaw`
+      SELECT id FROM public.fatigue_predictions
+      WHERE id = ${predictionId}::uuid AND "workspaceId" = ${workspaceId}::uuid FOR UPDATE`;
+    if (!owned.length) throw new Error(`resolvePrediction: prediction ${predictionId} not found`);
+    const p = await tx.fatiguePrediction.findFirst({ where: { id: predictionId, workspaceId } });
+    if (!p) throw new Error(`resolvePrediction: prediction ${predictionId} not found`);
+    if (p.resolvedAt) return { prediction: p, wroteMemory: false };
 
-  // Accuracy: 1.0 when on the day, decaying ~0.1 per day of error (floored at 0).
-  let accuracy = null;
-  if (actualBreachDate) {
-    const errDays = Math.abs(new Date(actualBreachDate) - p.projectedBreachDate) / 86_400_000;
-    accuracy = Math.max(0, Math.round((1 - errDays * 0.1) * 100) / 100);
+    // Accuracy: 1.0 when on the day, decaying ~0.1 per day of error (floored at 0).
+    let accuracy = null;
+    if (actualBreachDate) {
+      const errDays = Math.abs(new Date(actualBreachDate) - p.projectedBreachDate) / 86_400_000;
+      accuracy = Math.max(0, Math.round((1 - errDays * 0.1) * 100) / 100);
+    }
+
+    const updated = await tx.fatiguePrediction.update({
+      where: { id: predictionId, workspaceId },
+      data:  { resolvedAt: new Date(), actualBreachDate: actualBreachDate ? new Date(actualBreachDate) : null, accuracy },
+    });
+
+    // Resolution and Memory commit together; a failed insert rolls both back.
+    await tx.decisionMemoryEntry.create({
+      data: {
+        workspaceId: p.workspaceId,
+        entityId:    p.entityId,
+        actionType:  'FATIGUE_FORECAST',
+        rationale:   `Predicted ${p.metric} breach of ${p.ceiling} on ${p.projectedBreachDate.toISOString().slice(0, 10)}` +
+                     (actualBreachDate ? `; actual ${new Date(actualBreachDate).toISOString().slice(0, 10)} (accuracy ${accuracy}).` : '; pre-empted by refresh.'),
+        // Forecast accuracy does not measure outcome durability.
+        isSustainable: null,
+        impactDurationHrs: null,
+      },
+    });
+    return { prediction: updated, wroteMemory: true };
+  }, { isolationLevel: 'ReadCommitted' });
+
+  if (result.wroteMemory) {
+    logger.info({ predictionId, accuracy: result.prediction.accuracy }, '[FatiguePrediction] resolved + logged to memory');
   }
-
-  const updated = await prisma.fatiguePrediction.update({
-    where: { id: predictionId },
-    data:  { resolvedAt: new Date(), actualBreachDate: actualBreachDate ? new Date(actualBreachDate) : null, accuracy },
-  });
-
-  // ── Log to memory on resolution (acceptance criterion) ──────
-  await prisma.decisionMemoryEntry.create({
-    data: {
-      workspaceId: p.workspaceId,
-      entityId:    p.entityId,
-      actionType:  'FATIGUE_FORECAST',
-      rationale:   `Predicted ${p.metric} breach of ${p.ceiling} on ${p.projectedBreachDate.toISOString().slice(0, 10)}` +
-                   (actualBreachDate ? `; actual ${new Date(actualBreachDate).toISOString().slice(0, 10)} (accuracy ${accuracy}).` : '; pre-empted by refresh.'),
-      isSustainable: accuracy != null ? accuracy >= 0.7 : null,
-      impactDurationHrs: null,
-    },
-  });
-
-  logger.info({ predictionId, accuracy }, '[FatiguePrediction] resolved + logged to memory');
-  return updated;
+  return result.prediction;
 }
