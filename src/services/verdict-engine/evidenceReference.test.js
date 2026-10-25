@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   toEvidenceReference, EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION,
+  qualifiedCanonicalReference, canonicalContentHash,
 } from './evidenceReference.js';
 
 const OBSERVED = new Date('2026-08-10T09:00:00Z');
@@ -26,6 +27,37 @@ const valid = (over = {}) => ({
   rowCount:   1,
   rows:       [{ entityId: 'c1', source: 'META', observedAt: OBSERVED }],
   ...over,
+});
+
+describe('T3 / mandatory frozen canonical reference', () => {
+  const fixture = () => {
+    const projection = { snapshot: { workspaceId: 'ws', entityId: 'entity', source: 'META', measurementWindow: 'CUMULATIVE_30D', date: OBSERVED.toISOString() } };
+    const facts = { binding: 'EXACT', providerAccountId: 'act_fixture', metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID' },
+      rawDates: { start: { presence: 'VALID', value: '2026-07-12' }, stop: { presence: 'VALID', value: '2026-08-10' } } };
+    return { workspaceId: 'ws', entityId: 'entity', source: 'META', measurementWindow: 'CUMULATIVE_30D', observedAt: OBSERVED.toISOString(),
+      observationId: '00000000-0000-0000-0000-000000000001', refreshId: '00000000-0000-0000-0000-000000000002',
+      sourceAttemptId: '00000000-0000-0000-0000-000000000003', writeId: '00000000-0000-0000-0000-000000000004',
+      committedProjection: projection, sourceFacts: facts, sourceScope: { providerAccountId: 'act_fixture' },
+      contentHash: canonicalContentHash({ projection, facts }).toString('hex') };
+  };
+  it('freezes the consumed observation and its original timestamp', () => {
+    const r = fixture(), result = qualifiedCanonicalReference('ws','entity',valid(),[r]);
+    expect(result.refs).toEqual([r]); expect(result.observedAt).toEqual([OBSERVED.toISOString()]);
+  });
+  for (const [name, mutate] of [
+    ['foreign workspace', (r) => { r.workspaceId = 'foreign'; }],
+    ['foreign entity', (r) => { r.entityId = 'foreign'; }],
+    ['restated metric payload', (r) => { r.committedProjection.snapshot.spendMinor = 999; }],
+    ['Decision creation time substituted for observation', (r) => { r.observedAt = LATER.toISOString(); }],
+    ['missing source identity', (r) => { delete r.sourceAttemptId; }],
+    ['unreported metric', (r) => { r.sourceFacts.metricFields.spend = 'MISSING'; }],
+  ]) it(`refuses ${name}`, () => {
+    const r = fixture(); mutate(r); expect(qualifiedCanonicalReference('ws','entity',valid(),[r])).toBeNull();
+  });
+  it('does not construct mandatory provenance from an empty input or missing basis', () => {
+    expect(qualifiedCanonicalReference('ws','entity',null,[fixture()])).toBeNull();
+    expect(qualifiedCanonicalReference('ws','entity',valid(),[])).toBeNull();
+  });
 });
 
 describe('R5 — toEvidenceReference', () => {

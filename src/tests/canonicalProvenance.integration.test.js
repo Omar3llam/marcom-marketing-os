@@ -2,6 +2,16 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import postgres from 'postgres';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { prisma } from '../lib/prisma.js';
+import { beginCanonicalCapture } from '../services/connectors/canonicalCapture.js';
+import { metaNormalize } from '../services/connectors/normalize/metaNormalize.js';
+import { landSnapshots } from '../services/connectors/snapshotSink.js';
+import { detId } from '../services/connectors/connectorTypes.js';
+import { fetchCanonicalAllLevels, canonicalCaptureSpecs, collectCursorPages } from '../services/metaAdsService.js';
+import { selectCanonicalVerdictSnapshots } from '../services/verdict-engine/canonicalVerdictEvidence.js';
+import { getCanonicalVerdictCampaigns } from '../services/entity-graph/EntityGraphService.js';
+import { evaluateConnectorVerdicts } from '../services/verdict-engine/connectorVerdictService.js';
+import { persistConnectorVerdicts } from '../services/verdict-engine/VerdictService.js';
 import { dbAvailable } from '../tests/dbProbe.js';
 import { seed, admit, level, sealSource, select, graph, write, observation, commit, manifest, facts, request, scope, H } from './canonicalProvenanceFixtures.js';
 
@@ -41,6 +51,131 @@ async function expire(ids) {
 }
 
 describe.skipIf(!DB_OK)('02B-1 additive canonical provenance / real PostgreSQL', () => {
+  const T3_NOW = new Date('2026-10-25T07:00:00.000Z');
+  const t3Auth = { accountExternalId: 'act_t3', currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED', accountTimeZone: 'UTC' };
+  async function t3Capture({ failed = [], capped = false, missingDates = false, missingSpend = false, revenue = '3000', beforeLand, mutate } = {}) {
+    await sql`UPDATE marcom_credentials SET account_id='act_t3' WHERE workspace_id=${f.ws}`;
+    const capture = await beginCanonicalCapture(f.ws, t3Auth, T3_NOW);
+    const range = canonicalCaptureSpecs(T3_NOW)[0].params.time_range;
+    let raw;
+    try {
+      raw = await fetchCanonicalAllLevels('synthetic-no-network', 'act_t3', { now: T3_NOW, capture: capture.hooks,
+        fetchLevel: async (_token, _account, { level, capture: hooks }) => {
+          if (failed.includes(level)) throw new Error('Synthetic provider failure');
+          const row = { campaign_id: 't3-c', campaign_name: 'T3 campaign',
+            ...(level !== 'campaign' ? { adset_id: 't3-s', adset_name: 'T3 adset' } : {}),
+            ...(level === 'ad' ? { ad_id: 't3-a', ad_name: 'T3 ad' } : {}),
+            spend: missingSpend ? undefined : '1000', impressions: '10000', clicks: '800', reach: '5000', frequency: '2',
+            actions: [{ action_type: 'purchase', value: '50' }], action_values: [{ action_type: 'purchase', value: revenue }],
+            date_start: missingDates ? undefined : range.since, date_stop: missingDates ? undefined : range.until };
+          const cursor = [row]; let page = 1;
+          cursor.hasNext = () => capped && level === 'campaign';
+          cursor.next = async () => { page++; cursor.length = 0; };
+          const collected = await collectCursorPages(cursor, { onProgress: (p) => hooks.page(level, p) });
+          expect(page).toBe(capped && level === 'campaign' ? 50 : 1);
+          return collected;
+        } });
+    } catch (err) { await capture.sealSources(); throw err; }
+    const sourceState = await sql`SELECT level,source_sealed_at IS NOT NULL AS sealed,encode(receipt_hash,'hex') AS hash,
+      source_receipt->>'outcome' AS outcome FROM canonical_level_attempts WHERE workspace_id=${f.ws} AND refresh_id=${capture.refreshId} ORDER BY level`;
+    console.log('T3_SOURCES', JSON.stringify(sourceState));
+    await capture.sealSources(); await capture.admitWrite();
+    const normalized = metaNormalize({ ...t3Auth, date: T3_NOW, rows: raw.rows, measurementWindow: 'CUMULATIVE_30D',
+      requestedWindowStart: raw.windowStart, requestedWindowEnd: raw.windowEnd });
+    mutate?.(normalized);
+    try { await beforeLand?.(); await landSnapshots(f.ws, 'META', normalized, { capture }); }
+    catch (err) { await capture.failWrite(); throw err; }
+    return capture;
+  }
+  const t3Id = () => detId(f.ws, 'META', 'CAMPAIGN', 't3-c');
+  const t3Read = () => selectCanonicalVerdictSnapshots(f.ws, [t3Id()]);
+
+  it('T3 captures real request/page facts, all levels and immutable materializations with UNKNOWN membership', async () => {
+    const c = await t3Capture();
+    const attempts = await sql`SELECT level,source_receipt FROM canonical_level_attempts WHERE workspace_id=${f.ws} AND refresh_id=${c.refreshId}`;
+    expect(attempts).toHaveLength(3); expect(attempts.every((a) => a.source_receipt.outcome === 'EXHAUSTED' && a.source_receipt.pagesObserved === 1)).toBe(true);
+    const [w] = await sql`SELECT outcome,commit_manifest FROM canonical_write_attempts WHERE workspace_id=${f.ws} AND refresh_id=${c.refreshId}`;
+    expect(w.outcome).toBe('COMMITTED'); expect(w.commit_manifest.membershipCoverage).toBe('UNKNOWN');
+    expect(w.commit_manifest.committedCounts).toEqual({ ACCOUNT: 1, CAMPAIGN: 1, ADSET: 1, AD: 1 });
+    expect(await t3Read()).toHaveLength(1);
+    console.log('T3_CAPTURE', JSON.stringify({ levels: attempts.length, outcome: w.outcome, membership: w.commit_manifest.membershipCoverage, counts: w.commit_manifest.committedCounts }));
+  });
+  it('T3 a failed later refresh preserves the original independently qualified observation', async () => {
+    await t3Capture(); const before = await t3Read();
+    await expect(t3Capture({ failed: ['campaign','adset','ad'] })).rejects.toThrow('every level');
+    expect(await t3Read()).toEqual(before);
+    const rows = await sql`SELECT source_receipt FROM canonical_level_attempts WHERE workspace_id=${f.ws} AND source_receipt->>'outcome'='FAILED'`;
+    expect(rows).toHaveLength(3);
+  });
+  it('T3 capped/partial sources preserve their own facts and cannot establish a complete comparison cohort', async () => {
+    await t3Capture({ capped: true, failed: ['ad'] });
+    const rows = await sql`SELECT level,source_receipt FROM canonical_level_attempts WHERE workspace_id=${f.ws}`;
+    expect(rows.find((r) => r.level === 'campaign').source_receipt).toMatchObject({ outcome: 'CAPPED', pagesObserved: 50, hasNextAtStop: true });
+    expect(rows.find((r) => r.level === 'ad').source_receipt.outcome).toBe('FAILED');
+    expect(await t3Read()).toHaveLength(1);
+    const evaluation = await evaluateConnectorVerdicts(f.ws);
+    expect(evaluation.annotated.relativeRefusal.reason).toBe('COHORT_COMPLETENESS_UNPROVEN');
+    expect(evaluation.annotated.children.every((c) => !c.relativeRank && !c.relativeContext)).toBe(true);
+  });
+  it('T3 old snapshots without capture provenance never acquire qualified input lineage', async () => {
+    await prisma.metricSnapshot.create({ data: { workspaceId: f.ws, entityId: f.campaign, entityLevel: 'CAMPAIGN', date: T3_NOW,
+      source: 'META', granularity: 'DAILY', measurementWindow: 'CUMULATIVE_30D', spendMinor: 1, currency: 'USD' } });
+    expect(await selectCanonicalVerdictSnapshots(f.ws, [f.campaign])).toEqual([]);
+  });
+  for (const over of [{ missingDates: true }, { missingSpend: true }]) {
+    it(`T3 refuses missing source facts without fabricating dates or measured zero (${JSON.stringify(over)})`, async () => {
+      await t3Capture(over); expect(await t3Read()).toEqual([]);
+      const [o] = await sql`SELECT source_facts FROM canonical_observations WHERE workspace_id=${f.ws} AND entity_level='CAMPAIGN'`;
+      if (over.missingDates) expect(o.source_facts.rawDates.stop).toEqual({ presence: 'MISSING', value: null });
+      else expect(o.source_facts.metricFields.spend).toBe('MISSING');
+    });
+  }
+  it('T3 restatement leaves historical observations unchanged and Decisions retain the exact consumed lineage', async () => {
+    await t3Capture(); const [first] = await t3Read();
+    await t3Capture({ revenue: '4000' });
+    const historical = await sql`SELECT committed_projection FROM canonical_observations WHERE workspace_id=${f.ws} AND id=${first._canonicalReference.observationId}`;
+    expect(historical[0].committed_projection).toEqual(first._canonicalReference.committedProjection);
+    const evaluation = await evaluateConnectorVerdicts(f.ws);
+    expect(evaluation.campaigns.find((c) => c.entityId === t3Id()).revenueMinor).toBe(400000);
+    const result = await persistConnectorVerdicts(f.ws, evaluation);
+    expect(result.created).toHaveLength(1);
+    const d = await prisma.decision.findFirst({ where: { workspaceId: f.ws, entityId: t3Id() } });
+    expect(d.status).toBe('PROPOSED'); expect(d.evidenceReference.refs).toHaveLength(1);
+    expect(d.evidenceReference.refs[0]).toMatchObject({ workspaceId: f.ws, entityId: t3Id(), committedProjection: { snapshot: { revenueMinor: 400000 } } });
+    expect(d.evidenceReference.observedAt).toEqual([T3_NOW.toISOString()]);
+    console.log('T3_DECISION', JSON.stringify({ status: d.status, observations: d.evidenceReference.refs.length, source: d.evidenceReference.sources }));
+  });
+  it('T3 unrelated missing campaigns do not disqualify an independently qualified entity; take:200 confers no completeness', async () => {
+    await t3Capture();
+    const result = await getCanonicalVerdictCampaigns(f.ws, { now: T3_NOW });
+    expect(result.campaigns.map((r) => r.entityId)).toEqual([t3Id()]);
+    expect(result.noCanonicalWindow.some((r) => r.entityId === f.campaign || r.id === f.campaign)).toBe(true);
+    expect(result.cohort).toEqual({ membershipCoverage: 'UNKNOWN', evaluationCoverage: 'UNKNOWN', identityLimit: 200 });
+  });
+  it('T3 foreign workspace IDs cannot select another tenant observation', async () => {
+    await t3Capture(); const foreign = await fixture();
+    expect(await selectCanonicalVerdictSnapshots(foreign.ws, [t3Id()])).toEqual([]);
+  });
+  it('T3 a native observation refusal rolls back snapshot writes and seals a failed write attempt', async () => {
+    await expect(t3Capture({ mutate: (rows) => {
+      rows.find((r) => r.entityLevel === 'CAMPAIGN').canonicalFacts.currency.value = 'INVALID';
+    } })).rejects.toThrow();
+    expect(await prisma.metricSnapshot.count({ where: { workspaceId: f.ws } })).toBe(0);
+    const [counts] = await sql`SELECT (SELECT count(*)::int FROM canonical_observations WHERE workspace_id=${f.ws}) AS observations,
+      (SELECT count(*)::int FROM canonical_write_attempts WHERE workspace_id=${f.ws} AND outcome='FAILED') AS failures`;
+    expect(counts).toEqual({ observations: 0, failures: 1 });
+    console.log('T3_ROLLBACK', JSON.stringify(counts));
+  });
+  it('T3 a real identity query capped at 200 cannot claim complete membership or evaluation coverage', async () => {
+    await t3Capture();
+    await prisma.campaign.createMany({ data: Array.from({ length: 201 }, (_, i) => ({ workspaceId: f.ws, accountId: f.account,
+      channel: 'META', externalId: `t3-subset-${i}`, name: `Synthetic unmeasured ${i}` })) });
+    const result = await getCanonicalVerdictCampaigns(f.ws, { now: T3_NOW });
+    expect(result.campaigns.length + result.noCanonicalWindow.length + result.staleEvidence.length).toBe(200);
+    expect(result.cohort).toMatchObject({ membershipCoverage: 'UNKNOWN', evaluationCoverage: 'UNKNOWN', identityLimit: 200 });
+    expect(await t3Read()).toHaveLength(1); // This entity's own evidence remains qualified independently.
+    console.log('T3_BOUND', JSON.stringify({ actualIdentities: await prisma.campaign.count({ where: { workspaceId: f.ws } }), evaluatedIdentities: 200, membership: result.cohort.membershipCoverage }));
+  });
   beforeAll(async () => {
     // Mirrors existing unmanaged vault DDL; no token content is needed.
     await sql`CREATE TABLE IF NOT EXISTS marcom_credentials(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),project_id text NOT NULL,user_id text NOT NULL,platform text NOT NULL,access_token_enc text,refresh_token_enc text,account_id text,scopes text,expires_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(project_id,platform))`;

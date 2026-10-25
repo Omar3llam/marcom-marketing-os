@@ -1,9 +1,11 @@
+import { canonicalContentHash } from './evidenceReference.js';
+import { Prisma } from '@prisma/client';
 // ============================================================
 // B5 F-2 — a failed canonical read is a system failure, not an empty account
 // ============================================================
 // The defect these tests exist to prevent returning:
 //
-//   prisma.metricSnapshot.findMany(...).catch(() => [])
+//   prisma.$queryRaw(...).catch(() => [])
 //
 // An empty array is a real answer — the database was asked, and this campaign
 // was never measured over the verdict window. A failed query is not that answer.
@@ -32,7 +34,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
-    metricSnapshot: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     campaign:       { findMany: vi.fn() },
     decision:       { findMany: vi.fn() },
   },
@@ -147,13 +149,13 @@ afterEach(() => { vi.useRealTimers(); });
 // ── TEST 1 — the state that must NOT become an error ────────────────────────
 describe('1 · a successful empty read is still NO_CANONICAL_WINDOW', () => {
   it('the reader returns an empty array, not a throw', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue(captured([]));
     await expect(selectCanonicalVerdictSnapshots(WS, ['c1'])).resolves.toEqual([]);
   });
 
   it('every campaign lands in noCanonicalWindow with the campaign-level reason', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha'), identity('c2', 'Beta')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue(captured([]));
 
     const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(WS);
     expect(campaigns).toEqual([]);
@@ -162,7 +164,7 @@ describe('1 · a successful empty read is still NO_CANONICAL_WINDOW', () => {
 
   it('and the evaluation reports NO_ELIGIBLE_CAMPAIGNS — a business answer, not a failure', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue(captured([]));
 
     const ev = await evaluateConnectorVerdicts(WS);
     expect(ev.status).toBe('NO_ELIGIBLE_CAMPAIGNS');
@@ -173,7 +175,7 @@ describe('1 · a successful empty read is still NO_CANONICAL_WINDOW', () => {
   it('no workspace and no entity ids resolve without ever querying', async () => {
     await expect(selectCanonicalVerdictSnapshots(null, ['c1'])).resolves.toEqual([]);
     await expect(selectCanonicalVerdictSnapshots(WS, [])).resolves.toEqual([]);
-    expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });
 
@@ -185,7 +187,7 @@ describe('2 · a successful populated read behaves exactly as before', () => {
   it.each(REFERENCES)('rows reach the caller and a verdict is produced (clock %s)', async (instant) => {
     vi.setSystemTime(new Date(instant));
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([canonicalRow('c1')]);
+    prisma.$queryRaw.mockResolvedValue(captured([canonicalRow('c1')]));
 
     const ev = await evaluateConnectorVerdicts(WS);
     expect(ev.status).toBe('OK');
@@ -209,26 +211,26 @@ describe('2 · a successful populated read behaves exactly as before', () => {
     expect(windowEnd.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
-  it('the query itself is unchanged — window, sources, level, ordering', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+  it('the observation query retains the canonical window, level, source and ordering', async () => {
+    prisma.$queryRaw.mockResolvedValue(captured([]));
     await selectCanonicalVerdictSnapshots(WS, ['c1']);
 
-    const arg = prisma.metricSnapshot.findMany.mock.calls[0][0];
-    expect(arg.where.measurementWindow).toEqual({ equals: 'CUMULATIVE_30D' });
-    expect(arg.where.entityLevel).toBe('CAMPAIGN');
-    expect(arg.where.source.in).toContain('META');
-    expect(arg.where.source.in).not.toContain('GA4');
-    expect(arg.orderBy).toEqual({ date: 'asc' });
+    const arg = Prisma.sql(...prisma.$queryRaw.mock.calls[0]);
+    expect(arg.sql).toContain("o.measurement_window='CUMULATIVE_30D'");
+    expect(arg.sql).toContain("o.entity_level='CAMPAIGN'");
+    expect(arg.sql).toContain("o.source='META'");
+    expect(arg.sql).not.toContain("o.source='GA4'");
+    expect(arg.sql).toContain('ORDER BY o.date');
+    expect(arg.sql).toContain("w.outcome='COMMITTED'");
     // F-3 is NOT in this slice's scope: no date bound was added, and none removed.
-    expect(arg.where.date).toBeUndefined();
-    expect(arg.where.windowEnd).toBeUndefined();
+    expect(arg.sql).not.toMatch(/AND o\.(date|window_end)[<>=]/);
   });
 });
 
 // ── TEST 3 — the central regression ─────────────────────────────────────────
 describe('3 · a failed canonical query is surfaced, never converted', () => {
   it('rejects with the stable code instead of resolving to []', async () => {
-    prisma.metricSnapshot.findMany.mockRejectedValue(new Error('connection terminated'));
+    prisma.$queryRaw.mockRejectedValue(new Error('connection terminated'));
 
     const err = await selectCanonicalVerdictSnapshots(WS, ['c1']).catch((e) => e);
     expect(err).toBeInstanceOf(CanonicalEvidenceUnavailableError);
@@ -237,13 +239,13 @@ describe('3 · a failed canonical query is surfaced, never converted', () => {
   });
 
   it('never resolves — the failure cannot be read as a value', async () => {
-    prisma.metricSnapshot.findMany.mockRejectedValue(new Error('boom'));
+    prisma.$queryRaw.mockRejectedValue(new Error('boom'));
     await expect(selectCanonicalVerdictSnapshots(WS, ['c1'])).rejects.toThrow();
   });
 
   it('keeps the underlying error as `cause` for observability, not for clients', async () => {
     const underlying = new Error('P1001: cannot reach database server');
-    prisma.metricSnapshot.findMany.mockRejectedValue(underlying);
+    prisma.$queryRaw.mockRejectedValue(underlying);
 
     const err = await selectCanonicalVerdictSnapshots(WS, ['c1']).catch((e) => e);
     expect(err.cause).toBe(underlying);
@@ -252,7 +254,7 @@ describe('3 · a failed canonical query is surfaced, never converted', () => {
   });
 
   it('logs at error level with the workspace and the stable code', async () => {
-    prisma.metricSnapshot.findMany.mockRejectedValue(new Error('boom'));
+    prisma.$queryRaw.mockRejectedValue(new Error('boom'));
     await selectCanonicalVerdictSnapshots(WS, ['c1']).catch(() => {});
 
     expect(logger.debug).not.toHaveBeenCalled();
@@ -263,7 +265,7 @@ describe('3 · a failed canonical query is surfaced, never converted', () => {
   });
 
   it('the failure NEVER carries the reason a real absence carries', async () => {
-    prisma.metricSnapshot.findMany.mockRejectedValue(new Error('boom'));
+    prisma.$queryRaw.mockRejectedValue(new Error('boom'));
     const err = await selectCanonicalVerdictSnapshots(WS, ['c1']).catch((e) => e);
     expect(err.code).not.toBe(NO_CANONICAL_WINDOW);
     expect(JSON.stringify({ m: err.message, c: err.code })).not.toContain(NO_CANONICAL_WINDOW);
@@ -274,7 +276,7 @@ describe('3 · a failed canonical query is surfaced, never converted', () => {
 describe('4 · no verdict is produced from a failed read', () => {
   beforeEach(() => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha'), identity('c2', 'Beta')]);
-    prisma.metricSnapshot.findMany.mockRejectedValue(new Error('read timed out'));
+    prisma.$queryRaw.mockRejectedValue(new Error('read timed out'));
   });
 
   it('getCanonicalVerdictCampaigns propagates rather than partitioning', async () => {
@@ -308,12 +310,12 @@ describe('5 · a failed canonical read never falls back to weaker evidence', () 
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha')]);
     // Canonical fails; ANY later read would succeed with perfectly good rolling
     // rows. The point is that no later read is attempted.
-    prisma.metricSnapshot.findMany
+    prisma.$queryRaw
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValue([{ ...canonicalRow('c1'), measurementWindow: 'ROLLING_WINDOW' }]);
+      .mockResolvedValue(captured([{ ...canonicalRow('c1'), measurementWindow: 'ROLLING_WINDOW' }]));
 
     await expect(evaluateConnectorVerdicts(WS)).rejects.toThrow();
-    expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('the failure path in source contains no fallback of any kind', () => {
@@ -321,7 +323,7 @@ describe('5 · a failed canonical read never falls back to weaker evidence', () 
     // No widening, no substitution, no synthesized emptiness.
     expect(catchBlock).not.toMatch(/ROLLING_WINDOW|OPERATIONAL|LEGACY_UNKNOWN/);
     expect(catchBlock).not.toMatch(/return\s*\[\s*\]/);
-    expect(catchBlock).not.toMatch(/return\s+null/);
+    expect(catchBlock.slice(0, catchBlock.indexOf('export function qualifiedCanonicalObservation'))).not.toMatch(/return\s+null/);
     expect(catchBlock).toMatch(/throw new CanonicalEvidenceUnavailableError/);
   });
 
@@ -336,22 +338,24 @@ describe('5 · a failed canonical read never falls back to weaker evidence', () 
 // ── TEST 6 — workspace isolation across a failure ───────────────────────────
 describe('6 · a failure in one workspace cannot leak into another', () => {
   it('a later workspace queries for itself and gets its own rows', async () => {
-    prisma.metricSnapshot.findMany.mockRejectedValueOnce(new Error('boom'));
+    prisma.$queryRaw.mockRejectedValueOnce(new Error('boom'));
     await selectCanonicalVerdictSnapshots('ws-a', ['a1']).catch(() => {});
 
-    prisma.metricSnapshot.findMany.mockResolvedValueOnce([canonicalRow('b1')]);
+    prisma.$queryRaw.mockResolvedValueOnce(captured([canonicalRow('b1')], 'ws-b'));
     const rows = await selectCanonicalVerdictSnapshots('ws-b', ['b1']);
 
     expect(rows.map((r) => r.entityId)).toEqual(['b1']);
-    expect(prisma.metricSnapshot.findMany.mock.calls[1][0].where.workspaceId).toBe('ws-b');
-    expect(prisma.metricSnapshot.findMany.mock.calls[1][0].where.entityId).toEqual({ in: ['b1'] });
+    const query = Prisma.sql(...prisma.$queryRaw.mock.calls[1]);
+    expect(query.values).toEqual(['ws-b', 'b1']);
+    expect(query.sql).toContain('o.workspace_id=');
+    expect(query.sql).toContain('o.entity_id IN');
   });
 
   it('the failed workspace yields nothing at all — not the other workspace rows', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValueOnce([canonicalRow('b1')]);
+    prisma.$queryRaw.mockResolvedValueOnce(captured([canonicalRow('b1')], 'ws-b'));
     await selectCanonicalVerdictSnapshots('ws-b', ['b1']);
 
-    prisma.metricSnapshot.findMany.mockRejectedValueOnce(new Error('boom'));
+    prisma.$queryRaw.mockRejectedValueOnce(new Error('boom'));
     const err = await selectCanonicalVerdictSnapshots('ws-a', ['a1']).catch((e) => e);
     expect(err.code).toBe(CANONICAL_EVIDENCE_READ_FAILED);
     expect(err.rows).toBeUndefined();
@@ -371,4 +375,23 @@ describe('the swallow cannot come back unnoticed', () => {
     expect(new CanonicalEvidenceUnavailableError()).toBeInstanceOf(Error);
     expect(CANONICAL_EVIDENCE_READ_FAILED).not.toBe(NO_CANONICAL_WINDOW);
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

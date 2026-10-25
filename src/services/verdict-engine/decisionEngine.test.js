@@ -186,8 +186,7 @@ describe('signalConfidence — the half that was never published', () => {
     expect(Number.isFinite(node.signalConfidence)).toBe(true);
   });
 
-  // Three awareness siblings, all HOLD on the absolute pass, so the cohort ranks:
-  // highest CTR → SCALE, lowest → KILL, the middle one untouched.
+  // Three awareness siblings remain absolute HOLD without membership proof.
   const rankedTree = () => {
     const sib = (id, clicks) => ({
       id, level: 'CAMPAIGN', currency: 'USD',
@@ -200,17 +199,16 @@ describe('signalConfidence — the half that was never published', () => {
   };
   const childOf = (node, id) => node.children.find((c) => c.id === id);
 
-  it('is re-stamped with the ranking\'s own strength on an upgraded row', () => {
+  it('preserves absolute signal strength when the cohort is unproved', () => {
     const { before, after } = rankedTree();
     const lo = childOf(after, 'lo');
 
-    expect(lo.verdict).toBe(VERDICT.KILL);
-    expect(lo.relativeRank).toBe('BOTTOM');
-    // RR.CONFIDENCE — module-local in relativeRanking.js, mirrored here.
-    expect(lo.signalConfidence).toBe(0.6);
-    expect(lo.signalConfidence).not.toBe(childOf(before, 'lo').signalConfidence);
+    expect(lo.verdict).toBe(VERDICT.HOLD);
+    expect(lo.relativeRank).toBeUndefined();
+    expect(after.relativeRefusal.reason).toBe('COHORT_COMPLETENESS_UNPROVEN');
+    expect(lo).toEqual(childOf(before, 'lo'));
     // …and the published number still decomposes into its two halves.
-    expect(lo.verdictConfidence).toBe(composeConfidence(0.6, lo.dataConfidence));
+    expect(lo.verdictConfidence).toBe(composeConfidence(lo.signalConfidence, lo.dataConfidence));
   });
 
   it('is left by reference on a row the cohort did not move', () => {
@@ -287,9 +285,9 @@ describe('getConnectorVerdicts — the published numbers', () => {
     ]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
 
-    // Both populations must be present, or "widened" proves nothing.
-    expect(verdicts.filter((v) => v.relativeRank != null).length).toBeGreaterThan(0);
-    expect(verdicts.filter((v) => v.relativeRank == null).length).toBeGreaterThan(0);
+    expect(verdicts).toHaveLength(4);
+    expect(verdicts.every((v) => v.relativeRank === null)).toBe(true);
+    expect(verdicts.every((v) => v.relativeRefusal.reason === 'COHORT_COMPLETENESS_UNPROVEN')).toBe(true);
 
     for (const v of verdicts) {
       expect(v.dataConfidence).not.toBeNull();
@@ -609,7 +607,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // It skips rollupVerdicts' allowlist entirely — that pass runs first, and the
   // upgrade spreads `...c` over its output — which is why a field that allowlist
   // never mentions still arrives intact.
-  it('publishes the cohort a relative verdict was decided in', async () => {
+  it('publishes refusal without inventing cohort ranks or averages', async () => {
     mockCampaigns([
       row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),
       row({ entityId: 'mid', revenueMinor: 0, frequency: 2.0, clicks: 300 }),
@@ -618,10 +616,10 @@ describe('getConnectorVerdicts — the published numbers', () => {
     const { verdicts } = await getConnectorVerdicts('ws-1');
     const lo = verdicts.find((v) => v.id === 'lo');
 
-    expect(lo.relativeRank).toBe('BOTTOM');
-    expect(lo.relativeContext).toMatchObject({ rank: 'BOTTOM', group: 'awareness', cohortSize: 3 });
-    expect(lo.relativeContext.ctrPct).toBeTypeOf('number');
-    expect(lo.relativeContext.avgCtrPct).toBeTypeOf('number');
+    expect(lo.relativeRank).toBeNull();
+    expect(lo.relativeContext).toBeNull();
+    expect(lo.relativeRefusal.reason).toBe('COHORT_COMPLETENESS_UNPROVEN');
+    expect(lo.verdict).toBe(VERDICT.HOLD);
   });
 
   // null, never undefined: the projection is an explicit allowlist, and an

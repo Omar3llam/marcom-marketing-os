@@ -10,12 +10,8 @@
 // through metaNormalize → toSnapshotRows → resolveCanonicalSnapshot. The real
 // gaps were narrower and both are covered here:
 //
-//   1. THE MIXED FALLBACK. metaNormalize falls back PER BOUNDARY —
-//      `toDate(r.date_start) ?? requestedWindowStart`, and the same for
-//      date_stop — so a row can carry Meta's midnight date_start beside a
-//      windowEnd that is the sync instant. The existing suite only ever fed it
-//      rows where Meta reported BOTH dates, which is the case that cannot
-//      produce the defect.
+//   1. MISSING SOURCE BOUNDARY (T3). A missing date_stop stays unknown.
+//      Request dates cannot establish the period the source observed.
 //
 //   2. GOOGLE. The Google canonical writer had no conformance coverage through
 //      this path at all, and it is the writer whose boundaries are instants.
@@ -97,40 +93,40 @@ describe('F-17 · Meta writer output — platform reported both dates', () => {
   });
 });
 
-// ── META · THE MIXED FALLBACK (F-14 at its source) ───────────────────────────
-describe('F-17 · Meta writer output — date_stop absent, windowEnd falls back to the sync instant', () => {
-  // metaNormalize: `windowEnd: toDate(r.date_stop) ?? win.requestedWindowEnd`.
-  // windowStart is still Meta's midnight — one row, two boundary precisions.
+// ── META · missing source boundary stays unknown (T3) ───────────────────────────
+describe('F-17 · Meta writer output — date_stop absent, no requested-date substitution', () => {
+  // Source date_start remains known; an unreported date_stop cannot be repaired
+  // with a requested range or the sync clock. All six evaluation hours must refuse.
   const mixed = (now) => campaignOf(metaCanonicalRows([rawMeta({ date_stop: undefined })], now));
 
-  it('the writer really does emit a mixed-precision row (the premise, not an assumption)', () => {
+  it('preserves the reported start and leaves the missing end unknown', () => {
     const now = new Date('2026-08-11T18:00:00.000Z');
     const row = mixed(now);
 
     expect(row.windowStart.toISOString()).toBe('2026-07-13T00:00:00.000Z'); // Meta's midnight
-    expect(row.windowEnd.toISOString()).toBe(now.toISOString());            // our sync instant
+    expect(row.windowEnd).toBeNull(); // Missing source evidence is not the sync instant.
   });
 
-  it.each(HOURS)('stays eligible at %sZ — the noon flip is gone', (hhmm) => {
+  it.each(HOURS)('refuses missing source dates at %sZ', (hhmm) => {
     const now = new Date(`2026-08-11T${hhmm}:00.000Z`);
-    expect(canonicalEligibility(mixed(now), { now })).toEqual({ ok: true });
+    expect(canonicalEligibility(mixed(now), { now })).toEqual({ ok: false, reason: REJECTION.MISSING_PERIOD });
   });
 
-  it('resolves to a real snapshot at 12:01Z, the hour it used to be refused at', () => {
+  it('refuses to resolve an observation whose source end date is missing', () => {
     const now = new Date('2026-08-11T12:01:00.000Z');
     const r = resolveCanonicalSnapshot([mixed(now)], { now });
 
-    expect(r.status).toBe(RESOLUTION.OK);
-    expect(r.snapshot).not.toBeNull();
-    expect(r.rejected).toEqual([]);
+    expect(r.status).toBe(RESOLUTION.NO_CANONICAL_WINDOW);
+    expect(r.snapshot).toBeNull();
+    expect(r.rejected.map((x) => x.reason)).toEqual([REJECTION.MISSING_PERIOD]);
   });
 
-  it('the same row read at a different hour than it was written keeps its verdict', () => {
+  it('the missing boundary remains unknown when the same row is read later', () => {
     const written = new Date('2026-08-11T09:00:00.000Z');
     const row = mixed(written);
     for (const hhmm of ['09:00', '12:01', '23:59']) {
       const readAt = new Date(`2026-08-11T${hhmm}:00.000Z`);
-      expect(canonicalEligibility(row, { now: readAt })).toEqual({ ok: true });
+      expect(canonicalEligibility(row, { now: readAt })).toEqual({ ok: false, reason: REJECTION.MISSING_PERIOD });
     }
   });
 });

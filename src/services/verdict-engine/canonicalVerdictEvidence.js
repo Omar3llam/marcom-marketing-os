@@ -50,8 +50,9 @@
 // excluded from THIS path only.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { Prisma } from '@prisma/client';
 import { logger } from '../../utils/logger.js';
-import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
+import { DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION } from './evidenceReference.js';
 // C-07 — the two gating reasons below are members of the shared vocabulary, not
 // strings this module owns. The constants stay exported (evidence/index.js
@@ -231,17 +232,19 @@ export async function selectCanonicalVerdictSnapshots(workspaceId, entityIds = [
   if (!workspaceId || !Array.isArray(entityIds) || entityIds.length === 0) return [];
 
   try {
-    return await prisma.metricSnapshot.findMany({
-      where: {
-        workspaceId,
-        entityId:          { in: entityIds },
-        entityLevel:       ENTITY_LEVEL.CAMPAIGN,
-        measurementWindow: CANONICAL_VERDICT_WINDOW_FILTER,
-        source:            PLATFORM_SOURCE_FILTER,
-      },
-      select:  CANONICAL_VERDICT_SELECT,
-      orderBy: { date: 'asc' },
-    });
+    const captured = await prisma.$queryRaw`SELECT o.id AS "observationId",o.workspace_id AS "workspaceId",
+      o.entity_id AS "entityId",o.refresh_id AS "refreshId",o.write_id AS "writeId",o.source_attempt_id AS "sourceAttemptId",
+      o.committed_projection AS "committedProjection",o.source_facts AS "sourceFacts",encode(o.content_hash,'hex') AS "contentHash",
+      a.source_receipt AS "sourceReceipt",encode(a.receipt_hash,'hex') AS "receiptHash",r.scope_descriptor AS "sourceScope"
+      FROM public.canonical_observations o
+      JOIN public.canonical_write_attempts w ON (w.workspace_id,w.refresh_id,w.id)=(o.workspace_id,o.refresh_id,o.write_id)
+      JOIN public.canonical_level_attempts a ON (a.workspace_id,a.refresh_id,a.id)=(o.workspace_id,o.refresh_id,o.source_attempt_id)
+      JOIN public.canonical_refreshes r ON (r.workspace_id,r.id)=(o.workspace_id,o.refresh_id)
+      WHERE o.workspace_id=${workspaceId}::uuid AND o.entity_id IN (${Prisma.join(entityIds.map((id) => Prisma.sql`${id}::uuid`))})
+      AND o.entity_level='CAMPAIGN' AND o.source='META' AND o.measurement_window='CUMULATIVE_30D'
+      AND w.outcome='COMMITTED' AND a.source_sealed_at IS NOT NULL AND a.source_receipt->>'outcome'<>'FAILED'
+      ORDER BY o.date,o.created_at DESC,o.id`;
+    return captured.map((o) => qualifiedCanonicalObservation(o, workspaceId)).filter(Boolean);
   } catch (err) {
     // ERROR, not debug. The previous level matched the previous behaviour — a
     // best-effort read whose failure cost nothing. It costs the whole verdict
@@ -256,6 +259,27 @@ export async function selectCanonicalVerdictSnapshots(workspaceId, entityIds = [
     // unavailable, and "no verdict" is the honest outcome of that.
     throw new CanonicalEvidenceUnavailableError(undefined, { cause: err });
   }
+}
+
+/** Individually qualify immutable observations; other campaigns never participate. */
+export function qualifiedCanonicalObservation(o, workspaceId) {
+  const p = o?.committedProjection, f = o?.sourceFacts, s = p?.snapshot;
+  if (!s || !f || o.workspaceId !== workspaceId || s.workspaceId !== workspaceId || s.entityId !== o.entityId
+    || s.entityLevel !== 'CAMPAIGN' || s.source !== 'META' || s.measurementWindow !== 'CUMULATIVE_30D'
+    || f.binding !== 'EXACT' || f.rawDates?.start?.presence !== 'VALID' || f.rawDates?.stop?.presence !== 'VALID'
+    || f.providerAccountId !== o.sourceScope?.providerAccountId
+    || !['spend','impressions','clicks'].every((k) => f.metricFields?.[k] === 'VALID')) return null;
+  const utc = (v) => v == null ? null : new Date(/[zZ]|[+-]\d\d:\d\d$/.test(v) ? v : `${v}Z`);
+  const row = { ...s, date: utc(s.date), windowStart: utc(s.windowStart), windowEnd: utc(s.windowEnd) };
+  if (row.windowStart?.toISOString().slice(0,10) !== f.rawDates.start.value
+    || row.windowEnd?.toISOString().slice(0,10) !== f.rawDates.stop.value) return null;
+  // Numeric compatibility columns cannot turn an unreported source field into zero.
+  if (f.metricFields.revenue !== 'VALID') { row.revenueMinor = null; row.roas = null; }
+  if (f.metricFields.conversions !== 'VALID') { row.conversions = null; row.cpaMinor = null; }
+  if (f.metricFields.frequency !== 'VALID') row.frequency = null;
+  row._canonicalReference = { ...o, source: s.source, observedAt: row.date.toISOString(),
+    measurementWindow: s.measurementWindow, windowStart: row.windowStart.toISOString(), windowEnd: row.windowEnd.toISOString() };
+  return row;
 }
 
 /**

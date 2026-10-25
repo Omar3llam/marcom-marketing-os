@@ -1,3 +1,4 @@
+import { canonicalContentHash } from './evidenceReference.js';
 // ============================================================
 // B5-01F · §11 Test 7 + §12 — stale evidence never reaches the engine, and the
 //                             verdict it used to support becomes history
@@ -27,7 +28,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     campaign:       { findMany: vi.fn() },
-    metricSnapshot: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     decision:       { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   },
 }));
@@ -94,7 +95,7 @@ beforeEach(() => {
 describe('B5-01F · §11 Test 7 — stale evidence never reaches the verdict engine', () => {
   it('a fresh campaign DOES reach it (the control — otherwise the guard proves nothing)', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'A', ageDays: 0 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'A', ageDays: 0 })]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -105,7 +106,7 @@ describe('B5-01F · §11 Test 7 — stale evidence never reaches the verdict eng
 
   it('a stale campaign is never evaluated — the engine is not called at all', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('B')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'B', ageDays: 213 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'B', ageDays: 213 })]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -117,10 +118,10 @@ describe('B5-01F · §11 Test 7 — stale evidence never reaches the verdict eng
 
   it('in a MIXED population the engine sees the fresh entity and never the stale one', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A', 'Fresh'), identity('B', 'Stale')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([
+    prisma.$queryRaw.mockResolvedValue(captured([
       snap({ entityId: 'A', ageDays: 1 }),
       snap({ entityId: 'B', ageDays: 213 }),
-    ]);
+    ]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -132,7 +133,7 @@ describe('B5-01F · §11 Test 7 — stale evidence never reaches the verdict eng
 
   it('the stale campaign is reported as gated out, with its own reason', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('B')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'B', ageDays: 42 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'B', ageDays: 42 })]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -143,7 +144,7 @@ describe('B5-01F · §11 Test 7 — stale evidence never reaches the verdict eng
 
   it('NO_ELIGIBLE_CAMPAIGNS, not NO_CAMPAIGNS — the workspace is not empty', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('B')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'B', ageDays: 400 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'B', ageDays: 400 })]));
 
     const ev = await evaluateConnectorVerdicts(WS);
     expect(ev.status).not.toBe('NO_CAMPAIGNS');
@@ -154,7 +155,7 @@ describe('B5-01F · §11 Test 7 — stale evidence never reaches the verdict eng
 describe('B5-01F · §12 — an aged-out campaign’s verdict becomes history', () => {
   const staleEvaluation = async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('B')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'B', ageDays: 213 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'B', ageDays: 213 })]));
     return evaluateConnectorVerdicts(WS);
   };
 
@@ -204,7 +205,7 @@ describe('B5-01F · §12 — an aged-out campaign’s verdict becomes history', 
 
   it('a FRESH campaign is not superseded — the gate is what moved it, not the sweep', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'A', ageDays: 0 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'A', ageDays: 0 })]));
 
     await persistConnectorVerdicts(WS, await evaluateConnectorVerdicts(WS));
 
@@ -212,4 +213,23 @@ describe('B5-01F · §12 — an aged-out campaign’s verdict becomes history', 
     // A non-empty eligible set scopes the supersede AWAY from the live campaign.
     expect(where.entityId).toEqual({ notIn: ['A'] });
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

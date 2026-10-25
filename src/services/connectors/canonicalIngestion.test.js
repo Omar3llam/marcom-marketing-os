@@ -20,7 +20,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {} }));
 
-import { canonicalInsightsParams, toMetaDay, CANONICAL_LEVEL_NAMES } from '../metaAdsService.js';
+import { canonicalInsightsParams, toMetaDay, CANONICAL_LEVEL_NAMES, collectCursorPages, fetchCanonicalAllLevels } from '../metaAdsService.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { toSnapshotRows } from './snapshotSink.js';
 import { MEASUREMENT_WINDOW, CHANNEL } from './connectorTypes.js';
@@ -61,6 +61,41 @@ const operationalRows = (rows, { now = NOW } = {}) =>
   }));
 
 const campaignOf = (rows) => rows.find((r) => r.entityLevel === 'CAMPAIGN');
+
+describe('T3 / source truth before canonical qualification', () => {
+  it('does not substitute requested dates for missing source dates', () => {
+    const row = campaignOf(canonicalRows([metaRow({ date_start: undefined, date_stop: undefined })]));
+    expect(row.windowStart).toBeNull(); expect(row.windowEnd).toBeNull();
+  });
+  it('retains original metric presence instead of qualifying a fabricated zero', () => {
+    const rows = metaNormalize({ accountExternalId: 'act_1', currency: 'USD', date: NOW,
+      measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D, rows: [metaRow({ spend: undefined, clicks: undefined })] });
+    const row = rows.find((r) => r.entityLevel === 'CAMPAIGN');
+    expect(row.canonicalFacts?.metricFields.spend).toBe('MISSING');
+    expect(row.canonicalFacts?.metricFields.clicks).toBe('MISSING');
+  });
+  it('reports actual page progress including a cap or a later page failure', async () => {
+    const observed = [];
+    const cursor = [{ campaign_id: 'c1' }];
+    cursor.hasNext = () => true;
+    cursor.next = async () => { throw new Error('synthetic second page failure'); };
+    await expect(collectCursorPages(cursor, { onProgress: (p) => observed.push(p) })).rejects.toThrow('second page failure');
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({ pages: 1, hasNextAtStop: true, rows: [{ campaign_id: 'c1' }] });
+  });
+  it('observes each actual level invocation and its failure before the aggregate discards detail', async () => {
+    const calls = [];
+    const capture = { start: async (d) => calls.push(['start', d.level]),
+      finish: async (level, result) => calls.push(['finish', level, result.outcome]) };
+    await fetchCanonicalAllLevels('synthetic', 'act_1', { now: NOW, capture,
+      fetchLevel: async (_token, _account, { level }) => {
+        if (level === 'adset') throw new Error('synthetic level failure');
+        return { rows: [], truncated: false };
+      } });
+    expect(calls.filter(([kind]) => kind === 'start').map(([, level]) => level)).toEqual(['campaign', 'adset', 'ad']);
+    expect(calls).toContainEqual(['finish', 'adset', 'FAILED']);
+  });
+});
 
 // ── TESTS 1 + 2: the request itself ─────────────────────────────────────────
 describe('TESTS 1–2 — the canonical request asks for 30 cumulative days', () => {
@@ -120,10 +155,10 @@ describe('TEST 3 — the persisted row declares CUMULATIVE_30D with source dates
     expect(r.rejected[0].reason).toBe(REJECTION.PROVENANCE_MISMATCH);
   });
 
-  it('falls back to the requested range only when Meta reports no dates', () => {
+  it('refuses a missing source period instead of substituting the requested range', () => {
     const row = campaignOf(canonicalRows([metaRow({ date_start: undefined, date_stop: undefined })]));
-    expect(toMetaDay(row.windowStart)).toBe('2026-07-13');
-    expect(resolveCanonicalSnapshot([row], { now: NOW }).status).toBe(RESOLUTION.OK);
+    expect(row.windowStart).toBeNull(); expect(row.windowEnd).toBeNull();
+    expect(resolveCanonicalSnapshot([row], { now: NOW }).status).toBe(RESOLUTION.NO_CANONICAL_WINDOW);
   });
 });
 

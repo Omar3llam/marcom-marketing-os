@@ -132,8 +132,19 @@ function rankCohort(label, group, upgrades) {
  * @param {object} node — annotated ACCOUNT node with CAMPAIGN children
  * @returns {object} node with possibly-upgraded children
  */
+const hasApprovedCohortAuthority = () => false; // No positive authority exists in capture-v1.
+
 export function applyRelativeRanking(node) {
   if (!node || !Array.isArray(node.children) || node.children.length === 0) return node;
+
+  // Capture-v1 has no approved positive membership authority, including when a
+  // traversal exhausted or the bounded identity query returned fewer than 200.
+  if (!hasApprovedCohortAuthority()) return { ...node, relativeRefusal: { reason: 'COHORT_COMPLETENESS_UNPROVEN',
+    membershipCoverage: node.cohort?.membershipCoverage ?? 'UNKNOWN',
+    evaluationCoverage: node.cohort?.evaluationCoverage ?? 'UNKNOWN' } };
+
+  // The existing ranking mathematics remain unchanged below. Admission requires
+  // separately approved positive cohort authority, which capture-v1 cannot supply.
 
   // Split candidates into cohorts on the engine's own awareness/conversion axis.
   const cohorts = { awareness: [], conversion: [] };

@@ -1,4 +1,28 @@
 // ============================================================
+import { createHash } from 'node:crypto';
+
+const ordered = (x) => x instanceof Date ? x.toISOString() : Array.isArray(x) ? x.map(ordered) : x && typeof x === 'object'
+  ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, ordered(x[k])])) : x;
+export const canonicalContentHash = (x) => createHash('sha256').update(JSON.stringify(ordered(x))).digest();
+
+// Connector persistence consumes the observation frozen by capture, never a new DB read.
+export function qualifiedCanonicalReference(workspaceId, entityId, basis, rows) {
+  if (!basis || !Array.isArray(rows) || rows.length !== 1) return null;
+  const r = rows[0], p = r?.committedProjection, f = r?.sourceFacts;
+  if (r?.workspaceId !== workspaceId || r.entityId !== entityId || !p || !f
+    || p.snapshot?.workspaceId !== workspaceId || p.snapshot?.entityId !== entityId
+    || r.source !== 'META' || r.measurementWindow !== 'CUMULATIVE_30D'
+    || p.snapshot.source !== 'META' || p.snapshot.measurementWindow !== 'CUMULATIVE_30D'
+    || f.binding !== 'EXACT' || !['spend','impressions','clicks'].every((k) => f.metricFields?.[k] === 'VALID')
+    || f.rawDates?.start?.presence !== 'VALID' || f.rawDates?.stop?.presence !== 'VALID'
+    || f.providerAccountId !== r.sourceScope?.providerAccountId || r.sourceReceipt?.outcome === 'FAILED'
+    || ![r.observationId, r.refreshId, r.sourceAttemptId, r.writeId].every((v) => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v))
+    || canonicalContentHash({ projection: p, facts: f }).toString('hex') !== r.contentHash) return null;
+  const snapshotDate = p.snapshot.date;
+  const observed = iso(typeof snapshotDate === 'string' && !/[zZ]|[+-]\d\d:\d\d$/.test(snapshotDate) ? `${snapshotDate}Z` : snapshotDate);
+  if (!observed || r.observedAt !== observed) return null;
+  return toEvidenceReference({ ...basis, rows, refs: rows });
+}
 // evidenceReference — what a decision can say about the evidence under it
 // ============================================================
 // PURE. No DB, no clock, no workspace context, no env, no connectors. It takes

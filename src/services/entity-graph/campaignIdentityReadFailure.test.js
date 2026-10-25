@@ -1,3 +1,4 @@
+import { canonicalContentHash } from '../verdict-engine/evidenceReference.js';
 // ============================================================
 // B5 F-1 — a failed identity read is a system failure, not an empty workspace
 // ============================================================
@@ -30,7 +31,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     campaign:       { findMany: vi.fn() },
-    metricSnapshot: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     decision:       { findMany: vi.fn() },
   },
 }));
@@ -106,7 +107,7 @@ const failIdentityRead = (err = new Error('boom')) =>
 describe('1 · a successful populated identity read behaves exactly as before', () => {
   it('identities join to their canonical evidence', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([canonicalRow('c1')]);
+    prisma.$queryRaw.mockResolvedValue(captured([canonicalRow('c1')]));
 
     const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(WS);
     expect(campaigns).toHaveLength(1);
@@ -116,7 +117,7 @@ describe('1 · a successful populated identity read behaves exactly as before', 
 
   it('the evaluation reaches OK and the engine runs', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([canonicalRow('c1')]);
+    prisma.$queryRaw.mockResolvedValue(captured([canonicalRow('c1')]));
 
     const ev = await evaluateConnectorVerdicts(WS);
     expect(ev.status).toBe('OK');
@@ -154,7 +155,7 @@ describe('2 · a successful empty identity read is still NO_CAMPAIGNS', () => {
 
   it('it never queries for canonical evidence it has no entities for', async () => {
     await getCanonicalVerdictCampaigns(WS);
-    expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('no workspace resolves to an empty population without querying at all', async () => {
@@ -246,7 +247,7 @@ describe('5 · no verdict processing runs on an unknown population', () => {
 
   it('canonical evidence is never read for a population we could not resolve', async () => {
     await getCanonicalVerdictCampaigns(WS).catch(() => {});
-    expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });
 
@@ -257,7 +258,7 @@ describe('6 · a failure in one workspace cannot leak into another', () => {
     await getCanonicalVerdictCampaigns('ws-a').catch(() => {});
 
     prisma.campaign.findMany.mockResolvedValueOnce([identity('b1', 'Bravo')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([canonicalRow('b1')]);
+    prisma.$queryRaw.mockResolvedValue(captured([canonicalRow('b1')], 'ws-b'));
     const { campaigns } = await getCanonicalVerdictCampaigns('ws-b');
 
     expect(campaigns.map((c) => c.entityId)).toEqual(['b1']);
@@ -266,7 +267,7 @@ describe('6 · a failure in one workspace cannot leak into another', () => {
 
   it('the failed workspace yields nothing at all — not the other workspace rows', async () => {
     prisma.campaign.findMany.mockResolvedValueOnce([identity('b1', 'Bravo')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([canonicalRow('b1')]);
+    prisma.$queryRaw.mockResolvedValue(captured([canonicalRow('b1')], 'ws-b'));
     await getCanonicalVerdictCampaigns('ws-b');
 
     failIdentityRead();
@@ -309,4 +310,23 @@ describe('the collapse cannot be reintroduced silently', () => {
     expect(new CampaignIdentityUnavailableError()).toBeInstanceOf(Error);
     expect(CAMPAIGN_IDENTITY_READ_FAILED).not.toBe('NO_CAMPAIGNS');
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

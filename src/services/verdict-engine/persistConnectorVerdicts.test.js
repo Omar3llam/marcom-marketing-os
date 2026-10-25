@@ -32,6 +32,8 @@ const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { persistConnectorVerdicts } from './VerdictService.js';
 import { evaluateConnectorVerdicts, failedEvaluation } from './connectorVerdictService.js';
+import { canonicalContentHash } from './evidenceReference.js';
+import { CANONICAL_VERDICT_EVIDENCE_BASIS } from './canonicalVerdictEvidence.js';
 
 const WS       = '7517d1b9-b967-44f3-a77f-60f5c577f867';
 const CAMPAIGN = 'c1d2e3f4-0000-0000-0000-000000000010';
@@ -40,11 +42,23 @@ const CAMPAIGN = 'c1d2e3f4-0000-0000-0000-000000000010';
 const persist = async (ws = WS) => persistConnectorVerdicts(ws, await evaluateConnectorVerdicts(ws));
 
 // A connector row as EntityGraphService projects it. roas 4, ctr 5%, freq 1.5 → SCALE.
-const camp = (over = {}) => ({
+const camp = (over = {}) => {
+  const row = {
   entityId: CAMPAIGN, name: 'Eid Sale', channel: 'META',
   spendMinor: 10000, revenueMinor: 40000, impressions: 1000, clicks: 50,
   conversions: 8, frequency: 1.5, currency: 'USD', ...over,
-});
+  };
+  const projection = { formatVersion: 1, snapshot: { ...row, workspaceId: WS, source: 'META', measurementWindow: 'CUMULATIVE_30D', date: '2026-10-25T07:00:00.000Z' }, attributes: { objective: row.objective ?? null, optimizationGoal: null } };
+  const facts = { binding: 'EXACT', providerAccountId: 'act_fixture', metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID' },
+    rawDates: { start: { presence: 'VALID', value: '2026-09-26' }, stop: { presence: 'VALID', value: '2026-10-25' } } };
+  row.evidenceBasis = { ...CANONICAL_VERDICT_EVIDENCE_BASIS, rowCount: 1 };
+  row.evidenceRows = [{ workspaceId: WS, entityId: row.entityId, source: 'META', measurementWindow: 'CUMULATIVE_30D',
+    observationId: '00000000-0000-0000-0000-000000000001', refreshId: '00000000-0000-0000-0000-000000000002',
+    sourceAttemptId: '00000000-0000-0000-0000-000000000003', writeId: '00000000-0000-0000-0000-000000000004',
+    observedAt: '2026-10-25T07:00:00.000Z', committedProjection: projection, sourceFacts: facts, sourceScope: { providerAccountId: 'act_fixture' },
+    contentHash: canonicalContentHash({ projection, facts }).toString('hex') }];
+  return row;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -54,6 +68,12 @@ beforeEach(() => {
 });
 
 describe('persistConnectorVerdicts', () => {
+  it('T3 refuses evidence-dependent persistence when the input has no qualified lineage', async () => {
+    const row = camp(); row.evidenceBasis = null; row.evidenceRows = [];
+    mockCampaigns([row]);
+    await persist();
+    expect(prisma.decision.create).not.toHaveBeenCalled();
+  });
   it('persists a PROPOSED campaign Decision for a revenue-eligible campaign', async () => {
     mockCampaigns([camp()]);
 

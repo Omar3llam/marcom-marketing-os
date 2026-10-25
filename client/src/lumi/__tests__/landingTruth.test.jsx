@@ -266,15 +266,19 @@ describe('no measured revenue → engagement only, and KILL / SCALE are still po
     expect(page).not.toMatch(/(not|never) (be )?called KILL or SCALE/i);
   });
 
-  it('is true in the engine: the connector sweep ranks no-revenue campaigns into KILL and SCALE', () => {
+  it('keeps engagement ranking formulas behind cohort authority and refuses unproved capture-v1 comparisons', () => {
     const ranking = read('../src/services/verdict-engine/relativeRanking.js');
     expect(ranking).toContain("const UPGRADABLE = new Set([VERDICT.HOLD, VERDICT.WATCH]);");
     expect(ranking).toContain('node.signalInput?.revenueMeasured === false &&');
     expect(ranking).toMatch(/MIN_COHORT:\s+3,/);
     expect(ranking).toMatch(/verdict: VERDICT\.SCALE,[\s\S]*?Based on engagement signals only/);
     expect(ranking).toMatch(/verdict: VERDICT\.KILL,[\s\S]*?Based on engagement signals only/);
-    expect(read('../src/services/verdict-engine/connectorVerdictService.js'))
-      .toContain('const annotated = applyRelativeRanking(rollupVerdicts(tree));');
+    expect(ranking).toContain('const hasApprovedCohortAuthority = () => false;');
+    expect(ranking).toContain("if (!hasApprovedCohortAuthority()) return { ...node, relativeRefusal: { reason: 'COHORT_COMPLETENESS_UNPROVEN',");
+    const service = read('../src/services/verdict-engine/connectorVerdictService.js');
+    expect(service).toContain('const annotated = applyRelativeRanking({ ...rollupVerdicts(tree), cohort:');
+    expect(service).toContain("cohort: cohort ?? { membershipCoverage: 'UNKNOWN', evaluationCoverage: 'UNKNOWN' }");
+    expect(service).toContain('relativeRefusal: annotated.relativeRefusal ?? null,');
   });
 });
 

@@ -276,9 +276,10 @@ export async function getCanonicalVerdictCampaigns(workspaceId, { now: nowArg } 
   const { withEvidence, absent, stale } = partitionByCanonicalEvidence(identities, selected, { now });
 
   return {
-    campaigns: withEvidence.map(({ identity, snapshot }) =>
-      toCampaignRow({
-        id: identity.id, name: identity.name, channel: identity.channel, objective: identity.objective,
+    campaigns: withEvidence.map(({ identity, snapshot }) => ({
+      ...toCampaignRow({
+        id: identity.id, name: identity.name, channel: identity.channel,
+        objective: snapshot._canonicalReference?.committedProjection.attributes.objective ?? null,
         externalId: identity.externalId, platformCreatedTime: identity.platformCreatedTime,
         adSetCount: identity._count.adSets,
       }, snapshot, {
@@ -290,9 +291,11 @@ export async function getCanonicalVerdictCampaigns(workspaceId, { now: nowArg } 
         ...CANONICAL_VERDICT_EVIDENCE_BASIS,
         rowCount: consumedByEntity.get(identity.id) ?? 0,
       }),
-    ),
+      evidenceRows: [snapshot._canonicalReference],
+    })),
     noCanonicalWindow: absent,
     staleEvidence: stale,
+    cohort: { membershipCoverage: 'UNKNOWN', evaluationCoverage: 'UNKNOWN', identityLimit: 200 },
   };
 }
 

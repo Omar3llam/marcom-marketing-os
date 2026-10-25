@@ -14,6 +14,7 @@
 // an empty result.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -22,7 +23,7 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { metricSnapshot: { findMany: vi.fn() }, campaign: { findMany: vi.fn() } },
+  prisma: { $queryRaw: vi.fn(), metricSnapshot: { findMany: vi.fn() }, campaign: { findMany: vi.fn() } },
 }));
 
 import { prisma } from '../../lib/prisma.js';
@@ -65,42 +66,44 @@ const snap = (o = {}) => ({
 // here is testing freshness — canonicalFreshness.test.js does that.
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.$queryRaw.mockReset().mockResolvedValue([]);
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-08-12T09:00:00Z'));
 });
-const whereOf = () => prisma.metricSnapshot.findMany.mock.calls[0][0].where;
+const queryOf = () => { const [strings, ...values] = prisma.$queryRaw.mock.calls[0]; return Prisma.sql(strings, ...values); };
+const captured = (rows) => rows.map((row) => ({ workspaceId: 'ws1', entityId: row.entityId,
+  committedProjection: { formatVersion: 1, snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId: 'ws1', entityLevel: 'CAMPAIGN' })), attributes: { objective: 'OUTCOME_SALES' } },
+  sourceScope: { providerAccountId: 'act_fixture' },
+  sourceFacts: { binding: 'EXACT', providerAccountId: 'act_fixture', rawDates: { start: { presence: 'VALID', value: '2026-07-14' }, stop: { presence: 'VALID', value: '2026-08-12' } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } },
+}));
 
 // ── Canonical selection ─────────────────────────────────────────────────────
 describe('the selector asks for canonical campaign evidence and nothing else', () => {
   it('pins the window to exactly CUMULATIVE_30D', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    expect(whereOf().measurementWindow).toEqual({ equals: 'CUMULATIVE_30D' });
+    expect(queryOf().sql).toContain("o.measurement_window='CUMULATIVE_30D'");
     expect(CANONICAL_VERDICT_WINDOW).toBe('CUMULATIVE_30D');
     expect(CANONICAL_VERDICT_WINDOW_FILTER).not.toHaveProperty('in');
   });
 
   it('scopes to CAMPAIGN — an ad-set row can never stand in for its parent', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    expect(whereOf().entityLevel).toBe('CAMPAIGN');
+    expect(queryOf().sql).toContain("o.entity_level='CAMPAIGN'");
   });
 
   it('admits platform sources only, as an allow-list', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    expect(whereOf().source).toEqual({ in: PLATFORM_VERDICT_SOURCES });
-    for (const actual of ['GA4', 'SHOPIFY', 'MANUAL']) {
-      expect(PLATFORM_VERDICT_SOURCES).not.toContain(actual);
-    }
-    expect(PLATFORM_VERDICT_SOURCES).toContain('META');
-    expect(PLATFORM_VERDICT_SOURCES).toContain('GOOGLE');
+    expect(queryOf().sql).toContain("o.source='META'");
+    for (const actual of ['GA4','SHOPIFY','MANUAL']) expect(PLATFORM_VERDICT_SOURCES).not.toContain(actual);
+    expect(PLATFORM_VERDICT_SOURCES).toEqual(expect.arrayContaining(['META','GOOGLE']));
+    expect(queryOf().sql).toContain("w.outcome='COMMITTED'");
   });
 
   it('never consults granularity, which every writer hardcodes', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    expect(whereOf()).not.toHaveProperty('granularity');
+    expect(queryOf().sql).not.toMatch(/AND.*granularity/);
+    expect(queryOf().sql).toContain('canonical_observations');
   });
 
   it('picks the latest of the canonical rows', () => {
@@ -112,7 +115,7 @@ describe('the selector asks for canonical campaign evidence and nothing else', (
 
   it('returns nothing when asked about no campaigns, without querying', async () => {
     expect(await selectCanonicalVerdictSnapshots('ws1', [])).toEqual([]);
-    expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });
 
@@ -123,12 +126,13 @@ describe('filtering happens before latest, not after', () => {
   // the operational row, discover it is the wrong window, and report the
   // campaign as unmeasured while its canonical row sat unread.
   it('the query carries every narrowing predicate, so latest ranks eligible rows only', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    const w = whereOf();
-    expect(w.measurementWindow).toBeDefined();
-    expect(w.entityLevel).toBeDefined();
-    expect(w.source).toBeDefined();
+    const q = queryOf();
+    expect(q.sql).toContain("o.entity_level='CAMPAIGN'");
+    expect(q.sql).toContain("o.measurement_window='CUMULATIVE_30D'");
+    expect(q.sql).toContain("o.source='META'");
+    expect(q.values).toEqual(['ws1','c1']);
+    expect(q.sql).toContain('o.workspace_id=');
   });
 
   it('a NEWER operational row cannot outrank an older canonical one', () => {
@@ -186,10 +190,9 @@ describe('missing canonical evidence is returned, not swallowed', () => {
   // genuinely never measured. The half that was always right is kept — a failure
   // must not become an unfiltered retry either.
   it('a DB failure raises rather than yielding an empty population', async () => {
-    prisma.metricSnapshot.findMany.mockRejectedValue(new Error('boom'));
-    await expect(selectCanonicalVerdictSnapshots('ws1', ['c1']))
-      .rejects.toMatchObject({ code: CANONICAL_EVIDENCE_READ_FAILED });
-    expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
+    prisma.$queryRaw.mockRejectedValueOnce(new Error('boom'));
+    await expect(selectCanonicalVerdictSnapshots('ws1', ['c1'])).rejects.toMatchObject({ code: CANONICAL_EVIDENCE_READ_FAILED });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -206,11 +209,9 @@ describe('ROAS comes from one row, both halves', () => {
   // on a filtered result, because the exclusion must happen in the DB — pulling
   // the rows and dropping them later is one refactor away from keeping one.
   it('actual-source revenue is excluded by the query, not by a later filter', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    expect(whereOf().source.in).not.toContain('GA4');
-    expect(whereOf().source.in).not.toContain('MANUAL');
-    expect(whereOf().source.in).not.toContain('SHOPIFY');
+    expect(queryOf().sql).toContain("o.source='META'");
+    for (const actual of ['GA4','SHOPIFY','MANUAL']) expect(queryOf().sql).not.toContain(actual);
   });
 
   it('the verdict path does not apply the actual-revenue overlay', () => {
@@ -230,12 +231,12 @@ describe('ROAS comes from one row, both halves', () => {
 // ── Platform parity ─────────────────────────────────────────────────────────
 describe('Meta and Google go through the identical contract', () => {
   it('one query serves both — no per-channel branch', async () => {
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
     await selectCanonicalVerdictSnapshots('ws1', ['c1']);
-    expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
-    const text = src('./canonicalVerdictEvidence.js');
-    expect(text).not.toMatch(/if\s*\(.*META.*\)/);
-    expect(text).not.toMatch(/channel\s*===/);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
+    // Capture-v1 contains only META; GOOGLE remains structurally supported but
+    // has no native capture lineage to qualify through this reader.
+    expect(queryOf().sql).toContain('canonical_observations');
   });
 
   it('a Google canonical row is selected on the same terms as a Meta one', () => {
@@ -266,18 +267,18 @@ describe('getCanonicalVerdictCampaigns joins identity to canonical evidence', ()
 
   it('returns a campaign row carrying the CANONICAL row\'s metrics', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Ramadan')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'c1', spendMinor: 777_000 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'c1', spendMinor: 777_000 })]));
 
     const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns('ws1');
     expect(campaigns).toHaveLength(1);
     expect(campaigns[0]).toMatchObject({ entityId: 'c1', name: 'Ramadan', spendMinor: 777_000, roas: 3 });
     expect(noCanonicalWindow).toEqual([]);
-    expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1); // one batched read
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1); // one batched read
   });
 
   it('splits the population: evidence in campaigns, the rest in noCanonicalWindow', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Has'), identity('c2', 'Missing')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'c1' })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'c1' })]));
 
     const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns('ws1');
     expect(campaigns.map((c) => c.entityId)).toEqual(['c1']);
@@ -285,11 +286,10 @@ describe('getCanonicalVerdictCampaigns joins identity to canonical evidence', ()
   });
 
   it('asks the canonical selector for exactly the campaigns it found', async () => {
-    prisma.campaign.findMany.mockResolvedValue([identity('c1', 'A'), identity('c2', 'B')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.campaign.findMany.mockResolvedValue([identity('c1','A'),identity('c2','B')]);
     await getCanonicalVerdictCampaigns('ws1');
-    expect(whereOf().entityId).toEqual({ in: ['c1', 'c2'] });
-    expect(whereOf().measurementWindow).toEqual({ equals: 'CUMULATIVE_30D' });
+    expect(queryOf().values).toEqual(['ws1','c1','c2']);
+    expect(queryOf().sql).toContain("o.measurement_window='CUMULATIVE_30D'");
   });
 
   it('a workspace whose campaigns all lack evidence yields no rows, and says so', async () => {
@@ -305,16 +305,12 @@ describe('getCanonicalVerdictCampaigns joins identity to canonical evidence', ()
   // identical to no fallback at all. A second read is the only visible trace,
   // so absence of evidence must cost exactly one query and stop.
   it('absent canonical evidence triggers NO second, operational read', async () => {
-    prisma.campaign.findMany.mockResolvedValue([identity('c1', 'A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.campaign.findMany.mockResolvedValue([identity('c1','A')]);
     await getCanonicalVerdictCampaigns('ws1');
-
-    expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
-    for (const [{ where }] of prisma.metricSnapshot.findMany.mock.calls) {
-      expect(where.measurementWindow).toEqual({ equals: 'CUMULATIVE_30D' });
-      expect(JSON.stringify(where)).not.toContain('ROLLING_WINDOW');
-      expect(JSON.stringify(where)).not.toContain('LEGACY_UNKNOWN');
-    }
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
+    expect(queryOf().sql).not.toContain('ROLLING_WINDOW');
+    expect(queryOf().sql).not.toContain('LEGACY_UNKNOWN');
   });
 
   it('no campaigns at all → no snapshot query', async () => {

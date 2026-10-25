@@ -1,3 +1,4 @@
+import { canonicalContentHash } from '../verdict-engine/evidenceReference.js';
 // ============================================================
 // B5-01E · F-3A / F-4 — the resolver is the PRODUCTION verdict selector
 // ============================================================
@@ -27,7 +28,7 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { campaign: { findMany: vi.fn() }, metricSnapshot: { findMany: vi.fn() } },
+  prisma: { campaign: { findMany: vi.fn() }, $queryRaw: vi.fn() },
 }));
 vi.mock('../evidence/index.js', () => ({ selectOperationalSnapshots: vi.fn(async () => []) }));
 
@@ -75,7 +76,7 @@ const JUN_JUL = ['2026-06-13T00:00:00Z', '2026-07-12T00:00:00Z'];
 
 const arrange = (rows, identities = [identity()]) => {
   prisma.campaign.findMany.mockResolvedValue(identities);
-  prisma.metricSnapshot.findMany.mockResolvedValue(rows);
+  prisma.$queryRaw.mockResolvedValue(captured(rows));
 };
 
 // B5-01F — every scenario below is dated (JUL_AUG ends 2026-08-11) and the
@@ -227,7 +228,7 @@ describe('B5-01E · §11 Test F — every candidate invalid', () => {
 describe('B5-01E · §16 — the canonical READ FAILURE contract is untouched', () => {
   it('a failed evidence read still throws, and is not turned into NO_CANONICAL_WINDOW', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity()]);
-    prisma.metricSnapshot.findMany.mockImplementation(() => Promise.reject(new Error('connection terminated')));
+    prisma.$queryRaw.mockImplementation(() => Promise.reject(new Error('connection terminated')));
 
     const err = await getCanonicalVerdictCampaigns(WS).catch((e) => e);
 
@@ -239,11 +240,11 @@ describe('B5-01E · §16 — the canonical READ FAILURE contract is untouched', 
 
   it('the resolver runs only AFTER a successful read — a failure never reaches it', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity()]);
-    prisma.metricSnapshot.findMany.mockImplementation(() => Promise.reject(new Error('down')));
+    prisma.$queryRaw.mockImplementation(() => Promise.reject(new Error('down')));
 
     await getCanonicalVerdictCampaigns(WS).catch(() => {});
     // Nothing resolved, nothing partitioned, nothing published.
-    expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('a genuinely empty canonical population is still an honest absence', async () => {
@@ -331,4 +332,23 @@ describe('B5-01E · §18 source ratchets', () => {
   it('the canonical evidence basis advertises the resolved reduction', () => {
     expect(strip(EVIDENCE)).toMatch(/reduction:\s*EVIDENCE_REDUCTION\.CANONICAL_RESOLVED_PER_ENTITY/);
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });
