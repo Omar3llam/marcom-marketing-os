@@ -13,7 +13,7 @@ import { rollupVerdicts }          from './verdictEngine.js';
 import { applyRelativeRanking }     from './relativeRanking.js';
 import { assertUsableEvaluation }    from './connectorVerdictService.js';
 import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
-import { toEvidenceReference }     from './evidenceReference.js';
+import { toEvidenceReference, qualifiedCanonicalReference } from './evidenceReference.js';
 import { scopeFor }                from '../decisions/decisionClassScope.js';
 import { computeResolution, ctrDelta } from './decisionLifecycle.js';
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
@@ -100,9 +100,11 @@ async function resolvePrevious(previous, now) {
   }
 }
 
-async function persistNode(workspaceId, node, created, memory) {
+async function persistNode(workspaceId, node, created, memory, requireCanonical = false) {
   // Only persist real entity ids (uuids); skip synthetic roots.
   if (node.id && node.level) {
+    const qualified = requireCanonical ? qualifiedCanonicalReference(workspaceId, node.id, node.evidenceBasis, node.evidenceRows) : null;
+    if (requireCanonical && !qualified) return;
     const latest = await prisma.decision.findFirst({
       // Compare against the latest ACTIVE verdict (PROPOSED or EXECUTED). A row we
       // SUPERSEDED (a campaign that had dropped out of the eligible set, below)
@@ -213,7 +215,7 @@ async function persistNode(workspaceId, node, created, memory) {
           // were consumed and the rule that reduced them. null when the node
           // carried no basis (an internal/rollup node, or a caller that never
           // declared one), which stays null rather than becoming a guess.
-          evidenceReference: nodeEvidenceReference(node),
+          evidenceReference: qualified ?? nodeEvidenceReference(node),
         },
       });
       created.push({ entityId: node.id, level: node.level, verdict: node.verdict });
@@ -230,7 +232,7 @@ async function persistNode(workspaceId, node, created, memory) {
     }
   }
   for (const child of node.children ?? []) {
-    await persistNode(workspaceId, child, created, memory);
+    await persistNode(workspaceId, child, created, memory, requireCanonical);
   }
 }
 
@@ -255,14 +257,14 @@ async function persistNode(workspaceId, node, created, memory) {
  *   re-introducing a second tree shape to keep an accident working.
  * @returns {Promise<{ annotated:object, created:Array }>}
  */
-export async function persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot = false, memory } = {}) {
+export async function persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot = false, memory, requireCanonical = false } = {}) {
   if (!workspaceId) throw new Error('persistAnnotatedVerdicts: workspaceId required');
   if (!annotated) throw new Error('persistAnnotatedVerdicts: annotated tree required');
   const created = [];
   if (skipRoot) {
-    for (const child of annotated.children ?? []) await persistNode(workspaceId, child, created, memory);
+    for (const child of annotated.children ?? []) await persistNode(workspaceId, child, created, memory, requireCanonical);
   } else {
-    await persistNode(workspaceId, annotated, created, memory);
+    await persistNode(workspaceId, annotated, created, memory, requireCanonical);
   }
   logger.info({ workspaceId, decisions: created.length }, '[VerdictService] level verdicts persisted');
   return { annotated, created };
@@ -376,7 +378,7 @@ export async function persistConnectorVerdicts(workspaceId, evaluation, { memory
   // published number was computed from. A second read inside this function
   // could see a different sweep's patterns and reintroduce the divergence C-16
   // exists to close, in a subtler form.
-  const { created } = await persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot: true, memory });
+  const { created } = await persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot: true, memory, requireCanonical: true });
   logger.info({ workspaceId, created: created.length, gatedOut: gatedOut.length, superseded }, '[VerdictService] connector verdicts persisted');
   return { created, gatedOut, superseded, status: 'OK' };
 }

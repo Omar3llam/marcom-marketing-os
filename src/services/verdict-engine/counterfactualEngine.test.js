@@ -241,18 +241,17 @@ describe('applyRelativeRanking — the artifacts survive an upgrade', () => {
     children: [sibling('lo', 250), sibling('mid', 300), sibling('hi', 350)],
   };
 
-  it('upgrades the verdict and keeps the absolute pass\'s reasoning', () => {
+  it('refuses an unproved cohort and keeps the absolute pass\'s reasoning', () => {
     const before = rollupVerdicts(tree);
     expect(before.children.every((c) => c.verdict === VERDICT.HOLD)).toBe(true);
 
     const after = applyRelativeRanking(before);
     const bottom = after.children.find((c) => c.id === 'lo');
 
-    expect(bottom.verdict).toBe(VERDICT.KILL);
-    expect(bottom.relativeRank).toBe('BOTTOM');
-    // Spread-transparent: the fields ride through untouched. Note the verdict is
-    // now cohort-derived while the hypotheses are still the absolute pass's —
-    // the pre-existing condition PR#319's `source` tag addresses.
+    expect(bottom.verdict).toBe(VERDICT.HOLD);
+    expect(bottom.relativeRank).toBeUndefined();
+    expect(after.relativeRefusal.reason).toBe('COHORT_COMPLETENESS_UNPROVEN');
+    expect(bottom).toEqual(before.children.find((c) => c.id === 'lo'));
     expect(bottom.hypotheses.length).toBeGreaterThan(0);
     expect(bottom.counterfactuals.length).toBeGreaterThan(0);
     expect(bottom.hypotheses).toEqual(

@@ -308,7 +308,7 @@ export async function evaluateConnectorVerdicts(workspaceId) {
     return { workspaceId: null, campaigns: [], tree: null, annotated: null, gatedOut: [], status: 'NO_WORKSPACE' };
   }
 
-  const { campaigns, noCanonicalWindow, staleEvidence = [] } = await getCanonicalVerdictCampaigns(workspaceId);
+  const { campaigns, noCanonicalWindow, staleEvidence = [], cohort } = await getCanonicalVerdictCampaigns(workspaceId);
   const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
 
   // THREE KINDS OF ABSENCE, kept apart (Phase D.4, extended by B5-01F).
@@ -356,7 +356,7 @@ export async function evaluateConnectorVerdicts(workspaceId) {
   // This line used to exist twice: here, and inside persistLevelVerdicts behind
   // an `opts.relativeRanking` flag the write twin passed. Both produced the same
   // tree from the same evidence, which is why the duplication was invisible.
-  const annotated = applyRelativeRanking(rollupVerdicts(tree));
+  const annotated = applyRelativeRanking({ ...rollupVerdicts(tree), cohort: cohort ?? { membershipCoverage: 'UNKNOWN', evaluationCoverage: 'UNKNOWN' } });
   return { workspaceId, campaigns, tree, annotated, gatedOut, status: 'OK' };
 }
 
@@ -597,6 +597,7 @@ export async function getConnectorVerdicts(workspaceId, { evaluation, memory: su
     // Set when this verdict was decided by the relative post-pass ('TOP' | 'BOTTOM')
     // — null otherwise. Lets the UI badge "relative to portfolio" honestly.
     relativeRank: c.relativeRank ?? null,
+    relativeRefusal: annotated.relativeRefusal ?? null,
     // ── Decision identity ────────────────────────────────────────────────────
     // The STORED decision for this entity, if a sweep ever wrote one. Not the
     // verdict beside it: this row is recomputed on every read and persists

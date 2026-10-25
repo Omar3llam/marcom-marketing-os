@@ -1,3 +1,5 @@
+import { canonicalContentHash } from '../verdict-engine/evidenceReference.js';
+import { CANONICAL_VERDICT_EVIDENCE_BASIS } from '../verdict-engine/canonicalVerdictEvidence.js';
 // ============================================================
 // R8 — ONE sweep, ONE verdict computation (I25 / I28)
 // ------------------------------------------------------------
@@ -81,11 +83,24 @@ const CAMPAIGN = 'c1d2e3f4-0000-0000-0000-000000000010';
 const ORIGINAL_AI = process.env.AI_AUTOMATIC_ENABLED;
 
 // roas 4, ctr 5%, freq 1.5 → SCALE through the real engine.
-const camp = (over = {}) => ({
+const camp = (over = {}) => {
+  const row = {
   entityId: CAMPAIGN, name: 'Eid Sale', channel: 'META', objective: 'OUTCOME_SALES',
   spendMinor: 10000, revenueMinor: 40000, impressions: 1000, clicks: 50,
   conversions: 8, frequency: 1.5, ctr: 0.05, roas: 4, currency: 'USD', ...over,
-});
+  };
+  const projection = { formatVersion: 1, snapshot: { ...row, workspaceId: WS, source: 'META', measurementWindow: 'CUMULATIVE_30D', date: '2026-10-25T07:00:00.000Z' }, attributes: { objective: row.objective ?? null, optimizationGoal: null } };
+  const facts = { binding: 'EXACT', providerAccountId: 'act_fixture', metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID' },
+    rawDates: { start: { presence: 'VALID', value: '2026-09-26' }, stop: { presence: 'VALID', value: '2026-10-25' } } };
+  row.evidenceBasis = { ...CANONICAL_VERDICT_EVIDENCE_BASIS, rowCount: 1 };
+  row.evidenceRows = [{ workspaceId: WS, entityId: row.entityId, source: 'META', measurementWindow: 'CUMULATIVE_30D',
+    observationId: '00000000-0000-0000-0000-000000000001', refreshId: '00000000-0000-0000-0000-000000000002',
+    sourceAttemptId: '00000000-0000-0000-0000-000000000003', writeId: '00000000-0000-0000-0000-000000000004',
+    observedAt: '2026-10-25T07:00:00.000Z', committedProjection: projection, sourceFacts: facts, sourceScope: { providerAccountId: 'act_fixture' },
+    contentHash: canonicalContentHash({ projection, facts }).toString('hex') }];
+  return row;
+};
+
 
 beforeEach(() => {
   vi.clearAllMocks();

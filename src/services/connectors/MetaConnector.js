@@ -180,12 +180,12 @@ export class MetaConnector extends ChannelConnector {
    * (getConnectorCampaigns → connectorVerdictService). Ad-set and ad rows stay
    * operational until something judges them on a canonical window.
    */
-  async fetchCanonicalRaw(auth, { now = new Date() } = {}) {
+  async fetchCanonicalRaw(auth, { now = new Date(), capture } = {}) {
     // ALL THREE canonical levels, one shared 30-day period (Phase L). Campaign
     // alone was Phase F; the fatigue paths observe `frequency` at ad-set and ad
     // level too, and a shared evidence contract cannot hold while two of the
     // three consumers have no canonical population to read.
-    return fetchCanonicalAllLevels(auth.accessToken, auth.accountExternalId, { now });
+    return fetchCanonicalAllLevels(auth.accessToken, auth.accountExternalId, { now, capture });
   }
 
   /**

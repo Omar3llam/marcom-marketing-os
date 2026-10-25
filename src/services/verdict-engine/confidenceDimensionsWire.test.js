@@ -1,3 +1,4 @@
+import { canonicalContentHash } from './evidenceReference.js';
 // ============================================================
 // C-09 · the dimensions cross the wire, and composition stays engine-owned
 // ============================================================
@@ -17,7 +18,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     campaign:       { findMany: vi.fn() },
-    metricSnapshot: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     decision:       { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     accountPattern: { findMany: vi.fn() },
   },
@@ -62,7 +63,7 @@ beforeEach(() => {
 describe('C-09 · dimensions exist exactly where dataConfidence exists', () => {
   it('a scored campaign publishes both, and they agree', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap('A')]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap('A')]));
 
     const { verdicts } = await getConnectorVerdicts(WS);
     const v = verdicts[0];
@@ -76,7 +77,7 @@ describe('C-09 · dimensions exist exactly where dataConfidence exists', () => {
 
   it('publishes the basis of each dimension, not just its magnitude', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap('A')]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap('A')]));
 
     const { verdicts } = await getConnectorVerdicts(WS);
     const d = verdicts[0].dataConfidenceDimensions;
@@ -117,7 +118,7 @@ describe('C-09 · the dimensions survive every allowlist between engine and wire
     // and the SAME dataConfidence. If it re-derived the data half, the published
     // dimensions would describe a number no longer on the row.
     prisma.campaign.findMany.mockResolvedValue([identity('A', 'One'), identity('B', 'Two'), identity('C', 'Three')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap('A'), snap('B'), snap('C')]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap('A'), snap('B'), snap('C')]));
 
     const { verdicts } = await getConnectorVerdicts(WS);
     expect(verdicts.length).toBeGreaterThan(0);
@@ -154,7 +155,7 @@ describe('C-09 · composition is engine-owned — the halves do NOT rebuild the 
 
   it('the row publishes both, so the adjustment stays auditable', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap('A')]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap('A')]));
 
     const { verdicts } = await getConnectorVerdicts(WS);
     const v = verdicts[0];
@@ -168,7 +169,7 @@ describe('C-09 · composition is engine-owned — the halves do NOT rebuild the 
 describe('C-09 · nothing that already existed moved', () => {
   it('publishes the same confidence chain it published before the dimensions', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('A')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap('A')]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap('A')]));
 
     const { verdicts } = await getConnectorVerdicts(WS);
     const v = verdicts[0];
@@ -185,4 +186,23 @@ describe('C-09 · nothing that already existed moved', () => {
     expect(v.dataConfidenceDimensions.dataCompleteness).toBeCloseTo(0.75, 5);
     expect([...v.dataConfidenceDimensions.dataCompletenessMissingFields].sort()).toEqual(['ATC', 'LPV']);
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

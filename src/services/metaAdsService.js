@@ -210,13 +210,16 @@ const MAX_PAGES = 50;
  * @param {Array & { hasNext?: Function, next?: Function }} cursor
  * @returns {Promise<{ rows: Array, pages: number, truncated: boolean }>}
  */
-export async function collectCursorPages(cursor) {
+export async function collectCursorPages(cursor, { onProgress } = {}) {
   const rows = [];
   let pages = 0;
   for (;;) {
     pages += 1;
     for (const row of cursor) rows.push(row?._data || row);
     const more = typeof cursor?.hasNext === 'function' && cursor.hasNext();
+    if (onProgress) await onProgress({ rows: [...rows], pages,
+      hasNextAtStop: typeof cursor?.hasNext === 'function' ? Boolean(more) : null,
+      truncated: typeof cursor?.hasNext === 'function' ? Boolean(more && pages >= MAX_PAGES) : null });
     if (!more || pages >= MAX_PAGES) break;
     await cursor.next(); // replaces the cursor's contents with the next page
   }
@@ -360,7 +363,7 @@ export function canonicalInsightsParams(level, now = new Date(), { limit: limitO
  * @param {{ now?: Date }} [opts]
  * @returns {Promise<{ rows: Array, windowStart: Date, windowEnd: Date }>}
  */
-export async function fetchCanonicalInsights(accessToken, adAccountId, { now = new Date(), level = 'campaign' } = {}) {
+export async function fetchCanonicalInsights(accessToken, adAccountId, { now = new Date(), level = 'campaign', capture } = {}) {
   const spec = CANONICAL_LEVELS.find((l) => l.level === level);
   if (!spec) throw new Error(`fetchCanonicalInsights: "${level}" is not a canonical level`);
 
@@ -376,7 +379,7 @@ export async function fetchCanonicalInsights(accessToken, adAccountId, { now = n
   // and ad rows outnumber campaigns several-fold, so a canonical fetch is the
   // likelier one to hit MAX_PAGES, and a partial canonical population that looks
   // complete is exactly the failure this track keeps correcting.
-  const { rows, pages, truncated } = await collectCursorPages(cursor);
+  const { rows, pages, truncated } = await collectCursorPages(cursor, { onProgress: (p) => capture?.page(level, p) });
   logger.info(
     { accountId, level, since: toMetaDay(start), until: toMetaDay(end), rawCount: rows.length, pages, truncated },
     '[metaAdsService] fetchCanonicalInsights (30d cumulative) raw response',
@@ -1132,6 +1135,11 @@ const CANONICAL_LEVELS = Object.freeze([
 /** The canonical levels, for callers and tests that need to enumerate them. */
 export const CANONICAL_LEVEL_NAMES = Object.freeze(CANONICAL_LEVELS.map((l) => l.level));
 
+// The same fields and params actually passed to getInsights; never a second request specification.
+export const canonicalCaptureSpecs = (now) => CANONICAL_LEVELS.map(({ level, fields }) => ({
+  level, fields: [...fields], params: canonicalInsightsParams(level, now),
+}));
+
 /**
  * Every canonical level for one account, over ONE canonical period.
  *
@@ -1166,7 +1174,7 @@ export async function fetchCanonicalAllLevels(
   // Per-level failure isolation is the property most worth testing and the one
   // least reachable through the real SDK, so the seam is the honest way to reach
   // it. Production never passes it.
-  { now = new Date(), fetchLevel = fetchCanonicalInsights } = {},
+  { now = new Date(), fetchLevel = fetchCanonicalInsights, capture } = {},
 ) {
   const { start, end } = canonicalWindowBounds(now);
   const rows = [];
@@ -1175,12 +1183,12 @@ export async function fetchCanonicalAllLevels(
   let truncated = false;
 
   for (const { level } of CANONICAL_LEVELS) {
+    await capture?.start(canonicalCaptureSpecs(now).find((s) => s.level === level));
+    let res;
     try {
-      const res = await fetchLevel(accessToken, adAccountId, { now, level });
-      rows.push(...res.rows);
-      byLevel[level] = res.rows.length;
-      if (res.truncated) truncated = true;
+      res = await fetchLevel(accessToken, adAccountId, { now, level, capture });
     } catch (err) {
+      await capture?.finish(level, { outcome: 'FAILED' });
       // Isolated on purpose: one level failing must not cost the others their
       // canonical evidence. Recorded so the caller can say which level is
       // missing rather than reporting a uniformly empty canonical refresh.
@@ -1189,7 +1197,12 @@ export async function fetchCanonicalAllLevels(
         { adAccountId, level, err: err.message },
         '[metaAdsService] canonical fetch failed for one level — other levels unaffected',
       );
+      continue;
     }
+    await capture?.finish(level, { outcome: 'RETURNED', rows: res.rows });
+    rows.push(...res.rows);
+    byLevel[level] = res.rows.length;
+    if (res.truncated) truncated = true;
   }
 
   // EVERY level failed → this is not "the account had nothing", it is "we could

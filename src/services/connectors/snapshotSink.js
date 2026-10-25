@@ -72,7 +72,7 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
     const conversions = n.conversions ?? 0;
     const impressions = n.impressions ?? 0;
     const clicks = n.clicks ?? 0;
-    return {
+    const row = {
       workspaceId,
       entityId,
       entityLevel: n.entityLevel,
@@ -117,6 +117,9 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       dailyBudgetMinor: n.dailyBudgetMinor ?? null,
       ...currencyWithProvenance(n.currency, n.currencyProvenance),
     };
+    // Capture metadata is not a MetricSnapshot column and must never enter its SQL.
+    Object.defineProperty(row, 'canonicalExternalId', { value: n.externalId });
+    return row;
   });
 }
 
@@ -338,10 +341,13 @@ async function guardZeroShadows(workspaceId, rows) {
  * in place). Returns counts. Roster-only rows land as entities but not snapshots
  * (see toSnapshotRows); a zero never shadows a same-day positive (guardZeroShadows).
  */
-export async function landSnapshots(workspaceId, channel, normalized = []) {
+export async function landSnapshots(workspaceId, channel, normalized = [], { capture } = {}) {
   if (!workspaceId) throw new Error('landSnapshots: workspaceId required');
   await assertWorkspaceLive(prisma, workspaceId);
-  if (!normalized.length) return { entities: 0, snapshots: 0 };
+  if (!normalized.length) {
+    if (capture) await withLiveWorkspace(prisma, workspaceId, (tx) => capture.commit(tx, [], []));
+    return { entities: 0, snapshots: 0 };
+  }
 
   const allOps = toEntityOps(workspaceId, channel, normalized);
   // A row whose parent is in neither the batch nor the DB would raise an FK
@@ -391,7 +397,10 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
   // run stamps ONE `date`, so a canonical 30-day row and the operational rolling
   // row beside it match on every other column, and without it the second would
   // silently overwrite the first.
-  await withLiveWorkspace(prisma, workspaceId, (tx) => Promise.all(rows.map((r) => upsertNonDailyMetricSnapshot(tx, r))));
+  await withLiveWorkspace(prisma, workspaceId, async (tx) => {
+    await Promise.all(rows.map((r) => upsertNonDailyMetricSnapshot(tx, r)));
+    if (capture) await capture.commit(tx, rows, normalized);
+  });
 
   logger.info({ workspaceId, channel, entities: entityOps.length, snapshots: rows.length }, '[snapshotSink] landed');
   return { entities: entityOps.length, snapshots: rows.length };

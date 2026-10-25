@@ -1,3 +1,4 @@
+import { canonicalContentHash } from '../verdict-engine/evidenceReference.js';
 // ============================================================
 // B5-01F · F-3B / F-13 — a valid measurement may still be too old to decide
 // ============================================================
@@ -31,7 +32,7 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { campaign: { findMany: vi.fn() }, metricSnapshot: { findMany: vi.fn() } },
+  prisma: { campaign: { findMany: vi.fn() }, $queryRaw: vi.fn() },
 }));
 vi.mock('../evidence/index.js', () => ({ selectOperationalSnapshots: vi.fn(async () => []) }));
 
@@ -75,7 +76,7 @@ const snap = ({ entityId = 'c1', ageDays = 0, syncedAt = null, endHour = '00:00'
 
 const arrange = (rows, identities = [identity()]) => {
   prisma.campaign.findMany.mockResolvedValue(identities);
-  prisma.metricSnapshot.findMany.mockResolvedValue(rows);
+  prisma.$queryRaw.mockResolvedValue(captured(rows));
 };
 
 /** getCanonicalVerdictCampaigns reads the clock itself, so pin it. */
@@ -361,4 +362,23 @@ describe('B5-01F · §15 source ratchets', () => {
     expect(code).toMatch(/resolveCanonicalVerdictByEntity\(rows,\s*\{\s*now\s*\}\)/);
     expect(code).toMatch(/partitionByCanonicalEvidence\(identities,\s*selected,\s*\{\s*now\s*\}\)/);
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

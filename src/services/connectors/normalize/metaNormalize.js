@@ -14,6 +14,46 @@ import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
 import { logger } from '../../../utils/logger.js';
 import { sourceLocalDayWindow } from '../../../lib/sourceLocalDayWindow.js';
 
+const levelOf = (r) => r.ad_id != null ? 'ad' : r.adset_id != null ? 'adset' : 'campaign';
+const externalOf = (r, level) => r[`${level}_id`] == null ? null : String(r[`${level}_id`]);
+const presence = (x) => x == null ? 'MISSING' : x !== '' && Number.isFinite(Number(x)) && Number(x) >= 0 ? 'VALID' : 'INVALID';
+const bagPresence = (x) => x == null ? 'MISSING' : Array.isArray(x) && x.every((v) => typeof v.action_type === 'string' && presence(v.value) === 'VALID') ? 'VALID' : 'INVALID';
+const dateFact = (x) => {
+  const valid = typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)
+    && Number.isFinite(Date.parse(x)) && new Date(x).toISOString().slice(0, 10) === x;
+  return { presence: x == null ? 'MISSING' : valid ? 'VALID' : 'INVALID', value: valid ? x : null };
+};
+
+export function canonicalSourceFacts(raw, { accountExternalId, currency, currencyProvenance, accountTimeZone }, index) {
+  return {
+    formatVersion: 1, rawDates: { start: dateFact(raw.date_start), stop: dateFact(raw.date_stop) },
+    metricFields: {
+      spend: presence(raw.spend), revenue: bagPresence(raw.action_values), impressions: presence(raw.impressions),
+      clicks: presence(raw.clicks ?? raw.inline_link_clicks), conversions: bagPresence(raw.actions),
+      reach: presence(raw.reach), frequency: presence(raw.frequency), actions: bagPresence(raw.actions), actionValues: bagPresence(raw.action_values),
+    },
+    providerAccountId: accountExternalId, providerBinding: 'CONFIGURED_CREDENTIAL',
+    currency: currencyProvenance === 'PLATFORM_REPORTED' ? { value: currency, origin: 'PROVIDER' } : { value: null, origin: 'UNKNOWN' },
+    timezone: accountTimeZone ? { value: accountTimeZone, origin: 'PROVIDER' } : { value: null, origin: 'UNKNOWN' },
+    rowKind: 'DIRECT', contributorIds: [], binding: externalOf(raw, levelOf(raw)) ? 'EXACT' : 'UNKNOWN',
+    sourceRowIndices: [index],
+  };
+}
+
+export function attachCanonicalFacts(normalized, rawRows, auth) {
+  const byLevel = Object.groupBy(rawRows, levelOf);
+  return normalized.map((n) => {
+    if (n.entityLevel === 'ACCOUNT') return { ...n, canonicalFacts: {
+      ...canonicalSourceFacts({}, auth, 0), rowKind: 'DERIVED_ACCOUNT_ROLLUP', sourceRowIndices: [],
+      binding: 'EXACT', contributorIds: normalized.filter((x) => x.entityLevel === 'CAMPAIGN' && !x.rosterOnly).map((x) => String(x.externalId)),
+    } };
+    const level = n.entityLevel.toLowerCase(), rows = byLevel[level] ?? [];
+    const indices = rows.flatMap((r, i) => externalOf(r, level) === String(n.externalId) ? [i] : []);
+    const facts = canonicalSourceFacts(rows[indices[0]] ?? {}, auth, indices[0] ?? 0);
+    return { ...n, canonicalFacts: { ...facts, binding: indices.length === 1 ? 'EXACT' : indices.length ? 'AMBIGUOUS' : 'UNKNOWN', sourceRowIndices: indices } };
+  });
+}
+
 // ── The funnel, extracted rather than discarded ──────────────────────────────
 // Meta returns `actions`/`action_values` as an open-ended array of
 // {action_type, value}. We used to read ONE type out of it (purchase) and drop
@@ -147,8 +187,8 @@ function baseMeasures(r, currency, d, win) {
     // is authoritative about what it actually measured, and a row whose dates
     // disagree with the request MUST reach the resolver as a mismatch rather
     // than be quietly overwritten with the period we hoped for.
-    windowStart: toDate(r.date_start) ?? win.requestedWindowStart,
-    windowEnd: toDate(r.date_stop) ?? win.requestedWindowEnd,
+    windowStart: toDate(r.date_start) ?? (win.measurementWindow === MEASUREMENT_WINDOW.CUMULATIVE_30D ? null : win.requestedWindowStart),
+    windowEnd: toDate(r.date_stop) ?? (win.measurementWindow === MEASUREMENT_WINDOW.CUMULATIVE_30D ? null : win.requestedWindowEnd),
     spendWindowStartUtc: spendWindow.windowStart,
     spendWindowEndUtc: spendWindow.windowEnd,
     currency,
@@ -388,5 +428,7 @@ export function metaNormalize({
   const normalized = account
     ? [account, ...campaigns, ...adSets, ...ads]
     : [...campaigns, ...adSets, ...ads];
-  return normalized.map((row) => ({ ...row, ...denomination }));
+  const result = normalized.map((row) => ({ ...row, ...denomination }));
+  return measurementWindow === MEASUREMENT_WINDOW.CUMULATIVE_30D
+    ? attachCanonicalFacts(result, rows, { accountExternalId, ...denomination, accountTimeZone }) : result;
 }

@@ -1,3 +1,4 @@
+import { canonicalContentHash } from './evidenceReference.js';
 // ============================================================
 // C-07 · tests 4 + 7 — the reason, its token and its prerequisite cross the wire
 // ============================================================
@@ -16,7 +17,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     campaign:       { findMany: vi.fn() },
-    metricSnapshot: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     decision:       { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   },
 }));
@@ -82,7 +83,7 @@ describe('C-07 · test 4 — the dataless gate names a declared reason, not a se
 describe('C-07 · test 7 — every published gatedOut row carries reason + knowledge + prerequisite', () => {
   it('the stale row keeps the operands it always had, and gains the two layers', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('B', 'Stale')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'B', ageDays: 42 })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'B', ageDays: 42 })]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -101,7 +102,7 @@ describe('C-07 · test 7 — every published gatedOut row carries reason + knowl
 
   it('a never-measured campaign is NO_CANONICAL_WINDOW, awaiting a FIRST measurement', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('N', 'Never synced')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue(captured([]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -115,7 +116,7 @@ describe('C-07 · test 7 — every published gatedOut row carries reason + knowl
 
   it('a dataless campaign is NOTHING_THERE too — same token, different prerequisite', async () => {
     prisma.campaign.findMany.mockResolvedValue([identity('D', 'Dataless')]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ entityId: 'D', ageDays: 0, dataless: true })]);
+    prisma.$queryRaw.mockResolvedValue(captured([snap({ entityId: 'D', ageDays: 0, dataless: true })]));
 
     const ev = await evaluateConnectorVerdicts(WS);
 
@@ -135,10 +136,10 @@ describe('C-07 · test 7 — every published gatedOut row carries reason + knowl
     prisma.campaign.findMany.mockResolvedValue([
       identity('D', 'Dataless'), identity('N', 'Never synced'), identity('B', 'Stale'),
     ]);
-    prisma.metricSnapshot.findMany.mockResolvedValue([
+    prisma.$queryRaw.mockResolvedValue(captured([
       snap({ entityId: 'D', ageDays: 0, dataless: true }),
       snap({ entityId: 'B', ageDays: 42 }),
-    ]);
+    ]));
 
     const { gatedOut } = await evaluateConnectorVerdicts(WS);
 
@@ -152,4 +153,23 @@ describe('C-07 · test 7 — every published gatedOut row carries reason + knowl
       expect(row.prerequisite).toBe(prerequisiteOfGatingReason(row.reason));
     }
   });
+});
+
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

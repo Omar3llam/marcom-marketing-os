@@ -11,6 +11,7 @@
 import { logger } from '../../utils/logger.js';
 import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
+import { beginCanonicalCapture } from './canonicalCapture.js';
 import { landDailySnapshots } from './dailySnapshotSink.js';
 import { listActiveSyncable, recordSync, PLATFORM_DB } from './credentialStore.js';
 import { nextHealth } from './connectorHealth.js';
@@ -53,6 +54,7 @@ async function commitSyncSuccess(workspaceId, channel, result) {
       WHERE workspace_id = ${workspaceId} AND platform = ${platform} LIMIT 1`;
     if (!current.length) throw new Error('Sync success could not be recorded');
     const health = nextHealth(current[0].health ?? {}, { ...result, platform });
+    if (result.canonicalCapture) health.canonicalCapture = result.canonicalCapture;
     const updated = await tx.$executeRaw`UPDATE marcom_credentials
       SET health = ${JSON.stringify(health)}::jsonb, last_synced_at = ${result.now}, updated_at = NOW()
       WHERE workspace_id = ${workspaceId} AND platform = ${platform}`;
@@ -112,19 +114,32 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       // row for this run, which the resolver reports as NO_CANONICAL_WINDOW. It
       // must never take down the operational sync that every other surface reads.
       let canonical = null;
+      let capture = null;
+      let canonicalCapture = { state: 'UNIMPLEMENTED', refreshId: null };
       if (connector.fetchCanonicalRaw && connector.normalizeCanonical) {
         try {
-          const raw30 = await connector.fetchCanonicalRaw(auth, { now });
+          if (connector.channel === 'META') capture = await beginCanonicalCapture(wsId, auth, now);
+          canonicalCapture = { state: 'STARTED', refreshId: capture?.refreshId ?? null };
+          const raw30 = await connector.fetchCanonicalRaw(auth, { now, ...(capture ? { capture: capture.hooks } : {}) });
+          await capture?.sealSources();
+          await capture?.admitWrite();
           const rows30 = connector.normalizeCanonical({
             ...auth, date: now, rows: raw30.rows,
             windowStart: raw30.windowStart, windowEnd: raw30.windowEnd,
           });
-          canonical = await landSnapshots(wsId, connector.channel, rows30);
+          canonical = await landSnapshots(wsId, connector.channel, rows30, { capture });
+          canonicalCapture = { state: capture ? 'COMMITTED' : 'UNPROVEN', refreshId: capture?.refreshId ?? null };
           logger.info(
             { workspaceId: wsId, platform: channel, snapshots: canonical.snapshots },
             '[connectorSync] canonical 30d refresh landed',
           );
         } catch (err) {
+          // Keep this failure distinct from the independent operational sync.
+          canonicalCapture = { state: 'FAILED', refreshId: capture?.refreshId ?? null };
+          if (capture) {
+            await capture.sealSources().catch(() => {});
+            await capture.failWrite().catch(() => {});
+          }
           if (isWorkspaceScopeError(err)) throw err;
           logger.warn(
             { workspaceId: wsId, platform: channel, err: err.message },
@@ -247,7 +262,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       // Await the protected metadata commit before emitting channel success.
       await commitSyncSuccess(wsId, channel, {
         ok: true, records: landed.snapshots, warning, now,
-        capabilities: { [CAPABILITY.DAILY_OBSERVATIONS]: dailyState },
+        capabilities: { [CAPABILITY.DAILY_OBSERVATIONS]: dailyState }, canonicalCapture,
       });
       results.push({
         workspaceId: wsId, platform: channel, status: 'success', ...landed,
@@ -255,6 +270,7 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         // operational refresh from a verdict refresh. null = this connector has
         // no canonical path, or its canonical fetch failed this run.
         canonicalSnapshots: canonical?.snapshots ?? null,
+        canonicalCapture,
         // Reported separately again, for the same reason: three populations,
         // three counts. null = daily ingestion is off for this deployment, this
         // connector has no daily path, or its daily fetch failed this run — and a

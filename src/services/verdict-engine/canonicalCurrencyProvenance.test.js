@@ -1,7 +1,9 @@
+import { canonicalContentHash } from './evidenceReference.js';
+import { Prisma } from '@prisma/client';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
-  campaign: { findMany: vi.fn() }, metricSnapshot: { findMany: vi.fn() },
+  campaign: { findMany: vi.fn() }, $queryRaw: vi.fn(),
 } }));
 vi.mock('../../utils/logger.js', () => ({ logger: {
   debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
@@ -28,10 +30,8 @@ beforeEach(() => {
   prisma.campaign.findMany.mockResolvedValue([{
     id: 'c1', name: 'Campaign', channel: 'META', objective: 'OUTCOME_SALES', _count: { adSets: 0 },
   }]);
-  // Emulate Prisma's SELECT at the real query seam: returning whole objects
-  // would conceal the exact defect this suite must detect.
-  prisma.metricSnapshot.findMany.mockImplementation(async ({ select }) => rows.map((row) =>
-    Object.fromEntries(Object.entries(row).filter(([key]) => select[key] === true))));
+  // The immutable projection, including stored denomination, is the actual query result.
+  prisma.$queryRaw.mockImplementation(async () => captured(rows));
 });
 afterEach(() => vi.useRealTimers());
 
@@ -68,8 +68,15 @@ describe('SC-17A canonical denomination path', () => {
     const authoritative = await evaluateConnectorVerdicts('ws');
     rows = [stored({ currencyProvenance: 'FALLBACK_DEFAULT' })];
     const unproven = await evaluateConnectorVerdicts('ws');
-    expect(unproven.annotated).toEqual(authoritative.annotated);
-    expect(unproven.tree).toEqual(authoritative.tree);
+    // References must differ with the stored denomination fact. Everything
+    // about the statistical evaluation remains identical.
+    const withoutRefs = (node) => {
+      const rest = { ...node }; delete rest.evidenceRows;
+      return { ...rest, ...(node.children ? { children: node.children.map(withoutRefs) } : {}) };
+    };
+    expect(withoutRefs(unproven.annotated)).toEqual(withoutRefs(authoritative.annotated));
+    expect(withoutRefs(unproven.tree)).toEqual(withoutRefs(authoritative.tree));
+    expect(unproven.campaigns[0].evidenceRows[0].contentHash).not.toBe(authoritative.campaigns[0].evidenceRows[0].contentHash);
   });
   it.each([
     { _revenueCurrency: 'USD', _revenueCurrencyProvenance: 'PLATFORM_REPORTED' },
@@ -81,12 +88,28 @@ describe('SC-17A canonical denomination path', () => {
   });
   it('leaves canonical population, bounds and provider predicates unchanged', async () => {
     await evaluateConnectorVerdicts('ws');
-    expect(prisma.metricSnapshot.findMany.mock.calls[0][0]).toMatchObject({
-      where: {
-        workspaceId: 'ws', entityId: { in: ['c1'] }, entityLevel: 'CAMPAIGN',
-        measurementWindow: { equals: 'CUMULATIVE_30D' },
-        source: { in: ['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN'] },
-      }, orderBy: { date: 'asc' },
-    });
+    const query = Prisma.sql(...prisma.$queryRaw.mock.calls[0]);
+    expect(query.values).toEqual(['ws', 'c1']);
+    for (const predicate of ["o.entity_level='CAMPAIGN'", "o.source='META'", "o.measurement_window='CUMULATIVE_30D'", "w.outcome='COMMITTED'"])
+      expect(query.sql).toContain(predicate);
+    expect(query.sql).toContain('ORDER BY o.date');
   });
+});
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = 'ws') => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
 });

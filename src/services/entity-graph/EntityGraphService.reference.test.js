@@ -1,3 +1,5 @@
+import { canonicalContentHash } from '../verdict-engine/evidenceReference.js';
+import { Prisma } from '@prisma/client';
 // ============================================================
 // R5 — the READER declares the basis, and it reaches the row
 // ============================================================
@@ -20,7 +22,7 @@ const h = vi.hoisted(() => ({
     campaign:       { findMany: vi.fn(), findFirst: vi.fn() },
     adSet:          { findMany: vi.fn() },
     ad:             { findMany: vi.fn() },
-    metricSnapshot: { findMany: vi.fn() },
+    metricSnapshot: { findMany: vi.fn() }, $queryRaw: vi.fn(),
   },
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -81,8 +83,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-08-20T09:00:00Z'));
   h.prisma.campaign.findMany.mockResolvedValue(CAMPAIGNS);
-  h.prisma.metricSnapshot.findMany.mockImplementation((args) =>
-    Promise.resolve(project([canonicalRow()], args.select)));
+  arrangeCaptured([canonicalRow()]);
 });
 
 describe('R5 — the canonical verdict read declares its basis', () => {
@@ -121,11 +122,11 @@ describe('R5 — the canonical verdict read declares its basis', () => {
     // THE MULTI-ROW ASSERTION at the read. Three canonical rows for one campaign,
     // latest-per-entity keeps one — and a basis reporting rowCount 1 would say
     // the verdict rested on a single reading.
-    h.prisma.metricSnapshot.findMany.mockImplementation((args) => Promise.resolve(project([
+    arrangeCaptured([
       canonicalRow({ date: ago(3) }),
       canonicalRow({ date: ago(2) }),
       canonicalRow({ date: ago(1) }),
-    ], args.select)));
+    ]);
 
     const { campaigns } = await getCanonicalVerdictCampaigns(WS);
     expect(rowFor(campaigns, C1).evidenceBasis.rowCount).toBe(3);
@@ -136,11 +137,11 @@ describe('R5 — the canonical verdict read declares its basis', () => {
   it('counts per campaign, never the whole read', async () => {
     // Two campaigns, two rows each. A count taken over the query rather than
     // per entity would report 4 against both.
-    h.prisma.metricSnapshot.findMany.mockImplementation((args) => Promise.resolve(project([
+    arrangeCaptured([
       canonicalRow({ entityId: C1, date: ago(2) }),
       canonicalRow({ entityId: C1, date: ago(1) }),
       canonicalRow({ entityId: C2, date: ago(1) }),
-    ], args.select)));
+    ]);
 
     const { campaigns } = await getCanonicalVerdictCampaigns(WS);
     expect(rowFor(campaigns, C1).evidenceBasis.rowCount).toBe(2);
@@ -149,12 +150,11 @@ describe('R5 — the canonical verdict read declares its basis', () => {
 
   it('carries the contributing row\'s source and observation time', async () => {
     const observed = ago(1);
-    h.prisma.metricSnapshot.findMany.mockImplementation((args) =>
-      Promise.resolve(project([canonicalRow({ date: observed })], args.select)));
+    arrangeCaptured([canonicalRow({ date: observed })]);
 
     const { campaigns } = await getCanonicalVerdictCampaigns(WS);
-    expect(rowFor(campaigns, C1).evidenceRows).toEqual([
-      { entityId: C1, source: 'META', observedAt: observed },
+    expect(rowFor(campaigns, C1).evidenceRows).toMatchObject([
+      { entityId: C1, source: 'META', observedAt: observed.toISOString() },
     ]);
   });
 
@@ -257,8 +257,7 @@ describe('R13-D — the canonical row states its own period', () => {
   // The absence is the honest answer, and it is the same absence a campaign with
   // no canonical rows at all receives.
   it('a canonical row that reported NO period is not verdict evidence at all', async () => {
-    h.prisma.metricSnapshot.findMany.mockImplementation((args) => Promise.resolve(
-      project([canonicalRow({ windowStart: null, windowEnd: null })], args.select)));
+    arrangeCaptured([canonicalRow({ windowStart: null, windowEnd: null })]);
 
     const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(WS);
 
@@ -296,8 +295,9 @@ describe('R13-D — the canonical verdict path is workspace-scoped at BOTH reads
 
   it('the SNAPSHOT read names it too, independently', async () => {
     await getCanonicalVerdictCampaigns(WS);
-    const args = h.prisma.metricSnapshot.findMany.mock.calls.at(-1)[0];
-    expect(args.where.workspaceId).toBe(WS);
+    const query = Prisma.sql(...h.prisma.$queryRaw.mock.calls.at(-1));
+    expect(query.values).toEqual([WS, C1, C2]);
+    expect(query.sql).toContain('o.workspace_id=');
   });
 
   it('no workspace ⇒ no read at all, rather than an unscoped one', async () => {
@@ -307,3 +307,26 @@ describe('R13-D — the canonical verdict path is workspace-scoped at BOTH reads
     expect(h.prisma.campaign.findMany).not.toHaveBeenCalled();
   });
 });
+
+// Synthetic immutable capture results at the actual observation-query seam.
+// These are unit fixtures, not authority for legacy database snapshots.
+const captured = (rows, workspaceId = WS) => rows.map((row, index) => {
+  const committedProjection = { formatVersion: 1,
+    snapshot: JSON.parse(JSON.stringify({ ...row, workspaceId, entityLevel: 'CAMPAIGN' })),
+    attributes: { objective: 'OUTCOME_SALES' } };
+  const day = (v) => v == null ? null : new Date(v).toISOString().slice(0, 10);
+  const sourceFacts = { binding: 'EXACT', providerAccountId: 'act_unit',
+    rawDates: { start: { presence: row.windowStart ? 'VALID' : 'MISSING', value: day(row.windowStart) },
+      stop: { presence: row.windowEnd ? 'VALID' : 'MISSING', value: day(row.windowEnd) } },
+    metricFields: { spend: 'VALID', impressions: 'VALID', clicks: 'VALID', revenue: 'VALID', conversions: 'VALID', frequency: 'VALID' } };
+  const id = (n) => '10000000-0000-4000-8000-' + String(index * 4 + n).padStart(12, '0');
+  return { workspaceId, entityId: row.entityId, observationId: id(1), refreshId: id(2),
+    sourceAttemptId: id(3), writeId: id(4), committedProjection, sourceFacts,
+    contentHash: canonicalContentHash({ projection: committedProjection, facts: sourceFacts }).toString('hex'),
+    sourceScope: { providerAccountId: 'act_unit' }, sourceReceipt: { outcome: 'EXHAUSTED' } };
+});
+
+function arrangeCaptured(rows) {
+  h.prisma.metricSnapshot.findMany.mockImplementation((args) => Promise.resolve(project(rows, args.select)));
+  h.prisma.$queryRaw.mockResolvedValue(captured(rows));
+}
