@@ -313,7 +313,6 @@ export async function concludeTest(workspaceId, testId, { refresh = true } = {})
       ? resolveVerdict(readout.verdict, test.entityLevel)
       : { verdict: null, actionType: null };
 
-    const sustainable = confident ? true : null;
     const rationale   = readout.rationale;
 
     let decisionId = null;
@@ -362,7 +361,8 @@ export async function concludeTest(workspaceId, testId, { refresh = true } = {})
         entityId:      test.entityId,
         actionType:    `${TEST_ROOT_PREFIX}${test.dimension}`,
         rationale,
-        isSustainable: sustainable,
+        // Statistical confidence does not measure outcome durability.
+        isSustainable: null,
       },
     });
 

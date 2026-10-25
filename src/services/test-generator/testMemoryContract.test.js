@@ -18,6 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import { TEST_MEMORY_PREFIX, buildMemoryInputs } from './TestGeneratorService.js';
 import { TEST_ROOT_PREFIX } from '../test-tracker/TestTrackerService.js';
+import { generateAgenda } from './testGeneratorEngine.js';
 
 describe('R7 — writer and reader agree on the tested-dimension prefix', () => {
   it('THE CONTRACT: the two prefixes are identical', () => {
@@ -75,5 +76,19 @@ describe('R7 — writer and reader agree on the tested-dimension prefix', () => 
     expect(read.outcome).toBeNull();
     expect(read.isSustainable).toBeNull();
     expect(read.isSustainable).not.toBe(false);
+  });
+
+  it.each([null, undefined])('unmeasured durability (%s) has no sustained or failed-learning multiplier', (isSustainable) => {
+    const memory = buildMemoryInputs([{ entityId: 'e1', actionType: `${TEST_ROOT_PREFIX}HOOK`, isSustainable }]);
+    expect(memory[0].isSustainable).toBeNull();
+    const entities = [{ entityId: 'e1', metrics: { ctr: 0.5, spendMinor: 10000 } }];
+    const hook = (flag) => generateAgenda({ entities, memory: [{ ...memory[0], isSustainable: flag }] }).find((s) => s.dimension === 'HOOK');
+    const unknown = hook(memory[0].isSustainable);
+    expect(unknown.rationale).toContain('memory ×1).');
+    expect(unknown.priority).toBeGreaterThan(hook(true).priority);
+    expect(hook(true).priority).toBeGreaterThan(hook(false).priority);
+    // Historical explicit true/false rows retain their existing meanings.
+    expect(hook(true).rationale).toContain('memory ×0.8).');
+    expect(hook(false).rationale).toContain('memory ×0.5).');
   });
 });

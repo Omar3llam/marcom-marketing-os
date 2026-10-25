@@ -21,9 +21,10 @@ vi.mock('../../lib/prisma.js', () => {
     metricSnapshot:    { findMany: vi.fn() },
     fatiguePrediction: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     decisionMemoryEntry: { create: vi.fn() }, // resolvePrediction writes the learning row here
+    $queryRaw:         vi.fn(),
     $transaction:      vi.fn(),
   };
-  prisma.$transaction.mockImplementation(async (ops) => Promise.all(ops));
+  prisma.$transaction.mockImplementation(async (ops) => typeof ops === 'function' ? ops(prisma) : Promise.all(ops));
   return { prisma };
 });
 
@@ -44,7 +45,8 @@ beforeEach(() => {
   prisma.fatiguePrediction.findMany.mockResolvedValue([]); // default: nothing to resolve
   prisma.fatiguePrediction.deleteMany.mockResolvedValue({ count: 0 });
   prisma.fatiguePrediction.createMany.mockResolvedValue({ count: 0 });
-  prisma.$transaction.mockImplementation(async (ops) => Promise.all(ops));
+  prisma.$queryRaw.mockResolvedValue([{ id: 'p1' }]);
+  prisma.$transaction.mockImplementation(async (ops) => typeof ops === 'function' ? ops(prisma) : Promise.all(ops));
 });
 
 describe('buildEntitySeries — clean per-entity series', () => {
@@ -176,7 +178,7 @@ describe('sweepFatigue — resolving a now-breached prediction (the learning loo
     });
     // a real resolution: resolvedAt + a numeric accuracy are written
     expect(prisma.fatiguePrediction.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'p1' },
+      where: { id: 'p1', workspaceId: 'ws-1' },
       data: expect.objectContaining({ resolvedAt: expect.any(Date), accuracy: expect.any(Number) }),
     }));
     // the learning loop fires: a FATIGUE_FORECAST memory row keyed to the entity
