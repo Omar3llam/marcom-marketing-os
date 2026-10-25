@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     incrementalityTest: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -46,6 +47,8 @@ app.use(measurementRouter);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.$queryRaw.mockResolvedValue([{ id: 'h1' }]);
+  prisma.$transaction.mockImplementation(async (operation) => operation(prisma));
   prisma.incrementalityTest.findMany.mockResolvedValue([historical]);
   prisma.incrementalityTest.findFirst.mockResolvedValue(historical);
   getEconomics.mockResolvedValue({ economics: { currency: 'EGP', aovMinor: 5000 } });
@@ -102,9 +105,14 @@ describe('SC-10 — real service projections at the public route boundary', () =
   });
 
   it('conclude preserves legacy persistence but publishes no stronger money; memory/narrative remain causal', async () => {
+    prisma.incrementalityTest.findFirst.mockResolvedValue({
+      ...historical, status: 'RUNNING', decisionId: null, concludedAt: null,
+      liftPct: null, ciLow: null, ciHigh: null, confidenceLabel: null, incrementalRevenueMinor: null,
+    });
     const tx = {
+      $queryRaw: prisma.$queryRaw,
       decision: { create: vi.fn().mockResolvedValue({ id: 'd1' }) },
-      incrementalityTest: { update: vi.fn().mockResolvedValue({}) },
+      incrementalityTest: { findFirst: prisma.incrementalityTest.findFirst, update: vi.fn().mockResolvedValue({}) },
       decisionMemoryEntry: { create: vi.fn().mockResolvedValue({ id: 'm1' }) },
     };
     prisma.$transaction.mockImplementation(async (fn) => fn(tx));

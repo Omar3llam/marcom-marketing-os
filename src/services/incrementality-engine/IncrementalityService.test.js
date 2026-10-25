@@ -17,6 +17,9 @@ vi.mock('../unit-economics/EconomicsService.js', () => ({ getEconomics: vi.fn() 
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     incrementalityTest:  { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    decision:            { create: vi.fn() },
+    decisionMemoryEntry: { create: vi.fn() },
+    $queryRaw:           vi.fn(),
     $transaction:        vi.fn(),
   },
 }));
@@ -27,8 +30,24 @@ import { incrementalityToMemory, recordCounts, concludeIncrementality } from './
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.incrementalityTest.findFirst.mockReset().mockResolvedValue(runningHoldout());
+  prisma.incrementalityTest.update.mockResolvedValue({});
+  prisma.incrementalityTest.updateMany.mockResolvedValue({ count: 1 });
+  prisma.decision.create.mockResolvedValue({ id: 'dec-1' });
+  prisma.decisionMemoryEntry.create.mockResolvedValue({ id: 'mem-1' });
+  prisma.$queryRaw.mockResolvedValue([{ id: 't1' }]);
+  prisma.$transaction.mockImplementation(async (operation) => operation(prisma));
   getEconomics.mockResolvedValue({ economics: { aovMinor: 5000, currency: 'USD' } });
 });
+
+function runningHoldout(over = {}) {
+  return {
+    id: 't1', workspaceId: 'ws-1', channel: 'META', status: 'RUNNING',
+    entityId: 'ent-1', entityLevel: 'CAMPAIGN', sourceTestId: 'source-ab',
+    exposedUsers: 5000, exposedConversions: 300, holdoutUsers: 5000, holdoutConversions: 250,
+    ...over,
+  };
+}
 
 describe('incrementalityToMemory — closes the loop into Phase-5 memory', () => {
   const test = { workspaceId: 'ws-1', channel: 'META', entityId: 'ent-1' };
@@ -98,7 +117,7 @@ describe('recordCounts — the operator-entered observed result (DESIGNED → RU
 describe('concludeIncrementality — real readout only after counts are recorded', () => {
   it('refuses an unrun holdout (zero arms) cleanly — never a fabricated lift', async () => {
     prisma.incrementalityTest.findFirst.mockResolvedValue({
-      id: 't1', workspaceId: 'ws-1', channel: 'META',
+      id: 't1', workspaceId: 'ws-1', channel: 'META', status: 'RUNNING',
       exposedUsers: 0, exposedConversions: 0, holdoutUsers: 0, holdoutConversions: 0,
     });
     await expect(concludeIncrementality('ws-1', 't1')).rejects.toThrow(/no observed counts/i);
@@ -108,13 +127,14 @@ describe('concludeIncrementality — real readout only after counts are recorded
   it('reads a real causal lift from recorded counts and writes the loop', async () => {
     // exposed 300/5000 = 6.0%, holdout 250/5000 = 5.0% → +20% lift, CI clear of zero.
     prisma.incrementalityTest.findFirst.mockResolvedValue({
-      id: 't1', workspaceId: 'ws-1', channel: 'META', entityId: 'ent-1', entityLevel: 'CAMPAIGN',
+      id: 't1', workspaceId: 'ws-1', channel: 'META', status: 'RUNNING', entityId: 'ent-1', entityLevel: 'CAMPAIGN',
       exposedUsers: 5000, exposedConversions: 300, holdoutUsers: 5000, holdoutConversions: 250,
     });
     // Drive the real $transaction callback with a tx stub.
     const tx = {
+      $queryRaw: prisma.$queryRaw,
       decision:            { create: vi.fn().mockResolvedValue({ id: 'dec-1' }) },
-      incrementalityTest:  { update: vi.fn().mockResolvedValue({}) },
+      incrementalityTest:  { findFirst: prisma.incrementalityTest.findFirst, update: vi.fn().mockResolvedValue({}) },
       decisionMemoryEntry: { create: vi.fn().mockResolvedValue({ id: 'mem-1' }) },
     };
     prisma.$transaction.mockImplementation(async (fn) => fn(tx));
@@ -130,5 +150,95 @@ describe('concludeIncrementality — real readout only after counts are recorded
     expect(tx.decisionMemoryEntry.create).toHaveBeenCalledOnce();
     expect(out.memoryId).toBe('mem-1');
     expect(out.decisionId).toBe('dec-1'); // confident + entity → a PROPOSED Decision
+  });
+});
+
+describe('CP-03B Holdout lifecycle integrity', () => {
+  const counts = { exposedUsers: 5000, exposedConversions: 300, holdoutUsers: 5000, holdoutConversions: 250 };
+
+  it('refuses a repeated conclusion before another economics read, Decision or Memory', async () => {
+    const row = runningHoldout();
+    prisma.incrementalityTest.findFirst.mockResolvedValue(row);
+    prisma.incrementalityTest.update.mockImplementation(async ({ data }) => Object.assign(row, data));
+    await concludeIncrementality('ws-1', 't1');
+    const frozen = { ...row };
+    await expect(concludeIncrementality('ws-1', 't1')).rejects.toMatchObject({ code: 'HOLDOUT_CONFLICT' });
+    expect(row).toEqual(frozen);
+    expect(getEconomics).toHaveBeenCalledTimes(1);
+    expect(prisma.decision.create).toHaveBeenCalledTimes(1);
+    expect(prisma.decisionMemoryEntry.create).toHaveBeenCalledTimes(1);
+  });
+
+  for (const status of ['DESIGNED', 'CONCLUDED', 'ABANDONED']) {
+    it(`refuses conclusion of ${status} even if populated counts look conclusive`, async () => {
+      prisma.incrementalityTest.findFirst.mockResolvedValue(runningHoldout({ status }));
+      await expect(concludeIncrementality('ws-1', 't1')).rejects.toMatchObject({ code: 'HOLDOUT_CONFLICT' });
+      expect(getEconomics).not.toHaveBeenCalled();
+      expect(prisma.incrementalityTest.update).not.toHaveBeenCalled();
+      expect(prisma.decisionMemoryEntry.create).not.toHaveBeenCalled();
+    });
+  }
+  for (const status of ['CONCLUDED', 'ABANDONED']) {
+    it(`refuses ${status} metrics with a conflict and no write`, async () => {
+      prisma.incrementalityTest.findFirst.mockResolvedValue(runningHoldout({ status }));
+      await expect(recordCounts('ws-1', 't1', counts)).rejects.toMatchObject({ code: 'HOLDOUT_CONFLICT' });
+      expect(prisma.incrementalityTest.updateMany).not.toHaveBeenCalled();
+    });
+  }
+
+  for (const field of Object.keys(counts)) {
+    for (const value of [-1, 0.5, NaN, Infinity, 2147483648, '1', null]) {
+      it(`refuses input ${field}=${String(value)} before writing`, async () => {
+        await expect(recordCounts('ws-1', 't1', { ...counts, [field]: value })).rejects.toThrow();
+        expect(prisma.incrementalityTest.updateMany).not.toHaveBeenCalled();
+      });
+      it(`refuses invalid stored ${field}=${String(value)} before conclusion writes`, async () => {
+        prisma.incrementalityTest.findFirst.mockResolvedValue(runningHoldout({ [field]: value }));
+        await expect(concludeIncrementality('ws-1', 't1')).rejects.toThrow();
+        expect(prisma.incrementalityTest.update).not.toHaveBeenCalled();
+        expect(prisma.decision.create).not.toHaveBeenCalled();
+        expect(prisma.decisionMemoryEntry.create).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  it('accepts int4 endpoints with the existing conversions-per-user invariant', async () => {
+    await recordCounts('ws-1', 't1', { exposedUsers: 2147483647, exposedConversions: 2147483647, holdoutUsers: 2147483647, holdoutConversions: 0 });
+    expect(prisma.incrementalityTest.updateMany).toHaveBeenCalledTimes(1);
+    await expect(recordCounts('ws-1', 't1', { ...counts, holdoutConversions: 5001 })).rejects.toThrow(/cannot exceed/);
+    expect(prisma.incrementalityTest.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  for (const operation of [recordCounts, concludeIncrementality]) {
+    it(`${operation.name} refuses a foreign/missing owned read without writes`, async () => {
+      prisma.incrementalityTest.findFirst.mockResolvedValue(null);
+      await expect(operation('ws-1', 'foreign', counts)).rejects.toThrow(/not found/i);
+      expect(prisma.incrementalityTest.updateMany).not.toHaveBeenCalled();
+      expect(prisma.incrementalityTest.update).not.toHaveBeenCalled();
+      expect(getEconomics).not.toHaveBeenCalled();
+    });
+  }
+
+  for (const exposedConversions of [100, 3]) {
+    it(`preserves memory-only behavior for negative/thin evidence (${exposedConversions})`, async () => {
+      prisma.incrementalityTest.findFirst.mockResolvedValue(runningHoldout({ exposedConversions }));
+      const out = await concludeIncrementality('ws-1', 't1');
+      expect(out.readout.conclusive).toBe(false);
+      expect(out.decisionId).toBeNull();
+      expect(prisma.decision.create).not.toHaveBeenCalled();
+      expect(prisma.decisionMemoryEntry.create).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it('labels operator-entered counts as unverified and preserves monetary evidence limits', async () => {
+    const out = await concludeIncrementality('ws-1', 't1');
+    const memory = prisma.decisionMemoryEntry.create.mock.calls[0][0].data;
+    expect(memory.rationale).toMatch(/operator-reported/i);
+    expect(memory.rationale).toMatch(/not independently verified/i);
+    expect(out.readout.rationale).toMatch(/operator-reported/i);
+    expect(out.readout.rationale).toMatch(/not independently verified/i);
+    expect(out.readout.monetary.reason).toBe('INCREMENTALITY_MONETARY_BASIS_UNPROVEN');
+    expect(out.readout.incrementalRevenueMinor.value).toBeNull();
+    expect(prisma.decision.create.mock.calls[0][0].data).toMatchObject({ status: 'PROPOSED', decisionClass: 'EXPERIMENT' });
   });
 });
