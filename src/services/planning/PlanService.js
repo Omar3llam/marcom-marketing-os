@@ -432,46 +432,52 @@ export async function trackPlan(workspaceId, planOrId, { now } = {}) {
  */
 export async function promotePlanMix(workspaceId, planId, { promotedById = null, now = new Date() } = {}) {
   if (!workspaceId) throw new Error('promotePlanMix: workspaceId required');
-  const plan = await prisma.plan.findFirst({ where: { id: planId, workspaceId } });
-  if (!plan) throw new Error('promotePlanMix: plan not found');
-
-  // Approval gate (Phase 6B): an unapproved plan with an open gate cannot become
-  // budget moves. Backend is the real arbiter — rejects regardless of caller.
-  //
-  // FIRST, and deliberately so: a blocked plan must hear "you need approval",
-  // never "your snapshot is too old". The second would send a strategist off to
-  // rebuild a plan they are not yet permitted to promote.
-  if (isPromotionApprovalBlocked(plan)) {
-    const err = new Error('Plan requires STRATEGIST approval before execution');
-    err.code = 'ApprovalRequired';
-    err.approvalState = plan.approvalState ?? null;
-    throw err;
-  }
-
-  // `allocationPlanId` alongside `promotedAt` is not redundancy: a plan promoted
-  // before C-18 has the id and no timestamp. Both mean promoted — one is the
-  // record, the other is all that was left behind.
-  if (plan.promotedAt || plan.allocationPlanId) {
-    return {
-      planId: plan.id,
-      allocationPlanId: plan.allocationPlanId ?? null,
-      decisionsCreated: 0,
-      outcome: PROMOTION_OUTCOME.ALREADY_PROMOTED,
-      promotedAt: plan.promotedAt ?? null,
-    };
-  }
-
-  if (!promotedById) {
-    throw refusePromotion(
-      PROMOTION_REFUSAL.ACTOR_UNRESOLVED,
-      'Could not establish who is promoting this plan.',
-    );
-  }
-
-  const commit = planToAllocationCommit(plan);
-  const moves = hasBudgetMoves(commit);
-
   const result = await prisma.$transaction(async (tx) => {
+    // Serialize every promotion, including zero-move promotions, on its owned
+    // parent row. Read authoritative state AFTER the lock: a waiting request
+    // must see committed approval/promotion changes under READ COMMITTED.
+    const locked = await tx.$queryRaw`SELECT id FROM plans
+      WHERE id = ${planId}::uuid AND "workspaceId" = ${workspaceId}::uuid FOR UPDATE`;
+    if (locked.length === 0) throw new Error('promotePlanMix: plan not found');
+    const plan = await tx.plan.findFirst({ where: { id: planId, workspaceId } });
+    if (!plan) throw new Error('promotePlanMix: plan not found');
+
+    // Approval gate (Phase 6B): an unapproved plan with an open gate cannot become
+    // budget moves. Backend is the real arbiter — rejects regardless of caller.
+    //
+    // FIRST, and deliberately so: a blocked plan must hear "you need approval",
+    // never "your snapshot is too old". The second would send a strategist off to
+    // rebuild a plan they are not yet permitted to promote.
+    if (isPromotionApprovalBlocked(plan)) {
+      const err = new Error('Plan requires STRATEGIST approval before execution');
+      err.code = 'ApprovalRequired';
+      err.approvalState = plan.approvalState ?? null;
+      throw err;
+    }
+
+    // `allocationPlanId` alongside `promotedAt` is not redundancy: a plan promoted
+    // before C-18 has the id and no timestamp. Both mean promoted — one is the
+    // record, the other is all that was left behind.
+    if (plan.promotedAt || plan.allocationPlanId) {
+      return {
+        planId: plan.id,
+        allocationPlanId: plan.allocationPlanId ?? null,
+        decisionsCreated: 0,
+        outcome: PROMOTION_OUTCOME.ALREADY_PROMOTED,
+        promotedAt: plan.promotedAt ?? null,
+      };
+    }
+
+    if (!promotedById) {
+      throw refusePromotion(
+        PROMOTION_REFUSAL.ACTOR_UNRESOLVED,
+        'Could not establish who is promoting this plan.',
+      );
+    }
+
+    const commit = planToAllocationCommit(plan);
+    const moves = hasBudgetMoves(commit);
+
     // No moves ⇒ no AllocationPlan row. /lumi/feed publishes those as "open,
     // awaiting your confirm"; one containing nothing to confirm is a claim
     // about work that does not exist.
@@ -488,16 +494,17 @@ export async function promotePlanMix(workspaceId, planId, { promotedById = null,
         promotedBy: promotedById,
       },
     });
-    return persisted;
-  });
+    // Preserve the distinct outcome for moves whose sizing is unavailable.
+    const outcome = moves
+      ? PROMOTION_OUTCOME.PROMOTED
+      : budgetMovesAreMeasured(commit)
+        ? PROMOTION_OUTCOME.PROMOTED_WITH_NO_MOVES
+        : PROMOTION_OUTCOME.PROMOTED_MOVES_NOT_MEASURABLE;
+    return { planId: plan.id, ...persisted, outcome, promotedAt: now };
+  }, { isolationLevel: 'ReadCommitted' });
 
-  // Three outcomes, not two. "Nothing was asked for" and "nothing could be
-  // sized" both stage zero moves; only the first may say the mix matches spend.
-  const outcome = moves
-    ? PROMOTION_OUTCOME.PROMOTED
-    : budgetMovesAreMeasured(commit)
-      ? PROMOTION_OUTCOME.PROMOTED_WITH_NO_MOVES
-      : PROMOTION_OUTCOME.PROMOTED_MOVES_NOT_MEASURABLE;
-  logger.info({ workspaceId, planId: plan.id, ...result, outcome }, '[PlanService] mix promoted');
-  return { planId: plan.id, ...result, outcome, promotedAt: now };
+  if (result.outcome !== PROMOTION_OUTCOME.ALREADY_PROMOTED) {
+    logger.info({ workspaceId, ...result }, '[PlanService] mix promoted');
+  }
+  return result;
 }

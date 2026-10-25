@@ -20,7 +20,7 @@ vi.mock('../lib/prisma.js', () => {
   const plan = { findFirst: vi.fn(), update: vi.fn(), create: vi.fn(async () => ({ id: 'plan-new' })), findMany: vi.fn(async () => []) };
   const allocationPlan = { create: vi.fn() };
   const decision = { createMany: vi.fn() };
-  const tx = { plan, allocationPlan, decision };
+  const tx = { plan, allocationPlan, decision, $queryRaw: vi.fn(async () => [{ id: 'plan-1' }]) };
   return {
     prisma: {
       ...tx,

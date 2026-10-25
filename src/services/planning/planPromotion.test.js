@@ -1,14 +1,9 @@
 // ============================================================
 // C-18 · promotePlanMix — one act, named, timed, and done once
 // ------------------------------------------------------------
-// Master's promotion is three unbatched writes with no actor and no time:
-//
-//   allocationPlan.create        ─┐ no $transaction between them
-//   decision.createMany          ─┤ a failure after the second leaves proposals
-//   plan.update{ ACTIVE, allocId} ─┘ minted against a plan that says DRAFT
-//
-// and the guard against a second promotion is read BEFORE all three, so two
-// concurrent calls both pass it. `Plan.allocationPlanId` has no unique index.
+// C-18 already joins the artifact and Plan writes in one transaction. T1
+// protects the preceding approval/repeat/snapshot reads with a parent-row lock
+// too: concurrent callers must not both pass a pre-transaction guard.
 //
 // This suite pins the four rulings at the service seam: the mix comes from the
 // snapshot (A), who and when are recorded (B), and the outcome is named rather
@@ -21,7 +16,7 @@ vi.mock('../../lib/prisma.js', () => {
   const plan = { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() };
   const allocationPlan = { create: vi.fn() };
   const decision = { createMany: vi.fn() };
-  const tx = { plan, allocationPlan, decision };
+  const tx = { plan, allocationPlan, decision, $queryRaw: vi.fn() };
   return {
     prisma: {
       ...tx,
@@ -84,6 +79,7 @@ const row = (over = {}) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.$queryRaw.mockResolvedValue([{ id: 'plan-1' }]);
   prisma.plan.update.mockResolvedValue({});
   persistAllocation.mockResolvedValue({ allocationPlanId: 'alloc-1', decisionsCreated: 2 });
 });
@@ -148,9 +144,7 @@ describe('Ruling B — who, and when', () => {
   });
 
   it('puts every write inside ONE transaction', async () => {
-    // Master runs three writes with nothing joining them. A crash between the
-    // second and third mints REALLOCATE proposals against a plan that still
-    // reads DRAFT — and the next promote mints them again.
+    // Keep C-18's atomic-write contract while adding protected state reads.
     prisma.plan.findFirst.mockResolvedValue(row());
 
     await promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW });
@@ -265,6 +259,54 @@ describe('I-18.5 — the outcome is named, not inferred from a count', () => {
 });
 
 describe('the approval gate still arbitrates, and now it can actually be armed', () => {
+  it('checks approval against the protected transaction state, not an earlier read', async () => {
+    prisma.plan.findFirst.mockResolvedValue(row());
+    prisma.$transaction.mockImplementationOnce(async (callback) => {
+      prisma.plan.findFirst.mockResolvedValue(row({ requiresApproval: true, approvalState: 'PENDING' }));
+      return callback({ ...prisma });
+    });
+
+    await expect(promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW }))
+      .rejects.toMatchObject({ code: 'ApprovalRequired' });
+    expect(persistAllocation).not.toHaveBeenCalled();
+    expect(prisma.plan.update).not.toHaveBeenCalled();
+  });
+
+  it('locks by workspace and id before its authoritative read under READ COMMITTED', async () => {
+    prisma.plan.findFirst.mockResolvedValue(row());
+    await promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW });
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'ReadCommitted' });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    const [parts, id, workspace] = prisma.$queryRaw.mock.calls[0];
+    expect(parts.join('?')).toMatch(/SELECT id FROM plans.*WHERE id = \?::uuid AND "workspaceId" = \?::uuid FOR UPDATE/s);
+    expect([id, workspace]).toEqual(['plan-1', WS]);
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.plan.findFirst.mock.invocationCallOrder[0]);
+  });
+
+  it('refuses a missing scoped lock before reading a Plan or creating artifacts', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.plan.findFirst.mockResolvedValue(row());
+    await expect(promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW }))
+      .rejects.toThrow('promotePlanMix: plan not found');
+    expect(prisma.plan.findFirst).not.toHaveBeenCalled();
+    expect(persistAllocation).not.toHaveBeenCalled();
+    expect(prisma.plan.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps approval ahead of repeat recognition, and repeat ahead of actor and snapshot refusal', async () => {
+    prisma.plan.findFirst.mockResolvedValue(row({ requiresApproval: true, approvalState: 'PENDING',
+      promotedAt: NOW, projections: {} }));
+    await expect(promotePlanMix(WS, 'plan-1', { promotedById: null }))
+      .rejects.toMatchObject({ code: 'ApprovalRequired' });
+
+    prisma.plan.findFirst.mockResolvedValue(row({ promotedAt: NOW, projections: {} }));
+    expect(await promotePlanMix(WS, 'plan-1', { promotedById: null }))
+      .toMatchObject({ outcome: PROMOTION_OUTCOME.ALREADY_PROMOTED, promotedAt: NOW });
+    expect(persistAllocation).not.toHaveBeenCalled();
+    expect(prisma.plan.update).not.toHaveBeenCalled();
+  });
+
   it('refuses a plan whose gate is open and unapproved', async () => {
     prisma.plan.findFirst.mockResolvedValue(row({ requiresApproval: true, approvalState: 'PENDING' }));
 
