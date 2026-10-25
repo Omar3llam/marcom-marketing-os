@@ -23,7 +23,7 @@ vi.mock('node:child_process', async importOriginal => {
 
 const enabled = process.env.REQUIRE_DB === '1';
 const commandDirs = [];
-const command = (exe, args, env = process.env, observe) => {
+const command = (exe, args, env = process.env, observe, run = spawnSync) => {
   const options = { env, encoding: 'utf8', timeout: 20000, windowsHide: true };
   const started = observe ? { tick: performance.now(), at: new Date().toISOString() } : null;
   let r;
@@ -32,10 +32,10 @@ const command = (exe, args, env = process.env, observe) => {
     // after pg_ctl has exited0. Files preserve diagnostics without that wait.
     const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-command-')); commandDirs.push(dir);
     const out = join(dir, 'stdout'), err = join(dir, 'stderr'), stdout = openSync(out, 'w'), stderr = openSync(err, 'w');
-    try { r = spawnSync(exe, args, { ...options, stdio: ['ignore', stdout, stderr] }); }
+    try { r = run(exe, args, { ...options, stdio: ['ignore', stdout, stderr] }); }
     finally { closeSync(stdout); closeSync(stderr); }
     r.stdout = readFileSync(out, 'utf8'); r.stderr = readFileSync(err, 'utf8');
-  } else r = spawnSync(exe, args, options);
+  } else r = run(exe, args, options);
   observe?.({ startedAt: started.at, finishedAt: new Date().toISOString(), elapsedMs: performance.now() - started.tick,
     exitCode: r.status, signal: r.signal ?? null, spawnError: r.error?.code ?? null });
   if (r.error || r.status !== 0) throw Error(`Fresh lab command failed: ${exe} (${r.status}): ${r.error?.code || r.stderr}`);
@@ -45,12 +45,23 @@ const freePort = () => new Promise(resolve => { const s = net.createServer(); s.
 const clusters = [], clients = [], certificateDirs = [];
 let diagnosticDeadline = 0, diagnosticRemainingMs = 2000;
 
-// CP-01: read-only, fixed-count observations AFTER the original assertion.
-// Never wait for absence, change its result, print raw inspect/errors, or remove a container.
-function dockerLifecycleDiagnostic(id, createCommand) {
+// Preserve CP-01's immediate observation and records. Owned-ID absence may now
+// be confirmed by bounded read-only checks within the SAME deadline/allowance.
+// Docker failures are never absence, and no removal command is added.
+function dockerLifecycleDiagnostic(id, createCommand, controls = {}) {
+  const run = controls.run ?? spawnSync, now = controls.now ?? (() => performance.now());
+  const budget = controls.budget ?? {
+    get deadline() { return diagnosticDeadline; },
+    get remainingMs() { return diagnosticRemainingMs; },
+    set remainingMs(value) { diagnosticRemainingMs = value; },
+  };
   const host = ['--host', 'unix:///var/run/docker.sock'];
   const label = 'lumi.fresh-target.synthetic';
-  const emit = record => { try { console.info('CP01_DOCKER_LIFECYCLE', JSON.stringify({ id: /^[a-f0-9]{64}$/.test(id) ? id : null, ...record })); } catch { /* original errors must survive */ } };
+  const emit = record => { try {
+    const evidence = { id: /^[a-f0-9]{64}$/.test(id) ? id : null, ...record };
+    if (controls.emit) controls.emit(evidence);
+    else console.info('CP01_DOCKER_LIFECYCLE', JSON.stringify(evidence));
+  } catch { /* original errors must survive */ } };
   const date = value => typeof value === 'string' && /^[0-9T:Z.+-]{1,64}$/.test(value) ? value : null;
   const inspectFormat = '{"id":{{json .Id}},"image":{{json .Image}},"label":{{json (index .Config.Labels "lumi.fresh-target.synthetic")}},'
     + '"created":{{json .Created}},"startedAt":{{json .State.StartedAt}},"status":{{json .State.Status}},'
@@ -58,24 +69,28 @@ function dockerLifecycleDiagnostic(id, createCommand) {
     + '"autoRemove":{{json .HostConfig.AutoRemove}},"finishedAt":{{json .State.FinishedAt}}}';
   function query(phase, args, decode, teardown = false) {
     if (!/^[a-f0-9]{64}$/.test(id)) return { phase, failure: 'OWNERSHIP_ID_UNQUALIFIED', exists: null };
-    const timeout = Math.floor(teardown ? Math.min(250, diagnosticRemainingMs, diagnosticDeadline - performance.now()) : 500);
+    const available = budget.remainingMs;
+    const timeout = Math.floor(teardown ? Math.min(250, available, budget.deadline - now()) : 500);
     if (timeout < 1) return { phase, skipped: 'DIAGNOSTIC_BUDGET', exists: null };
-    const started = performance.now(), startedAt = new Date().toISOString();
+    const started = now(), startedAt = new Date().toISOString();
     let r;
     try {
-      r = spawnSync('docker', [...host, ...args], { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 32768, windowsHide: true });
-      const meta = { phase, startedAt, finishedAt: new Date().toISOString(), elapsedMs: performance.now() - started,
+      r = run('docker', [...host, ...args], { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 32768, windowsHide: true });
+      const meta = { phase, startedAt, finishedAt: new Date().toISOString(), elapsedMs: now() - started,
         exitCode: r.status, signal: r.signal ?? null, spawnError: r.error?.code ?? null };
-      if (r.error || r.status !== 0) {
+      if (teardown && (now() >= budget.deadline || meta.elapsedMs >= available)) {
+        return { ...meta, failure: 'DIAGNOSTIC_BUDGET', exists: null };
+      }
+      if (r.error || r.signal || r.status !== 0) {
         // A daemon/CLI error is UNKNOWN, not absence. Recognize only this exact owned-ID miss.
-        const absent = !r.error && r.status === 1 && args[0] === 'inspect'
+        const absent = !r.error && !r.signal && r.status === 1 && args[0] === 'inspect' && !(r.stdout ?? '').trim()
           && new RegExp(`^(?:Error(?: response from daemon)?: )?No such (?:object|container):\\s*${id}$`, 'i').test((r.stderr ?? '').trim());
         return { ...meta, exists: absent ? false : null, failure: absent ? null : 'COMMAND_FAILED' };
       }
       try { return { ...meta, ...decode(r.stdout) }; }
       catch { return { ...meta, failure: 'OUTPUT_UNQUALIFIED', exists: null }; }
     } catch { return { phase, startedAt, failure: 'DIAGNOSTIC_EXCEPTION', exists: null }; }
-    finally { if (teardown) diagnosticRemainingMs -= performance.now() - started; }
+    finally { if (teardown) budget.remainingMs -= now() - started; }
   }
   const inspect = (phase, teardown = false) => query(phase, ['inspect', '--type', 'container', '--format', inspectFormat, id], stdout => {
     const s = JSON.parse(stdout);
@@ -95,9 +110,33 @@ function dockerLifecycleDiagnostic(id, createCommand) {
   });
   emit({ phase: 'created', createCommand, initial, versions });
   return {
-    afterStop(stopCommand, originalPsCommand, originalPresence, originalAssertion) {
+    requireOwnership() {
+      if (!/^[a-f0-9]{64}$/.test(id) || createCommand?.exitCode !== 0 || initial.exists !== true
+        || !initial.ownershipLabel?.matches || !initial.image || initial.autoRemove !== true) {
+        throw Error('Owned Docker container identity unqualified');
+      }
+      if (versions.failure || versions.skipped) throw Error('Docker version observation unqualified');
+    },
+    requireCompletionBudget() {
+      if (now() >= budget.deadline || budget.remainingMs <= 0) throw Error('Owned Docker teardown deadline or allowance expired');
+    },
+    confirmAbsence() {
+      const checks = [];
+      for (let attempt = 1; attempt <= 16; attempt++) {
+        const observation = inspect(`absence-${attempt}`, true); checks.push(observation);
+        if (observation.exists === false && !observation.failure && !observation.skipped) return { exists: false, checks };
+        if (observation.exists !== true || observation.failure || observation.skipped) {
+          return { exists: null, failure: observation.failure ?? observation.skipped ?? 'OBSERVATION_UNQUALIFIED', checks };
+        }
+        if (!observation.ownershipLabel?.matches || observation.image !== initial.image || observation.autoRemove !== true) {
+          return { exists: null, failure: 'OWNERSHIP_CHANGED', checks };
+        }
+      }
+      return { exists: true, failure: 'CONTAINER_REMAINS', checks };
+    },
+    afterStop(stopCommand, originalPsCommand, originalPresence, originalAssertion, absenceConfirmation) {
       try {
-        // No diagnostic command or output occurs between docker stop and the original ps/assertion.
+        // No diagnostic command or output occurs between stop and the original ps.
         const observations = [inspect('after-stop-1', true), inspect('after-stop-2', true)];
         const actions = ['create', 'start', 'kill', 'die', 'stop', 'destroy'];
         const until = new Date().toISOString();
@@ -112,14 +151,44 @@ function dockerLifecycleDiagnostic(id, createCommand) {
         const final = inspect('final', true);
         const ids = originalPresence?.split('\n').filter(Boolean) ?? [];
         const qualified = ids.every(value => /^[a-f0-9]{12,64}$/.test(value) && id.startsWith(value));
-        emit({ phase: 'teardown', stopCommand, originalPsCommand,
+        const record = { phase: 'teardown', stopCommand, originalPsCommand,
           originalPresence: qualified ? originalPresence ?? null : null, originalPresenceQualified: qualified,
-          originalAssertion, observations, events, final,
+          originalAssertion, absenceConfirmation, observations, events, final,
           cleanup: { originalAssertion, finalOwnedPresence: final.exists, mutationCommandsAdded: 0 },
-          diagnosticBudgetRemainingMs: Math.max(0, diagnosticRemainingMs) });
+          diagnosticBudgetRemainingMs: Math.max(0, budget.remainingMs) };
+        emit(record);
+        return record;
       } catch { emit({ phase: 'teardown', originalAssertion, failure: 'DIAGNOSTIC_EXCEPTION' }); }
     },
   };
+}
+
+// Shared by the real Linux fixture and deterministic command/clock cases below.
+function stopOwnedDockerContainer(id, docker, diagnostic) {
+  let stopResult, psResult, presence, failure, absenceConfirmation, assertion = 'NOT_REACHED';
+  const stopArgs = ['stop', '-t', '5', id], psArgs = ['ps', '-aq', '--filter', `id=${id}`];
+  try {
+    diagnostic.requireOwnership();
+    docker(stopArgs, r => { stopResult = r; });
+    presence = docker(psArgs, r => { psResult = r; });
+    // Retain the original immediate-condition result, independently of final
+    // teardown acceptance. A transient listing must never be relabelled empty.
+    assertion = presence === '' ? 'PASS' : 'FAIL';
+    absenceConfirmation = diagnostic.confirmAbsence();
+    if (absenceConfirmation.failure) throw Error(`Owned Docker absence unqualified: ${absenceConfirmation.failure}`);
+    expect(absenceConfirmation.exists).toBe(false);
+  } catch (err) { failure = err; }
+  const record = diagnostic.afterStop({ command: ['docker', '--host', 'unix:///var/run/docker.sock', ...stopArgs], ...stopResult },
+    { command: ['docker', '--host', 'unix:///var/run/docker.sock', ...psArgs], ...psResult }, presence, assertion, absenceConfirmation);
+  if (failure) throw failure; // Diagnostic failures must never replace the original error.
+  diagnostic.requireCompletionBudget();
+  expect(record?.originalPresenceQualified).toBe(true);
+  expect(record?.observations?.every(r => r.exists === false && !r.failure && !r.skipped)).toBe(true);
+  expect(record?.events?.failure ?? null).toBeNull();
+  expect(record?.events?.skipped).toBeUndefined();
+  expect(record?.final?.failure ?? null).toBeNull();
+  expect(record?.final?.exists).toBe(false); // Hard owned-container absence remains mandatory.
+  return record;
 }
 async function physicalCluster() {
   const bin = process.env.FRESH_TARGET_TEST_PG_BIN;
@@ -142,20 +211,7 @@ async function physicalCluster() {
     let createCommand, diagnostic;
     const id = docker(['run', '--pull=never', '--rm', '-d', '--label', 'lumi.fresh-target.synthetic=true',
       '-e', 'POSTGRES_USER=lab_fresh_admin', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-e', 'POSTGRES_INITDB_ARGS=--no-locale --encoding=UTF8', '-p', '127.0.0.1::5432', 'postgres:17'], r => { createCommand = r; });
-    stop = () => {
-      let stopResult, psResult, presence, assertion = 'NOT_REACHED';
-      const stopArgs = ['stop', '-t', '5', id], psArgs = ['ps', '-aq', '--filter', `id=${id}`];
-      try {
-        docker(stopArgs, r => { stopResult = r; });
-        presence = docker(psArgs, r => { psResult = r; });
-        assertion = 'FAIL';
-        expect(presence).toBe('');
-        assertion = 'PASS';
-      } finally {
-        diagnostic?.afterStop({ command: ['docker', '--host', 'unix:///var/run/docker.sock', ...stopArgs], ...stopResult },
-          { command: ['docker', '--host', 'unix:///var/run/docker.sock', ...psArgs], ...psResult }, presence, assertion);
-      }
-    };
+    stop = () => stopOwnedDockerContainer(id, docker, diagnostic);
     clusters.push({ stop });
     diagnostic = dockerLifecycleDiagnostic(id, createCommand);
     port = Number(docker(['port', id, '5432/tcp']).split(':').at(-1));
@@ -443,5 +499,109 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     await q`UPDATE _prisma_migrations SET checksum=repeat('0',64) WHERE migration_name='20261015000000_canonical_provenance_v1'`;
     expect((await inspectFreshTarget(valid)).reason).toBe('MIGRATION_HISTORY_MISMATCH');
     const [r] = await q`SELECT checksum FROM _prisma_migrations WHERE migration_name='20261015000000_canonical_provenance_v1'`; expect(r.checksum).toBe('0'.repeat(64)); await q.end();
+  });
+});
+
+describe('owned Docker teardown / deterministic command and clock regression', () => {
+  const ownedId = 'a'.repeat(64), otherId = 'b'.repeat(64);
+  function fixture({ id = ownedId, initial = 'present', checks = ['absent'], fallback = 'absent', presence = '',
+    stepMs = 10, deadline = 12000, remainingMs = 2000, stopError = false, psError = false,
+    eventsError = false, lateProof = false, lateCompletion = false } = {}) {
+    let tick = 0, inspections = 0;
+    const calls = [], records = [], sequence = [...checks], budget = { deadline, remainingMs };
+    const run = (_exe, rawArgs, options) => {
+      const args = rawArgs.slice(2);
+      calls.push({ args, timeout: options.timeout }); tick += stepMs;
+      const response = (stdout = '', status = 0, stderr = '') => ({ stdout, status, stderr, signal: null });
+      if (args[0] === 'stop') return response('', stopError ? 1 : 0, stopError ? 'simulated stop failure' : '');
+      if (args[0] === 'ps') return response(presence, psError ? 1 : 0, psError ? 'simulated ps failure' : '');
+      if (args[0] === 'version') return response('{"client":"28.0.4","server":"28.0.4"}');
+      if (args[0] === 'events') return response('', eventsError ? 1 : 0, eventsError ? 'simulated event failure' : '');
+      if (args[0] !== 'inspect' || args.at(-1) !== id) throw Error('Unscoped Docker observation');
+      const state = inspections++ === 0 ? initial : sequence.shift() ?? fallback;
+      if (lateProof && inspections > 1) tick = deadline;
+      if (state === 'absent' || state === 'wrong-miss') return response('', 1, `Error: No such object: ${state === 'absent' ? id : otherId}`);
+      if (state === 'error') return response('', 1, 'Cannot connect to the Docker daemon');
+      if (state === 'timeout') return { ...response('', null), error: { code: 'ETIMEDOUT' }, signal: 'SIGKILL' };
+      if (state === 'malformed') return response('{');
+      return response(JSON.stringify({ id: state === 'wrong-id' ? otherId : id, image: `sha256:${'c'.repeat(64)}`,
+        label: state === 'wrong-label' ? 'false' : 'true', autoRemove: true,
+        created: '2026-10-25T00:00:00Z', startedAt: '2026-10-25T00:00:01Z', finishedAt: '2026-10-25T00:00:02Z',
+        status: 'exited', running: false, dead: false, exitCode: 0 }));
+    };
+    const diagnostic = dockerLifecycleDiagnostic(id, { startedAt: '2026-10-25T00:00:00Z', exitCode: 0 },
+      { run, now: () => tick, budget, emit: record => {
+        records.push(record);
+        if (lateCompletion && record.phase === 'teardown') tick = deadline;
+      } });
+    const docker = (args, observe) => command('docker', ['--host', 'unix:///var/run/docker.sock', ...args], process.env, observe, run);
+    return { calls, records, budget, stop: () => stopOwnedDockerContainer(id, docker, diagnostic) };
+  }
+
+  it('accepts delayed AutoRemove only after exact-owned-ID absence and preserves the immediate observation', () => {
+    const f = fixture({ presence: ownedId.slice(0, 12), checks: ['present', 'present', 'absent'] });
+    expect(f.stop).not.toThrow();
+    const record = f.records.at(-1);
+    expect(record.originalPresence).toBe(ownedId.slice(0, 12));
+    expect(record.originalAssertion).toBe('FAIL');
+    expect(record.cleanup.finalOwnedPresence).toBe(false);
+    const stop = f.calls.findIndex(c => c.args[0] === 'stop');
+    expect(f.calls[stop].args).toEqual(['stop', '-t', '5', ownedId]);
+    expect(f.calls[stop + 1].args).toEqual(['ps', '-aq', '--filter', `id=${ownedId}`]);
+    expect(f.calls.filter(c => c.args[0] === 'stop')).toHaveLength(1);
+    expect(f.calls.every(c => ['stop', 'ps', 'inspect', 'events', 'version'].includes(c.args[0]))).toBe(true);
+  });
+
+  it('still accepts immediate removal with a hard final absence result', () => {
+    const f = fixture(); expect(f.stop).not.toThrow();
+    expect(f.records.at(-1).cleanup.finalOwnedPresence).toBe(false);
+  });
+
+  it('fails persistent presence with bounded read-only checks and no force removal', () => {
+    const f = fixture({ presence: ownedId.slice(0, 12), checks: [], fallback: 'present', stepMs: 100 });
+    expect(f.stop).toThrow();
+    expect(f.calls.filter(c => c.args[0] === 'inspect').length).toBeLessThanOrEqual(21);
+    expect(f.calls.some(c => ['rm', 'prune', 'kill'].includes(c.args[0]))).toBe(false);
+  });
+
+  for (const state of ['error', 'timeout', 'malformed', 'wrong-id', 'wrong-miss', 'wrong-label']) {
+    it(`fails an inconclusive ${state} observation even when the immediate listing was empty`, () => {
+      const f = fixture({ checks: [state] }); expect(f.stop).toThrow();
+    });
+  }
+
+  it('fails unknown initial ownership before issuing stop', () => {
+    const f = fixture({ initial: 'wrong-label' }); expect(f.stop).toThrow();
+    expect(f.calls.some(c => c.args[0] === 'stop')).toBe(false);
+  });
+  it('fails an unqualified container ID without issuing stop', () => {
+    const f = fixture({ id: ownedId.slice(0, 12) }); expect(f.stop).toThrow();
+    expect(f.calls.some(c => c.args[0] === 'stop')).toBe(false);
+  });
+  it('fails when the existing deadline has expired', () => {
+    const f = fixture({ deadline: 0 }); expect(f.stop).toThrow();
+  });
+  it('rejects an absence response delivered after the existing deadline', () => {
+    const f = fixture({ lateProof: true }); expect(f.stop).toThrow();
+  });
+  it('refuses completion if the deadline expires after the final observation', () => {
+    const f = fixture({ lateCompletion: true }); expect(f.stop).toThrow(/deadline or allowance expired/);
+  });
+  it('fails when the shared diagnostic allowance is exhausted', () => {
+    const f = fixture({ checks: [], fallback: 'present', remainingMs: 50, stepMs: 20 }); expect(f.stop).toThrow();
+  });
+  it('does not turn a successful initial absence check into PASS when the final observation fails', () => {
+    const f = fixture({ checks: ['absent', 'absent', 'absent', 'error'] }); expect(f.stop).toThrow();
+  });
+  it('records diagnostic command failure and refuses instead of treating it as absence', () => {
+    const f = fixture({ eventsError: true }); expect(f.stop).toThrow();
+  });
+  it('preserves stop exit validation and the original failure over diagnostic failures', () => {
+    const f = fixture({ stopError: true, checks: ['error'], fallback: 'error' });
+    expect(f.stop).toThrow(/Fresh lab command failed: docker \(1\): simulated stop failure/);
+    expect(f.calls.some(c => c.args[0] === 'ps')).toBe(false);
+  });
+  it('preserves immediate ps command failure even if later inspections find absence', () => {
+    const f = fixture({ psError: true }); expect(f.stop).toThrow(/simulated ps failure/);
   });
 });
