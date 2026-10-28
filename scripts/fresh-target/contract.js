@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { createHash, X509Certificate } from 'node:crypto';
+import { readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { types } from 'node:util';
 
 export const ROLES = Object.freeze({ owner: 'lumi_backend_owner', migrator: 'lumi_backend_migrator',
@@ -58,7 +59,8 @@ export function loadFreshContract() {
 }
 
 export function validateApproval(approval, expectedHash, url, artifactSha256, now = Date.now()) {
-  if (!plain(approval, ['version', 'operation', 'expiresAt', 'artifactSha256', 'target'])
+  if (!(plain(approval, ['version', 'operation', 'expiresAt', 'artifactSha256', 'target'])
+    || plain(approval, ['version', 'operation', 'expiresAt', 'artifactSha256', 'target', 'exclusiveTarget']))
     || approval.version !== 1 || approval.operation !== 'PROVISION_EMPTY_PG17'
     || typeof expectedHash !== 'string' || typeof url !== 'string' || !/^[a-f0-9]{64}$/.test(expectedHash)
     || approval.artifactSha256 !== artifactSha256 || !Number.isSafeInteger(approval.expiresAt)
@@ -78,4 +80,44 @@ export function validateApproval(approval, expectedHash, url, artifactSha256, no
   if (u.protocol !== 'postgresql:' || u.hostname !== t.host || Number(u.port || 5432) !== t.port
     || decodeURIComponent(u.username) !== t.login || u.pathname !== '/' + t.database || u.search || u.hash) throw Error('TARGET_UNQUALIFIED');
   return t;
+}
+
+// These seals are independently supplied by the approving lab controller. They
+// are an explicit trust boundary, not an in-band attestation of network policy.
+// Hosted endpoints remain contained, including endpoints carrying these seals.
+export function validateExclusiveTarget(approval, url, caPem, contract) {
+  const refuse = () => { throw Error('MIGRATION_TARGET_BINDING_UNQUALIFIED'); };
+  const t = approval.target, binding = approval.exclusiveTarget;
+  if (t.host !== '127.0.0.1'
+    || !plain(binding, ['version', 'scope', 'qualificationFile', 'qualificationSha256'])
+    || binding.version !== 1 || binding.scope !== 'OWNED_SYNTHETIC_PG17_ONLY'
+    || typeof binding.qualificationFile !== 'string' || !/^(?:[A-Za-z]:[\\/]|\/)/.test(binding.qualificationFile)
+    || !/^[a-f0-9]{64}$/.test(binding.qualificationSha256)) refuse();
+  const stat = lstatSync(binding.qualificationFile);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16384) refuse();
+  const bytes = readFileSync(binding.qualificationFile);
+  if (digest(bytes) !== binding.qualificationSha256) refuse();
+  const q = JSON.parse(bytes);
+  if (!plain(q, ['version', 'scope', 'target', 'artifactSha256', 'caSha256', 'credentialSha256', 'cliSha256', 'engineSha256', 'engineRevision', 'networkPolicySha256', 'evidenceSha256'])
+    || q.version !== 1 || q.scope !== binding.scope || JSON.stringify(q.target) !== JSON.stringify(t)
+    || q.artifactSha256 !== contract.artifactSha256
+    || q.engineRevision !== '605197351a3c8bdd595af2d2a9bc3025bca48ea2'
+    || !['caSha256', 'credentialSha256', 'cliSha256', 'engineSha256', 'networkPolicySha256', 'evidenceSha256']
+      .every(k => typeof q[k] === 'string' && /^[a-f0-9]{64}$/.test(q[k]) && q[k] !== '0'.repeat(64))) refuse();
+  const password = decodeURIComponent(new URL(url).password);
+  if (!/^[a-f0-9]{64}$/.test(password) || digest(password) !== q.credentialSha256) refuse();
+  if (typeof caPem !== 'string' || digest(caPem) !== q.caSha256) throw Error('VERIFIED_TLS_REQUIRED');
+  const ca = new X509Certificate(caPem);
+  if (!ca.ca || Date.parse(ca.validFrom) > Date.now() || Date.parse(ca.validTo) <= Date.now()) throw Error('VERIFIED_TLS_REQUIRED');
+  const cli = fileURLToPath(new URL('node_modules/prisma/build/index.js', contract.root));
+  const engines = new URL('node_modules/@prisma/engines/', contract.root);
+  const candidates = readdirSync(engines).filter(n => /^schema-engine-[a-z0-9.-]+$/.test(n)
+    && (process.platform === 'win32' ? n === 'schema-engine-windows.exe' : !n.endsWith('.exe')));
+  if (candidates.length !== 1) throw Error('DEPENDENCY_UNQUALIFIED');
+  const engine = fileURLToPath(new URL(candidates[0], engines));
+  for (const [file, expected] of [[cli, q.cliSha256], [engine, q.engineSha256]]) {
+    if (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink() || digest(readFileSync(file)) !== expected) throw Error('DEPENDENCY_UNQUALIFIED');
+  }
+  if (JSON.parse(readFileSync(new URL('node_modules/@prisma/engines/package.json', contract.root))).version !== '5.22.0') throw Error('DEPENDENCY_UNQUALIFIED');
+  return { cli, engine, caPem, engineRevision: q.engineRevision };
 }
