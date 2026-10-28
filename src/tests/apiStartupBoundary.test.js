@@ -119,9 +119,15 @@ function runProbe(cli = false) {
     s.complete=true; s.save(); process.exit(0);
   `;
   try {
+    const childStarted = performance.now();
     const child = spawnSync(process.execPath, ['--require', preload, ...(cli ? ['src/server.js'] : ['--input-type=module', '-e', main])], {
       cwd: root, env, timeout: 3500, encoding: 'utf8', windowsHide: true,
     });
+    // Preserve the actual process result even when preload/import never wrote
+    // calls.json. Keep the same deadline, observation read and all assertions.
+    console.info('API_STARTUP_PROCESS', JSON.stringify({ cli, elapsedMs: performance.now() - childStarted,
+      status: child.status, signal: child.signal, error: child.error?.code, reportPresent: existsSync(report),
+      stdout: child.stdout, stderr: child.stderr }));
     const observed = JSON.parse(readFileSync(report, 'utf8'));
     console.info('API_STARTUP_OBSERVATION', JSON.stringify({ cli, status: child.status, signal: child.signal,
       error: child.error?.code, observed, stdout: child.stdout, stderr: child.stderr }));

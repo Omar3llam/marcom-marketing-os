@@ -1,10 +1,9 @@
 import postgres from 'postgres';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { loadFreshContract, validateApproval, plain, ROLES } from './contract.js';
+import { join, dirname } from 'node:path';
+import { loadFreshContract, validateApproval, validateExclusiveTarget, plain, ROLES } from './contract.js';
 import { collectCombinedCatalog, stable, bindPlatform } from './catalog.js';
 
 const answer = (status, reason, phase) => ({ status, reason, phase, scope: 'FRESH_TARGET_PROVISIONING_ONLY', runtimeAdmission: 'NOT_WIRED' });
@@ -71,7 +70,7 @@ async function applyLegacy(sql, contract) {
   });
 }
 
-async function migrate(url, caPem, contract) {
+async function migrate(url, exclusive, contract) {
   // Materialize only the preverified byte buffers. Never migrate a mutable repo
   // path or load ambient .env/provider settings into the Prisma subprocess.
   const temp = mkdtempSync(join(tmpdir(), 'lumi-fresh-migration-'));
@@ -82,20 +81,31 @@ async function migrate(url, caPem, contract) {
     writeFileSync(join(dir, 'migration_lock.toml'), 'provider = "postgresql"\n');
     for (const m of contract.migrations) { const d = join(dir, m.name); mkdirSync(d); writeFileSync(join(d, 'migration.sql'), m.bytes); }
     const u = new URL(url);
-    if (u.hostname !== '127.0.0.1') {
-      const cert = join(temp, 'root.crt'); writeFileSync(cert, caPem, { mode: 0o600 });
-      u.searchParams.set('sslmode', 'require'); u.searchParams.set('sslcert', cert); u.searchParams.set('sslaccept', 'strict');
-    }
-    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
+    const cert = join(temp, 'root.crt'); writeFileSync(cert, exclusive.caPem, { mode: 0o600 });
+    u.searchParams.set('sslmode', 'require'); u.searchParams.set('sslcert', cert); u.searchParams.set('sslaccept', 'strict');
+    const env = { PATH: dirname(process.execPath), ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR } : {}),
       TEMP: temp, TMP: temp, HOME: temp, USERPROFILE: temp, DATABASE_URL: u.href, DIRECT_URL: u.href,
-      CHECKPOINT_DISABLE: '1', PRISMA_HIDE_UPDATE_MESSAGE: '1' };
-    const cli = fileURLToPath(new URL('node_modules/prisma/build/index.js', contract.root));
+      CHECKPOINT_DISABLE: '1', PRISMA_HIDE_UPDATE_MESSAGE: '1', PRISMA_SCHEMA_ENGINE_BINARY: exclusive.engine };
+    // Select and verify the approved native issuer. Ambient engine overrides,
+    // Node preload hooks, datasource URLs and .env files are never inherited.
+    const version = spawnSync(exclusive.engine, ['--version'], { env, cwd: temp, encoding: 'utf8', timeout: 5000, windowsHide: true });
+    if (version.error || version.signal || version.status !== 0 || !version.stdout.includes('schema-engine-cli ' + exclusive.engineRevision)) throw Error('DEPENDENCY_UNQUALIFIED');
     await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [cli, 'migrate', 'deploy', '--schema', join(schema, 'schema.prisma')],
-        { cwd: temp, env, windowsHide: true, stdio: 'ignore' });
-      const timer = setTimeout(() => child.kill('SIGTERM'), 120000);
+      const child = spawn(process.execPath, [exclusive.cli, 'migrate', 'deploy', '--schema', join(schema, 'schema.prisma')],
+        { cwd: temp, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      let output = '', truncated = false;
+      const capture = bytes => { if (output.length + bytes.length > 262144) truncated = true; else output += bytes.toString(); };
+      child.stdout.on('data', capture); child.stderr.on('data', capture);
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, 120000);
       child.once('error', () => { clearTimeout(timer); reject(Error('MIGRATION_PROCESS_FAILED')); });
-      child.once('close', (code, signal) => { clearTimeout(timer); code === 0 && !signal ? resolve() : reject(Error('MIGRATION_PROCESS_FAILED')); });
+      child.once('close', (code, signal) => {
+        clearTimeout(timer);
+        const password = decodeURIComponent(new URL(url).password);
+        console.info('FRESH_TARGET_PRISMA_WRITER', JSON.stringify({ code, signal, timedOut, truncated,
+          output: output.replaceAll(u.href, '<datasource>').replaceAll(password, '<credential>').replaceAll(temp, '<migration>') }));
+        code === 0 && !signal && !timedOut && !truncated ? resolve() : reject(Error('MIGRATION_PROCESS_FAILED'));
+      });
     });
   } finally { rmSync(temp, { recursive: true, force: true }); }
 }
@@ -159,11 +169,14 @@ async function runFreshTarget(input, inspect) {
       || JSON.parse(readFileSync(new URL('node_modules/prisma/package.json', contract.root))).version !== '5.22.0') throw Error('DEPENDENCY_UNQUALIFIED');
     const t = validateApproval(input.approval, input.approvalSha256, input.url, contract.artifactSha256);
     const loopback = t.host === '127.0.0.1';
-    // The separate Prisma connection has no qualified physical target binding.
+    // Local qualification does not activate hosted provisioning. An explicit
+    // independently sealed local policy is required even for numeric loopback.
     if (!inspect && !loopback) return answer('REFUSED', 'MIGRATION_TARGET_BINDING_UNQUALIFIED', phase);
+    const exclusive = !inspect || input.approval.exclusiveTarget
+      ? validateExclusiveTarget(input.approval, input.url, input.caPem, contract) : null;
     if (!loopback && (typeof input.caPem !== 'string' || !input.caPem.includes('-----BEGIN CERTIFICATE-----'))) throw Error('VERIFIED_TLS_REQUIRED');
     sql = postgres(input.url, { host: t.host, port: t.port, username: t.login, database: t.database,
-      password: () => decodeURIComponent(new URL(input.url).password), ssl: loopback ? false : { rejectUnauthorized: true, ca: input.caPem },
+      password: () => decodeURIComponent(new URL(input.url).password), ssl: loopback && !exclusive ? false : { rejectUnauthorized: true, ca: input.caPem },
       sslnegotiation: null, target_session_attrs: 'primary',
       max: 1, prepare: false, connect_timeout: 5, idle_timeout: 2, onnotice: () => {},
       connection: { application_name: 'lumi_fresh_operator', statement_timeout: 20000, lock_timeout: 3000, search_path: 'pg_catalog,pg_temp' } });
@@ -180,7 +193,10 @@ async function runFreshTarget(input, inspect) {
     // Recheck under the cooperative operator lock, before any DDL.
     await sql.begin('isolation level repeatable read read only', async tx => { await identity(tx, t); await bootstrap(tx, t, contract); });
     if (Date.now() >= input.approval.expiresAt) throw Error('APPROVAL_EXPIRED');
-    phase = 'MIGRATIONS'; await migrate(input.url, input.caPem, contract);
+    // Revalidate the sealed record/trust/binary bytes immediately before the
+    // subprocess as well. Network exclusivity remains an external controller
+    // obligation; these checks do not physically bind a future connection.
+    phase = 'MIGRATIONS'; await migrate(input.url, validateExclusiveTarget(input.approval, input.url, input.caPem, contract), contract);
     phase = 'LEGACY_DDL'; await applyLegacy(sql, contract);
     phase = 'PERMISSIONS'; await permissions(sql);
     phase = 'QUALIFICATION';
@@ -188,7 +204,7 @@ async function runFreshTarget(input, inspect) {
     if (Date.now() >= input.approval.expiresAt) throw Error('APPROVAL_EXPIRED');
     return answer('PROVISIONED_MATCH', 'EXACT_PROFILE_AND76_RECEIPTS', phase);
   } catch (error) {
-    const reasons = /^(INPUT_UNQUALIFIED|APPROVAL_UNQUALIFIED|APPROVAL_EXPIRED|TARGET_UNQUALIFIED|SOURCE_UNQUALIFIED|MIGRATION_BYTES_UNQUALIFIED|PROFILE_UNQUALIFIED|DEPENDENCY_UNQUALIFIED|VERIFIED_TLS_REQUIRED|IDENTITY_MISMATCH|DATABASE_LOCALE_UNQUALIFIED|BOOTSTRAP_ROLE_PROFILE_MISMATCH|BOOTSTRAP_SYSTEM_PRIVILEGE_MISMATCH|BOOTSTRAP_DATABASE_ACL_MISMATCH|BOOTSTRAP_SCHEMA_ACL_MISMATCH|TARGET_NOT_EXCLUSIVE|TARGET_NOT_EMPTY|OPERATOR_ALREADY_RUNNING|MIGRATION_PROCESS_FAILED|MIGRATION_HISTORY_MISMATCH|COMBINED_NATIVE_PROFILE_MISMATCH|UNEXPECTED_APPLICATION_DATA)$/;
+    const reasons = /^(INPUT_UNQUALIFIED|APPROVAL_UNQUALIFIED|APPROVAL_EXPIRED|TARGET_UNQUALIFIED|MIGRATION_TARGET_BINDING_UNQUALIFIED|SOURCE_UNQUALIFIED|MIGRATION_BYTES_UNQUALIFIED|PROFILE_UNQUALIFIED|DEPENDENCY_UNQUALIFIED|VERIFIED_TLS_REQUIRED|IDENTITY_MISMATCH|DATABASE_LOCALE_UNQUALIFIED|BOOTSTRAP_ROLE_PROFILE_MISMATCH|BOOTSTRAP_SYSTEM_PRIVILEGE_MISMATCH|BOOTSTRAP_DATABASE_ACL_MISMATCH|BOOTSTRAP_SCHEMA_ACL_MISMATCH|TARGET_NOT_EXCLUSIVE|TARGET_NOT_EMPTY|OPERATOR_ALREADY_RUNNING|MIGRATION_PROCESS_FAILED|MIGRATION_HISTORY_MISMATCH|COMBINED_NATIVE_PROFILE_MISMATCH|UNEXPECTED_APPLICATION_DATA)$/;
     return { ...answer('REFUSED', reasons.test(error?.message) ? error.message : 'PROVISIONING_FAILED', phase),
       ...(error?.message === 'COMBINED_NATIVE_PROFILE_MISMATCH' ? { mismatch: error.categories } : {}) };
   } finally {

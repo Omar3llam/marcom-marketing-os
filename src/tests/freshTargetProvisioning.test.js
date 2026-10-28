@@ -36,6 +36,30 @@ describe('operator fresh-target source contract', () => {
 });
 
 describe('operator invocation refuses untrusted inputs before database I/O', () => {
+  it('refuses unqualified loopback mutation before opening even the preflight connection', async () => {
+    expect(await provisionFreshTarget(request())).toMatchObject({ status: 'REFUSED', reason: 'MIGRATION_TARGET_BINDING_UNQUALIFIED', phase: 'INPUT' });
+    expect(driver).not.toHaveBeenCalled(); expect(migrationChild).not.toHaveBeenCalled();
+  });
+  for (const [name, change] of [
+    ['a scope flag without a qualification artifact', r => { r.approval.exclusiveTarget = { version: 1, scope: 'OWNED_SYNTHETIC_PG17_ONLY' }; }],
+    ['an absent qualification artifact', r => { r.approval.exclusiveTarget = { version: 1, scope: 'OWNED_SYNTHETIC_PG17_ONLY', qualificationFile: join(tmpdir(), 'not-a-qualified-lumi-artifact.json'), qualificationSha256: '1'.repeat(64) }; }],
+    ['a replaced qualification artifact', r => {
+      const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-policy-')), file = join(dir, 'qualification.json');
+      writeFileSync(file, '{}');
+      r.approval.exclusiveTarget = { version: 1, scope: 'OWNED_SYNTHETIC_PG17_ONLY', qualificationFile: file, qualificationSha256: digest('original independently supplied record') };
+    }],
+    ['an approved hash of an incomplete record', r => {
+      const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-policy-')), file = join(dir, 'qualification.json');
+      writeFileSync(file, '{}');
+      r.approval.exclusiveTarget = { version: 1, scope: 'OWNED_SYNTHETIC_PG17_ONLY', qualificationFile: file, qualificationSha256: digest('{}') };
+    }],
+  ]) {
+    it(`refuses ${name} before I/O`, async () => {
+      const r = request(); change(r); r.approvalSha256 = digest(JSON.stringify(r.approval));
+      expect((await provisionFreshTarget(r)).status).toBe('REFUSED');
+      expect(driver).not.toHaveBeenCalled(); expect(migrationChild).not.toHaveBeenCalled();
+    });
+  }
   for (const [name, mutate] of [
     ['missing independent approval digest', r => { delete r.approvalSha256; }],
     ['mismatched approval digest', r => { r.approvalSha256 = '0'.repeat(64); }],
@@ -93,7 +117,7 @@ describe('operator invocation refuses untrusted inputs before database I/O', () 
   });
   it('refuses an uncertain connection cleanup and sanitizes its diagnostic', async () => {
     driver.mockImplementationOnce(() => ({ begin: async () => { throw Error('private-credential'); }, end: async () => { throw Error('private-credential'); } }));
-    expect(await provisionFreshTarget(request())).toMatchObject({ status: 'REFUSED', reason: 'CONNECTION_CLEANUP_FAILED', phase: 'CLEANUP' });
+    expect(await inspectFreshTarget(request())).toMatchObject({ status: 'REFUSED', reason: 'CONNECTION_CLEANUP_FAILED', phase: 'CLEANUP' });
   });
   it('the actual CLI requires explicit inputs and rejects operator root/manifest substitution', () => {
     const dir = mkdtempSync(join(tmpdir(), 'lumi-fresh-cli-')), file = join(dir, 'approval.json');
