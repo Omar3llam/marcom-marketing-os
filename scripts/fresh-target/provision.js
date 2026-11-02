@@ -1,3 +1,4 @@
+import { exclusiveWriterCheckpoint } from './exclusiveTargetController.js';
 import postgres from 'postgres';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
@@ -70,7 +71,7 @@ async function applyLegacy(sql, contract) {
   });
 }
 
-async function migrate(url, exclusive, contract) {
+async function migrate(url, exclusive, contract, target) {
   // Materialize only the preverified byte buffers. Never migrate a mutable repo
   // path or load ambient .env/provider settings into the Prisma subprocess.
   const temp = mkdtempSync(join(tmpdir(), 'lumi-fresh-migration-'));
@@ -83,13 +84,14 @@ async function migrate(url, exclusive, contract) {
     const u = new URL(url);
     const cert = join(temp, 'root.crt'); writeFileSync(cert, exclusive.caPem, { mode: 0o600 });
     u.searchParams.set('sslmode', 'require'); u.searchParams.set('sslcert', cert); u.searchParams.set('sslaccept', 'strict');
-    const env = { PATH: dirname(process.execPath), ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR } : {}),
+    const env = { PATH: process.platform === 'linux' ? dirname(process.execPath) + ':/usr/bin:/usr/sbin:/bin' : dirname(process.execPath), ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR } : {}),
       TEMP: temp, TMP: temp, HOME: temp, USERPROFILE: temp, DATABASE_URL: u.href, DIRECT_URL: u.href,
       CHECKPOINT_DISABLE: '1', PRISMA_HIDE_UPDATE_MESSAGE: '1', PRISMA_SCHEMA_ENGINE_BINARY: exclusive.engine };
     // Select and verify the approved native issuer. Ambient engine overrides,
     // Node preload hooks, datasource URLs and .env files are never inherited.
     const version = spawnSync(exclusive.engine, ['--version'], { env, cwd: temp, encoding: 'utf8', timeout: 5000, windowsHide: true });
     if (version.error || version.signal || version.status !== 0 || !version.stdout.includes('schema-engine-cli ' + exclusive.engineRevision)) throw Error('DEPENDENCY_UNQUALIFIED');
+    await exclusiveWriterCheckpoint(exclusive.boundary, target);
     await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [exclusive.cli, 'migrate', 'deploy', '--schema', join(schema, 'schema.prisma')],
         { cwd: temp, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -194,9 +196,9 @@ async function runFreshTarget(input, inspect) {
     await sql.begin('isolation level repeatable read read only', async tx => { await identity(tx, t); await bootstrap(tx, t, contract); });
     if (Date.now() >= input.approval.expiresAt) throw Error('APPROVAL_EXPIRED');
     // Revalidate the sealed record/trust/binary bytes immediately before the
-    // subprocess as well. Network exclusivity remains an external controller
-    // obligation; these checks do not physically bind a future connection.
-    phase = 'MIGRATIONS'; await migrate(input.url, validateExclusiveTarget(input.approval, input.url, input.caPem, contract), contract);
+    // subprocess as well. The independently established namespace/syscall
+    // boundary, not this earlier SQL observation, confines every later socket.
+    phase = 'MIGRATIONS'; await migrate(input.url, validateExclusiveTarget(input.approval, input.url, input.caPem, contract), contract, t);
     phase = 'LEGACY_DDL'; await applyLegacy(sql, contract);
     phase = 'PERMISSIONS'; await permissions(sql);
     phase = 'QUALIFICATION';

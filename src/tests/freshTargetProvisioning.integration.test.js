@@ -8,7 +8,7 @@ import { join, basename } from 'node:path';
 import net from 'node:net';
 import tls from 'node:tls';
 import { EventEmitter } from 'node:events';
-import { provisionFreshTarget, inspectFreshTarget } from '../../scripts/fresh-target/provision.js';
+import { provisionFreshTarget as directProvision, inspectFreshTarget as directInspect } from '../../scripts/fresh-target/provision.js';
 import { loadFreshContract, digest, ROLES } from '../../scripts/fresh-target/contract.js';
 import { collectCombinedCatalog, stable, bindPlatform } from '../../scripts/fresh-target/catalog.js';
 import { collectStructure } from '../../scripts/legacy-schema/catalog.js';
@@ -16,6 +16,23 @@ import { bind } from '../../scripts/legacy-schema/contract.js';
 import { verifyCanonicalProvenanceCatalog } from '../../scripts/verify-canonical-provenance-catalog.js';
 import { seed, admit, level } from './canonicalProvenanceFixtures.js';
 import { sealTemplate } from './dbIsolation.js';
+
+import { exclusiveControllerRequest } from '../../scripts/fresh-target/exclusiveTargetController.js';
+let controller, controllerLab, lastControllerRun;
+const controllerCall = request => exclusiveControllerRequest(controller.socket, request);
+async function controlledOperation(input, inspect = false, extra = {}) {
+  if (!controller || !input.approval.exclusiveTarget) return (inspect ? directInspect : directProvision)(input);
+  const qualification = JSON.parse(readFileSync(input.approval.exclusiveTarget.qualificationFile));
+  try {
+    lastControllerRun = await controllerCall({ method: 'run', cellId: controllerLab.id, input: structuredClone(input), qualification, inspect, ...extra });
+    return lastControllerRun.result;
+  } catch (error) {
+    if (error.message === 'CONTROLLER_TARGET_UNQUALIFIED') return { status: 'REFUSED', reason: 'IDENTITY_MISMATCH' };
+    throw error;
+  }
+}
+const provisionFreshTarget = input => controlledOperation(input);
+const inspectFreshTarget = input => controlledOperation(input, true);
 
 const migrationChildren = vi.hoisted(() => []);
 const writerControl = vi.hoisted(() => ({ beforeSpawn: null, afterSpawn: null }));
@@ -340,6 +357,29 @@ function stopOwnedDockerContainer(id, docker, diagnostic) {
 }
 async function physicalCluster() {
   writerLifetime.assertOpen();
+  if (process.env.FRESH_TARGET_EXCLUSIVE_CONTROLLER_INFO) {
+    controller ??= JSON.parse(readFileSync(process.env.FRESH_TARGET_EXCLUSIVE_CONTROLLER_INFO));
+    const cell = await controllerCall({ method: 'create' });
+    const open = (database, username) => {
+      const q = postgres({ host: cell.audit, port: 5432, database, username,
+        password: username === 'lab_fresh_admin' ? cell.adminPassword : labSecret, max: 1, onnotice: () => {} });
+      clients.push(q); return q;
+    };
+    const admin = open('postgres', 'lab_fresh_admin');
+    const [identity] = await admin`SELECT system_identifier::text AS system,current_setting('server_version_num')::int/10000 AS major FROM pg_control_system()`;
+    expect(identity.system).toBe(cell.system); expect(identity.major).toBe(17);
+    const stop = async () => {
+      const result = await controllerCall({ method: 'stop', cellId: cell.id });
+      expect(result.namespaceAbsent).toBe(true); expect(result.exit).toMatchObject({ code: 0, signal: null });
+      evidence('CELL_TEARDOWN_' + cell.id, result);
+    };
+    clusters.push({ stop, id: cell.id });
+    const enableTLS = (cert, key) => controllerCall({ method: 'tls', cellId: cell.id, cert: readFileSync(cert, 'utf8'), key: readFileSync(key, 'utf8') });
+    const restrict = async allow => (await controllerCall({ method: 'hba', cellId: cell.id, allow })).policy;
+    const serverLog = async () => (await controllerCall({ method: 'log', cellId: cell.id })).log;
+    console.info('FRESH_TARGET_PHYSICAL_LAB', JSON.stringify({ id: cell.id, system: cell.system, namespaces: (await controllerCall({ method: 'identity', cellId: cell.id })).namespace }));
+    return { ...cell, admin, open, enableTLS, restrict, serverLog };
+  }
   const bin = process.env.FRESH_TARGET_TEST_PG_BIN;
   let port, stop, physicalEvidence, certificatePaths, configureHba, serverLog;
   if (bin) {
@@ -430,15 +470,8 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
   let lab, other, valid, db, qualifiedResult, second, secondSecret, otherCertificate, secondPolicy, setupWork, matrixWork;
   beforeAll(async () => {
     setupWork = (async () => {
-    // Full verification already owns a different physical PG17 service. Use
-    // its read-only identity as the independent wrong-target witness rather
-    // than initializing a redundant second cluster inside the hook budget.
-    const witness = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} });
-    try { [other] = await witness`SELECT system_identifier::text AS system,current_setting('server_version_num')::int/10000 AS major FROM pg_control_system()`; }
-    finally { await witness.end({ timeout: 2 }); }
-    expect(other.major).toBe(17);
-    lab = await physicalCluster();
-    expect(lab.system).not.toBe(other.system);
+    if (!process.env.FRESH_TARGET_EXCLUSIVE_CONTROLLER_INFO) throw Error('Owned exclusive controller required; no policy-only fallback');
+    lab = await physicalCluster(); controllerLab = lab;
     // Keep the built-in template0 sealed; use the same enforced copy boundary
     // as every other test provisioner. Never reopen this built-in template.
     await sealTemplate(statement => lab.admin.unsafe(statement), 'template0');
@@ -446,6 +479,7 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     await lab.admin`GRANT lumi_backend_owner,lumi_canonical_owner TO lumi_backend_migrator`;
     await lab.admin`GRANT lumi_canonical_app TO lumi_backend_runtime`;
     await lab.admin`GRANT EXECUTE ON FUNCTION pg_control_system() TO lumi_backend_migrator`;
+    for (const login of [ROLES.runtime, ROLES.auditor]) await lab.admin.unsafe(`ALTER ROLE ${login} PASSWORD '${labSecret}'`);
     labCertificate = certificate('A');
     await lab.enableTLS(labCertificate.cert, labCertificate.key);
     await lab.admin.unsafe(`ALTER ROLE ${ROLES.migrator} PASSWORD '${labSecret}'`);
@@ -459,7 +493,8 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     await second.admin`GRANT lumi_backend_owner,lumi_canonical_owner TO lumi_backend_migrator`;
     await second.admin`GRANT lumi_canonical_app TO lumi_backend_runtime`;
     await second.admin`GRANT EXECUTE ON FUNCTION pg_control_system() TO lumi_backend_migrator`;
-    secondSecret = randomBytes(32).toString('hex');
+    other = { system: second.system, major: 17 }; expect(lab.system).not.toBe(other.system);
+    secondSecret = labSecret; // Deliberately copied credentials: isolation must still hold.
     await second.admin.unsafe(`ALTER ROLE ${ROLES.migrator} PASSWORD '${secondSecret}'`);
     otherCertificate = certificate('B');
     await second.enableTLS(labCertificate.cert, labCertificate.key);
@@ -472,6 +507,10 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     const started = performance.now();
     // Vitest timeouts do not cancel an async test. End and await the exact
     // owned CLI/engine tree before its route or physical targets can disappear.
+    if (controller) for (const cell of clusters.filter(c => c.id)) {
+      const state = await controllerCall({ method: 'cancel', cellId: cell.id });
+      expect(state.writersAbsent).toBe(true); evidence('CONTROLLER_WRITERS_STOPPED_' + cell.id, state);
+    }
     const writerState = await writerLifetime.stop(diagnosticDeadline);
     console.info('P0_WRITERS_STOPPED', JSON.stringify(writerState));
     if (setupWork || matrixWork) {
@@ -485,7 +524,7 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     await Promise.all(clients.map(q => q.end({ timeout: 2 }).catch(() => {})));
     console.info('P0_PROVISION_TEARDOWN_TIMING', JSON.stringify({ phase: 'clients', elapsedMs: performance.now() - started }));
     for (const [index, c] of [...clusters].reverse().entries()) {
-      const tick = performance.now(); c.stop();
+      const tick = performance.now(); await c.stop();
       console.info('P0_PROVISION_TEARDOWN_TIMING', JSON.stringify({ phase: 'cluster', index, elapsedMs: performance.now() - tick, totalMs: performance.now() - started }));
     }
     for (const dir of certificateDirs) rmSync(dir, { recursive: true, force: true });
@@ -502,7 +541,7 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     const [i] = await q`SELECT (SELECT oid::int FROM pg_database WHERE datname=current_database()) AS oid,host(inet_server_addr()) AS address,inet_server_port() AS port`;
     await q.end();
     const approval = { version: 1, operation: 'PROVISION_EMPTY_PG17', expiresAt: Date.now() + 3600000, artifactSha256: loadFreshContract().artifactSha256,
-      target: { host: '127.0.0.1', port: lab.port, database: name, login: ROLES.migrator, serverAddress: i.address, serverPort: i.port, systemIdentifier: lab.system, databaseOid: i.oid, platformOwner: 'lab_fresh_admin' } };
+      target: { host: '127.0.0.1', port: lab.port, database: name, login: ROLES.migrator, serverAddress: controller ? '127.0.0.1' : i.address, serverPort: controller ? 5432 : i.port, systemIdentifier: lab.system, databaseOid: i.oid, platformOwner: 'lab_fresh_admin' } };
     return exclusiveRequest({ approval, approvalSha256: digest(JSON.stringify(approval)), url: `postgresql://${ROLES.migrator}:${labSecret}@127.0.0.1:${lab.port}/${name}`, caPem: labCertificate.caPem }, lab, lab.policy);
   }
   const reseal = r => {
@@ -529,11 +568,13 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
         const bytes = JSON.stringify(q); writeFileSync(binding.qualificationFile, bytes); binding.qualificationSha256 = digest(bytes);
       }
       request.approvalSha256 = digest(JSON.stringify(request.approval));
-      const count = migrationChildren.length, network = vi.spyOn(net.Socket.prototype, 'connect');
+      const count = migrationChildren.length, originalLog = await lab.serverLog();
       try {
-        expect((await provisionFreshTarget(request)).status).toBe('REFUSED'); expect(network).not.toHaveBeenCalled();
+        expect((await provisionFreshTarget(request)).status).toBe('REFUSED');
+        const delta = (await lab.serverLog()).slice(originalLog.length);
+        expect(delta).not.toMatch(/app=lumi_fresh_operator/);
         expect(migrationChildren).toHaveLength(count);
-      } finally { network.mockRestore(); writeFileSync(binding.qualificationFile, original); }
+      } finally { writeFileSync(binding.qualificationFile, original); }
     }
   });
   it('refuses a different physical cluster identity before DDL', async () => {
@@ -574,178 +615,96 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
   });
   it('binds the actual Prisma writer under four adversarial routes and one qualified route', async () => {
     matrixWork = (async () => {
-    const started = performance.now(), timings = []; let previous = started;
-    const timing = phase => {
-      const now = performance.now(); timings.push({ phase, elapsedMs: now - previous, totalMs: now - started }); previous = now;
-      evidence('P0_TIMINGS', { timings });
-    };
-    writerLifetime.assertOpen();
-    expect(second.system).not.toBe(lab.system);
-    const request = await target(), name = request.approval.target.database;
-    await second.admin.unsafe(`CREATE DATABASE "${name}" OWNER ${ROLES.owner} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C'`);
-    const bootstrap = second.open(name, 'lab_fresh_admin');
-    await bootstrap.unsafe(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
-    await bootstrap.unsafe(`GRANT CONNECT ON DATABASE "${name}" TO ${ROLES.migrator}`); await bootstrap.end();
-    await second.admin`ALTER SYSTEM SET log_parameter_max_length=0`;
-    await second.admin`ALTER SYSTEM SET log_parameter_max_length_on_error=0`;
-    await second.admin`ALTER SYSTEM SET log_line_prefix='%m [%p] user=%u db=%d app=%a client=%h '`;
-    await second.admin`ALTER SYSTEM SET log_statement='all'`; await second.admin`SELECT pg_reload_conf()`;
-    // Log the actual matrix, including its first native invocation, without
-    // logging unrelated preflight-regression work before the matrix starts.
-    await lab.admin`ALTER SYSTEM SET log_parameter_max_length=0`;
-    await lab.admin`ALTER SYSTEM SET log_parameter_max_length_on_error=0`;
-    await lab.admin`ALTER SYSTEM SET log_line_prefix='%m [%p] user=%u db=%d app=%a client=%h '`;
-    await lab.admin`ALTER SYSTEM SET log_statement='all'`; await lab.admin`SELECT pg_reload_conf()`;
-    timing('matrix_bootstrap');
-    const snapshot = async physical => {
-      writerLifetime.assertOpen();
-      const q = physical.open(name, 'lab_fresh_admin');
-      try { return await q.begin('isolation level repeatable read read only', async tx => {
-        await tx`SET LOCAL search_path=pg_catalog,pg_temp`;
-        const [identity] = await tx`SELECT system_identifier::text AS system FROM pg_control_system()`;
-        expect(identity.system).toBe(physical.system);
-        const catalog = await collectCombinedCatalog(tx);
-        const receipts = catalog.tables.some(t => t.relname === '_prisma_migrations')
-          ? await tx`SELECT to_jsonb(m) AS receipt FROM public._prisma_migrations m ORDER BY id` : [];
-        return { system: identity.system, catalog, receipts };
-      }); } finally { await q.end(); }
-    };
-    const pair = async label => {
-      // Targets are independent and the controlled writer is paused here.
-      // Both still receive their own full read-only transaction/identity check.
-      const [A, B] = await Promise.all([snapshot(lab), snapshot(second)]);
-      const state = { A, B };
-      evidence(label, state); return state;
-    };
-    const before = await pair('P0_INITIAL');
-    timing('initial_catalogs');
-    for (const state of Object.values(before)) { expect(state.catalog.tables).toEqual([]); expect(state.receipts).toEqual([]); }
-    const routes = [], sockets = new Set(); let selected = lab, caseName = 'WITNESS';
-    const server = net.createServer(front => {
-      const physical = selected;
-      const row = { case: caseName, system: physical.system, upstreamPort: physical.port, bytesFront: 0, bytesBack: 0 };
-      routes.push(row);
-      const back = net.connect({ host: '127.0.0.1', port: physical.port, localAddress: '127.0.0.2' });
-      sockets.add(front); sockets.add(back);
-      front.on('data', bytes => { row.bytesFront += bytes.length; }); back.on('data', bytes => { row.bytesBack += bytes.length; });
-      front.pipe(back); back.pipe(front); front.on('error', () => back.destroy()); back.on('error', () => front.destroy());
-      front.on('close', () => { back.destroy(); sockets.delete(front); }); back.on('close', () => sockets.delete(back));
-    });
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    request.approval.target.port = port;
-    request.url = `postgresql://${ROLES.migrator}:${labSecret}@127.0.0.1:${port}/${name}`;
-    exclusiveRequest(request, lab, lab.policy);
-    const witness = async physical => {
-      selected = physical;
-      const q = postgres({ host: '127.0.0.1', port, database: name, username: ROLES.migrator,
-        password: () => physical === lab ? labSecret : secondSecret, ssl: { rejectUnauthorized: true, ca: labCertificate.caPem }, max: 1, onnotice: () => {} }); clients.push(q);
-      try {
-        const [r] = await q`SELECT system_identifier::text AS system,current_database() AS database,current_user AS login,
-          (SELECT oid::int FROM pg_database WHERE datname=current_database()) AS oid,(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS tls FROM pg_control_system()`;
-        expect(r).toMatchObject({ system: physical.system, database: name, login: ROLES.migrator, tls: true }); return r;
-      } finally { await q.end({ timeout: 2 }); }
-    };
-    const cases = [];
-    try {
-      const witnesses = [await witness(lab), await witness(second)];
-      evidence('P0_CREDENTIAL_WITNESSES', { witnesses, distinctSecrets: labSecret !== secondSecret });
-      timing('credential_witnesses');
-      // Preserve containment even with trusted TLS and explicit seals.
-      const contained = { ...request, approval: { ...request.approval, target: { ...request.approval.target, host: 'localhost' } }, url: request.url.replace('127.0.0.1', 'localhost') };
-      reseal(contained);
-      const childCount = migrationChildren.length, routeCount = routes.length;
-      expect(await provisionFreshTarget(contained)).toMatchObject({ status: 'REFUSED', reason: 'MIGRATION_TARGET_BINDING_UNQUALIFIED', phase: 'INPUT' });
-      expect(migrationChildren).toHaveLength(childCount); expect(routes).toHaveLength(routeCount);
-      exclusiveRequest(request, lab, lab.policy);
-      for (const [id, expected] of [['R1_CREDENTIAL', /P1000/], ['R2_TLS', /P1011/], ['R3_NETWORK', /P1010/], ['R4_PREFLIGHT_REDIRECT', /P1010/], ['G1_ACTUAL_PRISMA', null]]) {
-        writerLifetime.assertOpen();
-        if (id === 'R2_TLS') await second.enableTLS(otherCertificate.cert, otherCertificate.key);
-        if (id === 'R3_NETWORK') {
-          await second.enableTLS(labCertificate.cert, labCertificate.key); secondPolicy = await second.restrict(false);
+      const request = await target(), name = request.approval.target.database;
+      await second.admin.unsafe(`CREATE DATABASE "${name}" OWNER ${ROLES.owner} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C'`);
+      const bootstrap = second.open(name, 'lab_fresh_admin');
+      await bootstrap.unsafe(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
+      await bootstrap.unsafe(`GRANT CONNECT ON DATABASE "${name}" TO ${ROLES.migrator}`); await bootstrap.end();
+      // Independent B witness proves that credential inequality is not the fence.
+      const copied = second.open(name, ROLES.migrator);
+      expect((await copied`SELECT system_identifier::text AS system,current_user AS login FROM pg_control_system()`)[0])
+        .toMatchObject({ system: second.system, login: ROLES.migrator }); await copied.end();
+      const snapshot = async physical => {
+        const q = physical.open(name, 'lab_fresh_admin');
+        try { return await q.begin('isolation level repeatable read read only', async tx => {
+          await tx`SET LOCAL search_path=pg_catalog,pg_temp`;
+          const [identity] = await tx`SELECT system_identifier::text AS system FROM pg_control_system()`;
+          expect(identity.system).toBe(physical.system);
+          const catalog = await collectCombinedCatalog(tx);
+          const receipts = catalog.tables.some(t => t.relname === '_prisma_migrations')
+            ? await tx`SELECT to_jsonb(m) AS receipt FROM public._prisma_migrations m ORDER BY id` : [];
+          return { system: identity.system, catalog, receipts };
+        }); } finally { await q.end(); }
+      };
+      const pair = async label => { const [A, B] = await Promise.all([snapshot(lab), snapshot(second)]); const state = { A, B }; evidence(label, state); return state; };
+      const initial = await pair('P0_INITIAL'), cases = [];
+      for (const state of Object.values(initial)) { expect(state.catalog.tables).toEqual([]); expect(state.receipts).toEqual([]); }
+      // Returning a promise from an async function would await it. Hold the
+      // completion in an object so fault setup runs before the native writer.
+      const held = async () => {
+        const qualification = JSON.parse(readFileSync(request.approval.exclusiveTarget.qualificationFile));
+        const work = controllerCall({ method: 'run', cellId: lab.id, input: structuredClone(request), qualification, hold: true });
+        let settled = false, failure; work.then(() => { settled = true; }, e => { settled = true; failure = e; });
+        while (!settled) {
+          const state = await controllerCall({ method: 'identity', cellId: lab.id });
+          if (state.jobs.some(j => j.checkpoint)) return { work };
+          await new Promise(resolve => setTimeout(resolve, 10));
         }
-        caseName = id; selected = lab;
-        const beforeCase = await pair(id + '_BEFORE'), routeStart = routes.length, childStart = migrationChildren.length;
-        timing(id + '_before_catalogs');
-        let output = '', actualExit, actualSignal;
-        writerControl.beforeSpawn = (_exe, args, options) => {
-          expect(args).toContain('migrate'); expect(args).toContain('deploy');
-          const u = new URL(options.env.DATABASE_URL);
-          expect(options.env.DATABASE_URL).toBe(options.env.DIRECT_URL);
-          expect(u.hostname).toBe('127.0.0.1'); expect(Number(u.port)).toBe(port);
-          expect(u.searchParams.get('sslmode')).toBe('require'); expect(u.searchParams.get('sslaccept')).toBe('strict');
-          expect(digest(readFileSync(u.searchParams.get('sslcert')))).toBe(digest(labCertificate.caPem));
-          expect(digest(readFileSync(options.env.PRISMA_SCHEMA_ENGINE_BINARY))).toBe(JSON.parse(readFileSync(request.approval.exclusiveTarget.qualificationFile)).engineSha256);
-          for (const ambient of ['NODE_OPTIONS', 'PRISMA_MIGRATION_ENGINE_BINARY', 'PGHOST', 'PGPASSWORD', 'SSL_CERT_FILE']) expect(options.env).not.toHaveProperty(ambient);
-          // Preflight's authenticated connection stays on A. Only the actual
-          // native writer's newly opened sockets are redirected.
-          selected = expected ? second : lab;
-        };
-        writerControl.afterSpawn = child => {
-          child.stdout.on('data', bytes => { output += bytes.toString(); });
-          child.stderr.on('data', bytes => { output += bytes.toString(); });
-          child.once('close', (code, signal) => { actualExit = code; actualSignal = signal; });
-        };
-        let result;
-        try { result = await provisionFreshTarget(request); }
-        finally { writerControl.beforeSpawn = null; writerControl.afterSpawn = null; }
-        writerLifetime.assertOpen();
-        timing(id + '_writer');
-        const afterCase = await pair(id + '_AFTER'), observed = routes.slice(routeStart);
-        timing(id + '_after_catalogs');
-        const safeOutput = output.replaceAll(labSecret, '<credential-A>').replaceAll(secondSecret, '<credential-B>');
-        cases.push({ id, result, routes: observed, expectedError: expected?.source ?? null, actualExit, actualSignal, output: safeOutput });
-        evidence('P0_CASES', { cases, serverSourcePolicy: secondPolicy });
-        expect(migrationChildren.length - childStart).toBe(1);
-        expect(observed[0].system).toBe(lab.system);
-        expect(observed.slice(1).length).toBeGreaterThan(0);
-        expect(observed.slice(1).every(r => r.system === (expected ? second.system : lab.system))).toBe(true);
-        expect(actualSignal).toBeNull();
-        if (expected) {
-          expect(actualExit).toBe(1); expect(output).toMatch(expected);
-          expect(result).toMatchObject({ status: 'REFUSED', reason: 'MIGRATION_PROCESS_FAILED', phase: 'MIGRATIONS' });
-          expect(stable(afterCase)).toEqual(stable(beforeCase));
-        } else {
-          expect(actualExit).toBe(0);
-          expect(result).toMatchObject({ status: 'PROVISIONED_MATCH', reason: 'EXACT_PROFILE_AND76_RECEIPTS' });
-          expect(stable(bindPlatform(afterCase.A.catalog, 'lab_fresh_admin'))).toEqual(stable(loadFreshContract().profile.catalog));
-          expect(afterCase.A.receipts).toHaveLength(76);
-          for (const m of loadFreshContract().migrations) {
-            const matches = afterCase.A.receipts.map(r => r.receipt).filter(r => r.migration_name === m.name);
-            expect(matches).toHaveLength(1);
-            expect(matches[0]).toMatchObject({ checksum: m.checksum, applied_steps_count: 1, rolled_back_at: null });
-            expect(matches[0].finished_at).toBeTruthy(); expect(matches[0].logs || '').toBe('');
-            expect(Date.parse(matches[0].finished_at)).toBeGreaterThanOrEqual(Date.parse(matches[0].started_at));
-          }
-        }
-        expect(stable(afterCase.B)).toEqual(stable(before.B));
+        throw failure || Error('Writer ended before checkpoint');
+      };
+      for (const [id, expected] of [['R1_CREDENTIAL', /P1000/], ['R2_TLS', /P1011/], ['R3_SOURCE', /P1010/]]) {
+        const before = await pair(id + '_BEFORE'), { work } = await held();
+        if (id === 'R1_CREDENTIAL') await lab.admin.unsafe(`ALTER ROLE ${ROLES.migrator} PASSWORD '${'f'.repeat(64)}'`);
+        if (id === 'R2_TLS') await lab.enableTLS(otherCertificate.cert, otherCertificate.key);
+        if (id === 'R3_SOURCE') await lab.restrict(false);
+        await controllerCall({ method: 'release', cellId: lab.id });
+        const outcome = await work; cases.push({ id, ...outcome }); evidence('P0_CASES', { cases });
+        expect(outcome.result).toMatchObject({ status: 'REFUSED', reason: 'MIGRATION_PROCESS_FAILED', phase: 'MIGRATIONS' });
+        expect(outcome.code).toBe(1); expect(outcome.signal).toBeNull(); expect(outcome.output).toMatch(expected);
+        expect(outcome.checkpoint).toBe(true); expect(outcome.writersAbsent).toBe(true);
+        if (id === 'R1_CREDENTIAL') await lab.admin.unsafe(`ALTER ROLE ${ROLES.migrator} PASSWORD '${labSecret}'`);
+        if (id === 'R2_TLS') await lab.enableTLS(labCertificate.cert, labCertificate.key);
+        if (id === 'R3_SOURCE') await lab.restrict(true);
+        expect(stable(await pair(id + '_AFTER'))).toEqual(stable(before));
       }
-      const logs = { A: lab.serverLog(), B: second.serverLog() };
-      expect(logs.A).toMatch(/_prisma_migrations/);
-      expect(logs.B).toMatch(/password authentication failed/); expect(logs.B).toMatch(/pg_hba.conf rejects/);
-      expect(logs.B).not.toMatch(/(?:CREATE TABLE|INSERT INTO|UPDATE)\s+(?:"public"\.)?"?_prisma_migrations/i);
-      evidence('P0_RAW_SERVER_LOGS', logs);
-      timing('raw_server_logs');
-    } finally {
-      writerControl.beforeSpawn = null; writerControl.afterSpawn = null;
-      await writerLifetime.wait(performance.now() + 2000);
-      for (const socket of sockets) socket.destroy();
-      await new Promise(resolve => server.close(resolve));
-      const closed = await new Promise(resolve => { const socket = net.connect({ host: '127.0.0.1', port }); socket.once('connect', () => { socket.destroy(); resolve(false); }); socket.once('error', error => resolve(error.code === 'ECONNREFUSED')); });
-      expect(closed).toBe(true); evidence('P0_ROUTE_TEARDOWN', { port, closed });
-    }
-    // The existing structural, tenant and permission regressions use this
-    // very same real positive result. Do not migrate a second throwaway schema
-    // merely to repeat the already-complete native deployment.
-    // The adversarial route is now closed. The lab controller independently
-    // seals the direct local endpoint to the SAME physical database for the
-    // subsequent inspection, repeated-mutation refusal and permission tests.
-    request.approval.target.port = lab.port;
-    request.url = `postgresql://${ROLES.migrator}:${labSecret}@127.0.0.1:${lab.port}/${name}`;
-    valid = exclusiveRequest(request, lab, lab.policy); qualifiedResult = cases.at(-1).result;
-    timing('complete');
-    })();
-    return matrixWork;
+      // A parent-namespace route selected by an attacker is absent in the
+      // writer's private network namespace. The actual native CLI must refuse.
+      // The B socket path is also outside the cell's filesystem namespace.
+      const route = net.createServer(socket => socket.destroy());
+      await new Promise(resolve => route.listen(0, '127.0.0.1', resolve)); const port = route.address().port;
+      let connections = 0; route.on('connection', () => connections++);
+      try {
+        const before = await pair('R4_ESCAPE_BEFORE');
+        await controlledOperation(request, false, { probe: { url: request.url.replace(':5432/', ':' + port + '/'), caPem: request.caPem,
+          foreignSocket: second.audit + '/.s.PGSQL.5432' } });
+        const outcome = lastControllerRun; cases.push({ id: 'R4_ESCAPE', ...outcome }); evidence('P0_CASES', { cases });
+        expect(outcome.result.preflight.system).toBe(lab.system); expect(outcome.result.native.code).toBe(1);
+        expect(outcome.result.native.signal).toBeNull(); expect(outcome.result.native.output).toMatch(/P1001/);
+        expect(connections).toBe(0); expect(outcome.writersAbsent).toBe(true);
+        expect(outcome.result.attempts.listener).toMatchObject({ denied: true, error: 'EPERM' });
+        expect(outcome.result.attempts.nonNamespacedSocket).toMatchObject({ denied: true, errno: 1 });
+        for (const name of ['hostRoot', 'database', 'adminCredential', 'foreignSocket']) expect(outcome.result.attempts[name].denied).toBe(true);
+        for (const name of ['networkNamespace', 'userNamespace', 'namespaceEntry', 'mount']) expect(outcome.result.attempts[name].exit).not.toBe(0);
+        expect(stable(await pair('R4_ESCAPE_AFTER'))).toEqual(stable(before));
+      } finally { await new Promise(resolve => route.close(resolve)); }
+      const result = await provisionFreshTarget(request), outcome = lastControllerRun;
+      cases.push({ id: 'G1_ACTUAL_PRISMA', ...outcome }); evidence('P0_CASES', { cases });
+      expect(result).toMatchObject({ status: 'PROVISIONED_MATCH', reason: 'EXACT_PROFILE_AND76_RECEIPTS' });
+      expect(outcome.code).toBe(0); expect(outcome.signal).toBeNull(); expect(outcome.checkpoint).toBe(true); expect(outcome.writersAbsent).toBe(true);
+      expect(outcome.processes.some(p => p.name.startsWith('schema-engine'))).toBe(true);
+      for (const p of outcome.processes) expect(p).toMatchObject({ uid: '1000', capEff: '0000000000000000', capBnd: '0000000000000000', noNewPrivs: '1', seccomp: '2' });
+      const after = await pair('G1_AFTER'); expect(stable(after.B)).toEqual(stable(initial.B));
+      expect(stable(bindPlatform(after.A.catalog, 'lab_fresh_admin'))).toEqual(stable(loadFreshContract().profile.catalog));
+      expect(after.A.receipts).toHaveLength(76);
+      for (const m of loadFreshContract().migrations) {
+        const matches = after.A.receipts.map(r => r.receipt).filter(r => r.migration_name === m.name);
+        expect(matches).toHaveLength(1); expect(matches[0]).toMatchObject({ checksum: m.checksum, applied_steps_count: 1, rolled_back_at: null });
+        expect(matches[0].finished_at).toBeTruthy(); expect(matches[0].logs || '').toBe('');
+        expect(Date.parse(matches[0].finished_at)).toBeGreaterThanOrEqual(Date.parse(matches[0].started_at));
+      }
+      evidence('P0_RAW_SERVER_LOGS', { A: await lab.serverLog(), B: await second.serverLog() });
+      valid = request; qualifiedResult = result;
+    })(); return matrixWork;
   }, 30000);
 
   it('provisions exact76 receipts plus all4 legacy tables and the combined authority profile', async () => {
@@ -830,6 +789,162 @@ describe.skipIf(!enabled)('fresh PG17 operator / independent physical labs', () 
     expect((await inspectFreshTarget(valid)).reason).toBe('MIGRATION_HISTORY_MISMATCH');
     const [r] = await q`SELECT checksum FROM _prisma_migrations WHERE migration_name='20261015000000_canonical_provenance_v1'`; expect(r.checksum).toBe('0'.repeat(64)); await q.end();
   });
+  async function twin(request) {
+    const name = request.approval.target.database;
+    await second.admin.unsafe(`CREATE DATABASE "${name}" OWNER ${ROLES.owner} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C'`);
+    const q = second.open(name, 'lab_fresh_admin');
+    try { await q.unsafe(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`); await q.unsafe(`GRANT CONNECT ON DATABASE "${name}" TO ${ROLES.migrator}`); }
+    finally { await q.end(); }
+  }
+  async function observedPair(request, label) {
+    const read = async physical => {
+      const q = physical.open(request.approval.target.database, 'lab_fresh_admin');
+      try { return await q.begin('isolation level repeatable read read only', async tx => {
+        await tx`SET LOCAL search_path=pg_catalog,pg_temp`;
+        const [identity] = await tx`SELECT system_identifier::text AS system FROM pg_control_system()`;
+        expect(identity.system).toBe(physical.system);
+        const catalog = await collectCombinedCatalog(tx);
+        const receipts = catalog.tables.some(t => t.relname === '_prisma_migrations')
+          ? await tx`SELECT to_jsonb(m) AS receipt FROM public._prisma_migrations m ORDER BY id` : [];
+        return { system: identity.system, catalog, receipts };
+      }); } finally { await q.end(); }
+    };
+    const [A, B] = await Promise.all([read(lab), read(second)]); const result = { A, B };
+    evidence(label, result); return result;
+  }
+  async function holdWriter(request) {
+    const qualification = JSON.parse(readFileSync(request.approval.exclusiveTarget.qualificationFile));
+    const work = controllerCall({ method: 'run', cellId: lab.id, input: structuredClone(request), qualification, hold: true });
+    let settled = false, failure; work.then(() => { settled = true; }, e => { settled = true; failure = e; });
+    while (!settled) {
+      const state = await controllerCall({ method: 'identity', cellId: lab.id });
+      if (state.jobs.some(j => j.checkpoint)) return { work };
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw failure || Error('Writer did not reach protected checkpoint');
+  }
+  async function phaseBarrier(request, phase) {
+    const q = lab.open(request.approval.target.database, 'lab_fresh_admin'), key = 6131701;
+    await q`SELECT pg_advisory_lock(${key})`;
+    // These explicit fault objects exist only in this owned negative database.
+    // Triggers block, but never insert, update or manufacture a receipt.
+    if (phase === 'INSERT' || phase === 'FINISH') {
+      await q.unsafe(`CREATE FUNCTION public.lumi_test_receipt_barrier() RETURNS trigger LANGUAGE plpgsql AS $f$
+        BEGIN IF TG_OP='${phase === 'INSERT' ? 'INSERT' : 'UPDATE'}' ${phase === 'FINISH' ? 'AND NEW.finished_at IS NOT NULL' : ''}
+          THEN PERFORM pg_advisory_xact_lock(${key}); END IF; RETURN NEW; END $f$`);
+      await q.unsafe(`CREATE FUNCTION public.lumi_test_ddl_barrier() RETURNS event_trigger LANGUAGE plpgsql AS $f$
+        BEGIN IF to_regclass('public._prisma_migrations') IS NOT NULL
+          AND NOT EXISTS(SELECT FROM pg_trigger WHERE tgname='lumi_test_receipt_barrier') THEN
+          EXECUTE 'CREATE TRIGGER lumi_test_receipt_barrier BEFORE INSERT OR UPDATE ON public._prisma_migrations FOR EACH ROW EXECUTE FUNCTION public.lumi_test_receipt_barrier()';
+        END IF; END $f$`);
+      await q`CREATE EVENT TRIGGER lumi_test_phase_barrier ON ddl_command_end WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION public.lumi_test_ddl_barrier()`;
+    } else {
+      const condition = phase === 'INITIALIZE' ? "current_query() LIKE '%_prisma_migrations%'" : "current_query() NOT LIKE '%_prisma_migrations%'";
+      await q.unsafe(`CREATE FUNCTION public.lumi_test_ddl_barrier() RETURNS event_trigger LANGUAGE plpgsql AS $f$
+        BEGIN IF ${condition} THEN PERFORM pg_advisory_xact_lock(${key}); END IF; END $f$`);
+      await q`CREATE EVENT TRIGGER lumi_test_phase_barrier ON ddl_command_start WHEN TAG IN ('CREATE TABLE','CREATE TYPE','CREATE INDEX') EXECUTE FUNCTION public.lumi_test_ddl_barrier()`;
+    }
+    return q;
+  }
+  async function blockedNative(q, request) {
+    const deadline = performance.now() + 2500;
+    while (performance.now() < deadline) {
+      const rows = await q`SELECT pid,application_name,query,wait_event_type,wait_event FROM pg_stat_activity
+        WHERE datname=${request.approval.target.database} AND usename=${ROLES.migrator}
+          AND wait_event_type='Lock' AND wait_event='advisory'`;
+      if (rows.length === 1) return rows[0];
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    throw Error('Actual native phase barrier not observed');
+  }
+  for (const phase of ['INITIALIZE', 'INSERT', 'DDL', 'FINISH']) {
+    it(`refuses actual native connection replacement at ${phase} and retains partial receipts`, async () => {
+      const request = await target(); await twin(request);
+      const before = await observedPair(request, phase + '_BEFORE'), { work } = await holdWriter(request);
+      const q = await phaseBarrier(request, phase);
+      try {
+        await controllerCall({ method: 'release', cellId: lab.id });
+        const blocked = await blockedNative(q, request);
+        evidence(phase + '_BLOCKED_NATIVE', { backend: blocked, kernel: await controllerCall({ method: 'identity', cellId: lab.id }) });
+        if (phase === 'INITIALIZE') expect(blocked.query).toMatch(/CREATE TABLE.*_prisma_migrations/s);
+        if (phase === 'INSERT') expect(blocked.query).toMatch(/INSERT INTO.*_prisma_migrations/s);
+        if (phase === 'FINISH') expect(blocked.query).toMatch(/UPDATE.*_prisma_migrations.*finished_at/s);
+        const killed = await q`SELECT pg_terminate_backend(pid) AS killed FROM pg_stat_activity WHERE pid=${blocked.pid}
+          AND datname=${request.approval.target.database} AND usename=${ROLES.migrator} AND wait_event='advisory'`;
+        expect(killed).toEqual([{ killed: true }]);
+        const outcome = await work; evidence(phase + '_OUTCOME', outcome);
+        expect(outcome.result).toMatchObject({ status: 'REFUSED', reason: 'MIGRATION_PROCESS_FAILED', phase: 'MIGRATIONS' });
+        expect(outcome.code).toBe(1); expect(outcome.signal).toBeNull(); expect(outcome.writersAbsent).toBe(true);
+      } finally { await q`SELECT pg_advisory_unlock(6131701)`; await q.end(); }
+      const after = await observedPair(request, phase + '_AFTER'); expect(stable(after.B)).toEqual(stable(before.B));
+      if (phase === 'INITIALIZE' || phase === 'INSERT') expect(after.A.receipts).toEqual([]);
+      else {
+        expect(after.A.receipts).toHaveLength(1); const receipt = after.A.receipts[0].receipt;
+        expect(receipt.finished_at).toBeNull(); expect(receipt.rolled_back_at).toBeNull();
+        expect(receipt.checksum).toBe(loadFreshContract().migrations[0].checksum);
+        expect(receipt.applied_steps_count).toBe(phase === 'FINISH' ? 1 : 0);
+      }
+    });
+  }
+  it('refuses wrong database identity, role, missing and expired approval without changing either target', async () => {
+    const original = await target(); await twin(original); const before = await observedPair(original, 'IDENTITIES_BEFORE');
+    for (const kind of ['oid', 'role', 'missing', 'expired']) {
+      const request = { ...original, approval: structuredClone(original.approval) };
+      if (kind === 'oid') request.approval.target.databaseOid++;
+      if (kind === 'role') request.url = request.url.replace(ROLES.migrator, ROLES.runtime);
+      if (kind === 'expired') request.approval.expiresAt = Date.now() - 1;
+      if (kind === 'missing') delete request.approval.operation;
+      reseal(request);
+      const outcome = await provisionFreshTarget(request); expect(outcome.status).toBe('REFUSED');
+      expect(lastControllerRun.checkpoint).toBe(false); expect(lastControllerRun.writersAbsent).toBe(true);
+      evidence('IDENTITY_' + kind, lastControllerRun);
+    }
+    expect(stable(await observedPair(original, 'IDENTITIES_AFTER'))).toEqual(stable(before));
+  });
+  it('preserves a committed native result after a lost controller response and never automatically replays it', async () => {
+    const request = await target(); await twin(request); const before = await observedPair(request, 'LOST_RESPONSE_BEFORE');
+    const qualification = JSON.parse(readFileSync(request.approval.exclusiveTarget.qualificationFile));
+    const socket = net.connect(controller.socket);
+    await new Promise((resolve, reject) => {
+      socket.once('error', reject); socket.once('connect', () => socket.write(JSON.stringify({ method: 'run', cellId: lab.id, input: request, qualification }) + '\n', resolve));
+    });
+    socket.destroy(); // Actual application/controller response is unavailable.
+    const start = performance.now(); let observedRunning = false;
+    for (;;) {
+      const state = await controllerCall({ method: 'identity', cellId: lab.id });
+      if (state.jobs.length) observedRunning = true;
+      if (observedRunning && state.jobs.length === 0) break;
+      if (performance.now() - start >= 3000) throw Error('Lost-response process completion unproven');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const committed = await observedPair(request, 'LOST_RESPONSE_COMMITTED');
+    expect(committed.A.receipts).toHaveLength(76); expect(stable(committed.B)).toEqual(stable(before.B));
+    expect(stable(bindPlatform(committed.A.catalog, 'lab_fresh_admin'))).toEqual(stable(loadFreshContract().profile.catalog));
+    expect(await provisionFreshTarget(request)).toMatchObject({ status: 'REFUSED', reason: 'BOOTSTRAP_DATABASE_ACL_MISMATCH' });
+    expect(lastControllerRun.checkpoint).toBe(false); expect(lastControllerRun.processes.some(p => p.name.startsWith('schema-engine'))).toBe(false);
+    expect(stable(await observedPair(request, 'LOST_RESPONSE_NO_REPLAY'))).toEqual(stable(committed));
+    evidence('LOST_RESPONSE_CLASSIFICATION', { acknowledgment: 'UNKNOWN_TO_DISCONNECTED_CALLER', nativeCommitIndependentlyObserved: true, automaticReplay: false });
+  });
+  it('refuses teardown with a stopped live writer, enforces approval expiry and quarantines the cell', async () => {
+    const request = await target(); await twin(request); const before = await observedPair(request, 'LIFETIME_BEFORE');
+    request.approval.expiresAt = Date.now() + 2500; reseal(request);
+    const { work } = await holdWriter(request); const outcome = work.then(value => ({ value }), error => ({ error: error.message }));
+    const q = await phaseBarrier(request, 'INITIALIZE');
+    try {
+      await controllerCall({ method: 'release', cellId: lab.id });
+      const blocked = await blockedNative(q, request);
+      const frozen = await controllerCall({ method: 'freeze', cellId: lab.id }); expect(frozen.processes.length).toBeGreaterThan(1);
+      await expect(controllerCall({ method: 'stop', cellId: lab.id })).rejects.toThrow('WRITER_TERMINATION_UNCERTAIN');
+      const result = await outcome; expect(result.error).toMatch(/APPROVAL_OR/);
+      const state = await controllerCall({ method: 'identity', cellId: lab.id }); expect(state.members.filter(p => p.uid === '1000')).toEqual([]);
+      await q`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid=${blocked.pid}
+        AND datname=${request.approval.target.database} AND usename=${ROLES.migrator}`;
+      evidence('LIFETIME_REFUSAL', { frozen, result, kernel: state, automaticReplay: false });
+      await expect(controllerCall({ method: 'run', cellId: lab.id, input: request, qualification: JSON.parse(readFileSync(request.approval.exclusiveTarget.qualificationFile)) })).rejects.toThrow('CELL_NOT_IDLE');
+    } finally { await q`SELECT pg_advisory_unlock(6131701)`; await q.end(); }
+    const after = await observedPair(request, 'LIFETIME_AFTER'); expect(stable(after.B)).toEqual(stable(before.B)); expect(after.A.receipts).toEqual([]);
+  });
+
 });
 
 describe('owned Docker teardown / deterministic command and clock regression', () => {

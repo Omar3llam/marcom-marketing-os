@@ -4,6 +4,245 @@ Status: code-only candidate for independent review. **No hosted provisioning,
 database creation, deployment or runtime activation is authorized by this PR.**
 Backend Gates B/C remain BLOCKED. Historical Neon resources remain untouched.
 
+## Exclusive writer controller candidate — synthetic Linux only
+
+This bounded candidate starts from master
+`e03d6c5174377967b7eaa7feec1799fbfc79c939`. Earlier sections describe historical
+protocol and containment evidence; those experiments do not authorize this
+writer. Hosted compatibility, runtime admission and Gates B/C remain unqualified.
+
+A policy JSON, CA, credential hash or earlier SQL identity observation cannot
+authorize mutation on its own. Even literal-loopback mutation now refuses before
+constructing the database client unless the operator is already inside a
+controller-owned Linux cell with a current, root-owned, read-only kernel lease.
+There is no Windows or policy-only fallback. Unsealed read-only inspection
+retains its previous observer contract and supplies no mutation authority.
+
+## F-01 trust bootstrap — mandatory before privileged application evaluation
+
+Direct Root execution of a controller in a writable checkout is retired. A
+controller self-check runs too late to authenticate that entrypoint.
+
+The Root operator must obtain TWO independent external review pins: the exact
+bootstrap literal below and an immutable source-closure identity manifest. Never
+calculate these pins by importing the candidate or accepting values from its
+environment. Hashing unchecked working files, copying them, or chown/chmod alone
+does not establish approval. Without an independently approved identity: STOP.
+
+The manifest has version 1, scope `F01_REVIEWED_SOURCE_CLOSURE`, a `files`
+map (relative path to exact `sha256`, `bytes`, `executable`), and `runtime`
+(exact Node executable `sha256`, `bytes`). Review the complete root closure:
+controller, contract, package scope metadata, all postgres/src modules, and the
+Node executable; all contract data and unprivileged writer files are included
+as well. Unlisted inputs are never copied. No symlink is copied or traversed.
+Existing canonical Root-owned OS binaries/libraries are the trusted base.
+
+Invoke the EXACT externally reviewed literal with existing trusted OS
+`/usr/bin/python3 -I -S -c '<literal>' --launch <source> <node> <identity>
+<expected-identity-sha256> <unique-label>`. The literal itself must be passed
+from the independently pinned review artifact, not imported from the checkout.
+Do not run a mutable helper to select the Root command. The Root command receipt
+must preserve the literal's hash and the external expected identity digest.
+
+The `--verify-intake` mode evaluates no application code and starts no process
+or connection. It is available for unprivileged negative tests; it supplies no
+execution authorization. Only `--launch` can seal and execute, and it requires
+Root. All post-verification code, runtime and source paths live below the
+task-owned `/var/lib/lumi-exclusive-613` tree, with Root-owned non-writable
+ancestors. This deliberately replaces the earlier home-based retained root,
+whose user-owned ancestor permitted pathname replacement. Historical retained
+directories remain untouched. Private storage qualification and independent
+post-lifecycle retention checks remain mandatory.
+
+<!-- F01_BOOTSTRAP_BEGIN -->
+```python
+# F01 trusted OS bootstrap. Execute this exact reviewed literal with python3 -I -S.
+# Its digest and the manifest digest must come from the independent external review.
+import os, sys, stat, hashlib, json, tempfile
+BASE = "/var/lib/lumi-exclusive-613"
+def refuse(): raise RuntimeError("PRIVILEGED_SOURCE_UNQUALIFIED")
+def digest(b): return hashlib.sha256(b).hexdigest()
+def stable(s): return (s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_uid,s.st_gid)
+def checked_open(path, directory=False):
+    if not path.startswith("/") or os.path.normpath(path)!=path: refuse()
+    fd=os.open("/",os.O_RDONLY|os.O_DIRECTORY)
+    try:
+        for i, part in enumerate(path.split("/")[1:]):
+            nxt=os.open(part,os.O_RDONLY|os.O_NOFOLLOW|(os.O_DIRECTORY if directory or i<len(path.split("/"))-2 else 0),dir_fd=fd)
+            os.close(fd);fd=nxt
+            s=os.fstat(fd)
+            if s.st_uid not in (0,os.getuid() or 1000) or s.st_mode&0o022: refuse()
+        s=os.fstat(fd)
+        if directory and not stat.S_ISDIR(s.st_mode): refuse()
+        if not directory and (not stat.S_ISREG(s.st_mode) or s.st_nlink!=1): refuse()
+        return fd
+    except BaseException:
+        os.close(fd);raise
+def read_exact(path, expected):
+    fd=checked_open(path)
+    try:
+        before=os.fstat(fd);chunks=[]
+        while True:
+            b=os.read(fd,1048576)
+            if not b: break
+            chunks.append(b)
+        data=b"".join(chunks)
+        if stable(before)!=stable(os.fstat(fd)) or len(data)!=expected["bytes"] or digest(data)!=expected["sha256"]: refuse()
+        current=os.stat(path,follow_symlinks=False)
+        if stable(current)!=stable(before): refuse()
+        return data,stable(before)
+    finally: os.close(fd)
+def root_path(path):
+    p=path
+    while True:
+        s=os.lstat(p)
+        if s.st_uid!=0 or s.st_mode&0o022 or stat.S_ISLNK(s.st_mode): refuse()
+        if p=="/": break
+        p=os.path.dirname(p)
+def main():
+    if len(sys.argv)!=7: refuse()
+    mode,source,runtime,identity,pin,label=sys.argv[1:]
+    if mode not in ("--verify-intake","--launch") or len(pin)!=64 or any(c not in "0123456789abcdef" for c in pin): refuse()
+    if not label.isalnum() or len(label)>40: refuse()
+    # The expected identity is an operator-supplied external pin, never a value
+    # calculated by importing candidate code or supplied through its environment.
+    identity_fd=checked_open(identity)
+    try:
+        with os.fdopen(identity_fd,"rb") as stream: raw=stream.read()
+    except BaseException: raise
+    if digest(raw)!=pin: refuse()
+    manifest=json.loads(raw)
+    if set(manifest)!={"version","scope","files","runtime"} or manifest["version"]!=1 or manifest["scope"]!="F01_REVIEWED_SOURCE_CLOSURE": refuse()
+    files=manifest["files"]
+    required={"package.json","scripts/fresh-target/exclusiveTargetController.js","scripts/fresh-target/contract.js","node_modules/postgres/package.json"}
+    required.update("node_modules/postgres/src/"+x+".js" for x in ("index","types","connection","query","queue","errors","subscribe","large","result","bytes"))
+    if not isinstance(files,dict) or not required.issubset(files): refuse()
+    for name,record in files.items():
+        if not name or name.startswith("/") or os.path.normpath(name)!=name or ".." in name.split("/") or name.split("/")[-1]==".env": refuse()
+        if set(record)!={"sha256","bytes","executable"} or not isinstance(record["bytes"],int) or record["bytes"]<0 or len(record["sha256"])!=64 or not isinstance(record["executable"],bool): refuse()
+    source_fd=checked_open(source,True)
+    runtime_bytes,runtime_stat=read_exact(runtime,manifest["runtime"])
+    original_source=stable(os.fstat(source_fd))
+    records={}
+    try:
+        # Intake is treated only as bytes; nothing below is imported or spawned.
+        for name,record in files.items():
+            _,records[name]=read_exact(source+"/"+name,record)
+        if stable(os.stat(source,follow_symlinks=False))!=original_source: refuse()
+        if mode=="--verify-intake":
+            print(json.dumps({"status":"INTAKE_BYTES_VERIFIED","uid":os.getuid(),"identitySha256":pin,"files":len(files),"applicationEvaluations":0,"databaseConnections":0,"migrationProcesses":0}))
+            return
+        if os.getuid()!=0 or sys.platform!="linux": refuse()
+        root_path("/var/lib")
+        if not os.path.exists(BASE): os.mkdir(BASE,0o711)
+        root_path(BASE)
+        dest=tempfile.mkdtemp(prefix="trust-",dir=BASE);os.chmod(dest,0o755)
+        snapshot=dest+"/source";os.mkdir(snapshot,0o755)
+        for name,record in files.items():
+            path=snapshot+"/"+name;os.makedirs(os.path.dirname(path),mode=0o755,exist_ok=True)
+            data,observed=read_exact(source+"/"+name,record)
+            if observed!=records[name]: refuse()
+            fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o555 if record["executable"] else 0o444)
+            try:
+                with os.fdopen(fd,"wb") as out: out.write(data);out.flush();os.fsync(out.fileno())
+            except BaseException: raise
+        if stable(os.stat(source,follow_symlinks=False))!=original_source: refuse()
+        if read_exact(runtime,manifest["runtime"])[1]!=runtime_stat: refuse()
+        # All subsequent privileged executable/import paths have root-only
+        # non-writable ancestors. No use of the original source paths follows.
+        with open(dest+"/node","xb") as out: out.write(runtime_bytes);out.flush();os.fsync(out.fileno())
+        os.chmod(dest+"/node",0o555)
+        with open(dest+"/identity.json","xb") as out: out.write(raw);out.flush();os.fsync(out.fileno())
+        os.chmod(dest+"/identity.json",0o444)
+        for current,dirs,names in os.walk(snapshot,topdown=False):
+            for name in names:
+                path=current+"/"+name
+                if digest(open(path,"rb").read())!=files[os.path.relpath(path,snapshot)]["sha256"]: refuse()
+            os.chmod(current,0o555)
+        os.chmod(dest,0o555);root_path(dest)
+        print(json.dumps({"status":"ROOT_SOURCE_SEALED","uid":os.getuid(),"identitySha256":pin,"files":len(files),"snapshot":snapshot,"runtime":dest+"/node","applicationEvaluations":0,"databaseConnections":0,"migrationProcesses":0}),flush=True)
+        info=BASE+"/info-"+label+".json"
+        if os.path.lexists(info): refuse()
+        os.execve(dest+"/node",[dest+"/node",snapshot+"/scripts/fresh-target/exclusiveTargetController.js","--serve",snapshot,info],{"PATH":"/usr/sbin:/usr/bin:/bin","HOME":"/root","LANG":"C.UTF-8","LUMI_CONTROLLER_SOURCE_IDENTITY":pin})
+    finally: os.close(source_fd)
+try: main()
+except BaseException as e:
+    if isinstance(e,KeyboardInterrupt): raise
+    print("PRIVILEGED_SOURCE_UNQUALIFIED:"+type(e).__name__,file=sys.stderr)
+    sys.exit(1)
+```
+<!-- F01_BOOTSTRAP_END -->
+
+Each cell has separate network, mount and PID namespaces. Its only network
+interface is loopback; it contains exactly its owned PostgreSQL server and no
+route to a parent namespace or second physical cluster. A private chroot exposes
+read-only source/dependencies/tools, its own control leases, private temporary
+storage and only its own PostgreSQL socket/data mounts. Other cluster sockets,
+host `/proc`, homes, Windows mounts and Docker sockets are absent. PostgreSQL
+runs as a different OS UID (1001); writer UID 1000 cannot read its bootstrap
+password or data files. Administrative audit connections use independently held
+SCRAM credentials and close before application preflight. No trust HBA rule or
+application superuser capability is introduced.
+
+The root supervisor keeps only SETUID, SETGID, SETPCAP and KILL for its owned
+children. PostgreSQL, the operator, Prisma CLI, native engine and descendants
+have zero inherited/permitted/effective/bounding/ambient capabilities and
+`NoNewPrivs=1`. A fixed x86-64 seccomp filter, installed with the existing
+Python standard library before Node starts, is inherited across every fork and
+exec. It denies bind/listen, namespace changes, inherited keyring operations,
+io_uring entry points and socket families outside
+AF_UNIX/AF_INET/AF_INET6. This prevents a writer descendant from creating a
+replacement PostgreSQL listener and prevents non-namespaced AF_VSOCK escape.
+No new package is installed. Kernel status and live denied-syscall probes, not
+a filter hash alone, are required evidence. The trusted outer namespace setup is privileged; it is not a
+migration writer. The root controller observes process UIDs, start identities,
+namespace membership, executable identity, the operator root and inherited FDs
+independently through host `/proc`. It also verifies PG17's system identifier
+against the owned data directory and validates the approved database OID and
+scoped login before launching the operator. The operator performs its original
+identity/bootstrap checks again inside that enforced boundary.
+
+Only a private operator checkpoint FD is inherited by the operator. Prisma's
+stdio is explicitly restricted to stdin/stdout/stderr; it receives no controller
+channel, ambient environment, alternate engine override or host socket. The
+existing strict CA verification, exact native engine revision, five-module
+artifact seal and all 76 immutable SQL buffers remain required. The sanitized
+Linux child PATH additionally includes the cell's read-only system tool paths
+so the unchanged Prisma CLI can detect installed OpenSSL without downloading or
+rewriting engines. Both datasource variables are constructed from one approved
+URL. The same original native issuer performs schema/history initialization,
+DDL and receipt INSERT/UPDATE operations; migrations are not SQL-rewritten or
+wrapped and receipts are never repaired.
+
+The controller monitors lease validity and owned descendants throughout the
+job. Approval/policy loss kills the owned writer UID and requires independent
+absence before any successful response. Uncertain termination quarantines the
+cell; PostgreSQL teardown refuses while a writer is still owned. Namespace PID1
+exit supplies the kernel fence for descendants, including on loss of its parent
+control input. No failed or lost-response operation is automatically replayed.
+An unavailable response does not prove rollback: only independent catalog and
+native receipt observations can describe the remaining state. Target data
+directories and controller journals are retained after shutdown.
+
+`FRESH_TARGET_EXCLUSIVE_CONTROLLER_INFO` is an external owned-lab test fixture
+input, not a runtime configuration switch. The five-case test keeps its 30s
+deadline and real native invocations. A/B deliberately accept copied credentials
+with the same database/user and TLS identity; only their physical identifiers
+differ. Additional tests interrupt actual backends at initialization, receipt
+insertion, migration DDL and final receipt update using explicit, isolated fault
+barriers. Those barriers never manufacture receipts and remain in their own
+negative databases. The positive native profile contains none of them. Lost
+controller response is distinguished from untested loss of a PostgreSQL wire
+commit acknowledgment. A stopped live writer exercises refusal/quarantine;
+tests do not claim to reproduce a kernel-uninterruptible SIGKILL failure.
+
+Source and evidence review must evaluate the privileged controller as part of
+the trust boundary. Root compromise, kernel escape, hosted poolers, real hosted
+DNS/network enforcement, provider administrator constraints and operator
+deployment are NOT_QUALIFIED. No local PASS authorizes publication, activation,
+production migration, deployment or gate closure. Actual executed results and
+all failed attempts belong to the external immutable evidence package.
+
 ## 03B-9A test-only protocol qualification candidate
 
 The three `freshTargetBindingProtocol*` files under `src/tests/` are synthetic
@@ -209,7 +448,7 @@ an ambient URL. The CLI accepts only these dedicated environment variables:
 | `FRESH_TARGET_ACTION` | `provision` (default) or `inspect` (read-only) |
 
 To identify the review artifact, call `loadFreshContract()` and record its
-`artifactSha256`. It binds the four implementation modules, pinned profile, frozen source inventory and all26
+`artifactSha256`. It binds the five implementation modules (including the exclusive controller), pinned profile, frozen source inventory and all26
 DDL statement hashes. Do not obtain it by accepting an operator manifest.
 
 Non-loopback postgres.js connections require CA and `rejectUnauthorized:true`.
@@ -295,8 +534,7 @@ that test-harness correction.
 
 Success returns PROVISIONED_MATCH/exit0; every failure returns REFUSED/exit1 with
 fixed sanitized reason/phase and, for native drift, category names. No URL,
-password, customer row or provider credential is returned. The child output is
-not printed. No provider request, backfill, account selection or onboarding
+password, customer row or provider credential is returned. Only bounded, sanitized Prisma command output is recorded. No provider request, backfill, account selection or onboarding
 state is invented. A failed/ambiguous result never authorizes activation.
 
 Repeated `provision` refuses the nonempty/final-ACL target before DDL and leaves
@@ -341,3 +579,9 @@ Final immutable head, actual test counts, CI step results and raw-evidence hashe
 are recorded in the Draft PR and accompanying evidence package. Hosted jobs
 that execute zero steps are NOT_TESTED. Local or CI success never closes Gates
 B/C or authorizes hosted provisioning, a merge or deployment.
+
+## Persistent laboratory evidence
+
+Retained controller roots use only `/var/lib/lumi-exclusive-613/controller-*`. Before activation the controller rejects symlinked or writable-by-others ancestors, unexpected ownership/permissions, non-ext4 or read-only mounts, inadequate free space and missing filesystem UUID. A flushed storage record proves writability. There is no temporary-directory fallback. Journals, server-log exports and lease records are flushed and closed per write. Private chroot scratch paths remain separate from the retained-root policy.
+
+Independent external receipts must hash the stopped physical data, journals and leases, export sanitized copies before stopping the environment, reopen them from another process, and verify identity and integrity again after a safe controlled environment restart. A location name or successful shutdown alone does not prove retention. Auxiliary fixtures receive an externally qualified persistent TMPDIR. Passwords, private keys and physical authentication files remain protected in the retained Linux directories and are not exported as raw public evidence. Retention failure keeps the candidate HOLD; no historical missing files may be reconstructed as originals.
