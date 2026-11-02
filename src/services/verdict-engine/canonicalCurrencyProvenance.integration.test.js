@@ -12,6 +12,7 @@ const DB_OK = await dbAvailable();
 describe.skipIf(!DB_OK)('SC-17A real PostgreSQL → canonical reader → distribution', () => {
   const ws = randomUUID(), accountId = randomUUID(), campaignId = randomUUID();
   beforeEach(async () => {
+    await removeCapturedCredentials(ws);
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: ws } });
     await prisma.workspace.deleteMany({ where: { id: ws } });
     await prisma.workspace.create({ data: { id: ws, name: 'SC-17A isolated test' } });
@@ -19,6 +20,7 @@ describe.skipIf(!DB_OK)('SC-17A real PostgreSQL → canonical reader → distrib
     await prisma.campaign.create({ data: { id: campaignId, workspaceId: ws, accountId, channel: 'META', name: 'Test', externalId: campaignId, objective: 'OUTCOME_SALES' } });
   });
   afterAll(async () => {
+    await removeCapturedCredentials(ws);
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: ws } });
     await prisma.campaign.deleteMany({ where: { workspaceId: ws } });
     await prisma.account.deleteMany({ where: { workspaceId: ws } });
@@ -50,6 +52,16 @@ describe.skipIf(!DB_OK)('SC-17A real PostgreSQL → canonical reader → distrib
 });
 
 let captureVaultReady = false;
+async function removeCapturedCredentials(workspaceId) {
+  if (!captureVaultReady) return;
+  await prisma.$executeRaw`DELETE FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  const [remaining] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  expect(remaining.count).toBe(0);
+}
 /** Create a NEW synthetic source and its snapshot/observation in one transaction.
  * Legacy, operational and wrong-level controls deliberately stay capture-less.
  * No existing snapshot is read back and relabelled as provider evidence. */

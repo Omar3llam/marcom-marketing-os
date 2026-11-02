@@ -107,6 +107,7 @@ describe.skipIf(!DB_OK)('B5-01V · institutional memory through the real project
   });
 
   afterAll(async () => {
+    await removeCapturedCredentials(ws);
     await prisma.accountPattern.deleteMany({ where: { workspaceId: ws } }).catch(() => {});
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: ws } }).catch(() => {});
     await prisma.campaign.deleteMany({ where: { workspaceId: ws } }).catch(() => {});
@@ -269,9 +270,36 @@ describe.skipIf(!DB_OK)('B5-01V · institutional memory through the real project
       expect((await getInstitutionalMemory(ws)).status).toBe(MEMORY_STATUS.OK);
     });
   });
+  it('credential cleanup preserves unrelated synthetic credentials', async () => {
+    const project = randomUUID();
+    const [control] = await prisma.$queryRaw`INSERT INTO public.marcom_credentials
+      (project_id,user_id,workspace_id,platform,is_active)
+      VALUES(${project},'synthetic-residue-control',${ws},'meta_ads',true) RETURNING id`;
+    try {
+      await removeCapturedCredentials(ws);
+      const [survivor] = await prisma.$queryRaw`SELECT id,project_id,user_id,workspace_id,platform,is_active
+        FROM public.marcom_credentials WHERE id=${control.id}::uuid`;
+      expect(survivor).toEqual({ id: control.id, project_id: project, user_id: 'synthetic-residue-control',
+        workspace_id: ws, platform: 'meta_ads', is_active: true });
+      console.info('UNRELATED_CREDENTIAL_PRESERVED', JSON.stringify({ fixture: 'memory', ...survivor }));
+    } finally {
+      await prisma.$executeRaw`DELETE FROM public.marcom_credentials WHERE id=${control.id}::uuid
+        AND project_id=${project} AND workspace_id=${ws} AND user_id='synthetic-residue-control' AND platform='meta_ads'`;
+    }
+  });
 });
 
 let captureVaultReady = false;
+async function removeCapturedCredentials(workspaceId) {
+  if (!captureVaultReady) return;
+  await prisma.$executeRaw`DELETE FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  const [remaining] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  expect(remaining.count).toBe(0);
+}
 /** Create a NEW synthetic source and its snapshot/observation in one transaction.
  * Legacy, operational and wrong-level controls deliberately stay capture-less.
  * No existing snapshot is read back and relabelled as provider evidence. */

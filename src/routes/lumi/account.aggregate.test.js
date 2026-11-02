@@ -99,6 +99,7 @@ describe('B2 — this contract must actually run', () => {
 describe.skipIf(!DB_OK)('B2 — account aggregate over real rows', () => {
   beforeEach(async () => {
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await removeCapturedCredentials('reset');
     await prisma.workspace.deleteMany({ where: { id: { in: [WS, OTHER_WS] } } });
     for (const [id, name, cur] of [[WS, 'B2 WS', 'EGP'], [OTHER_WS, 'B2 Other', 'EGP']]) {
       await prisma.workspace.upsert({ where: { id }, update: {}, create: { id, name, currency: cur } });
@@ -115,9 +116,44 @@ describe.skipIf(!DB_OK)('B2 — account aggregate over real rows', () => {
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
     await prisma.campaign.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
     await prisma.account.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await removeCapturedCredentials('final');
     await prisma.workspace.deleteMany({ where: { id: { in: [WS, OTHER_WS] } } });
   });
 
+  it('credential cleanup preserves controls outside each ownership predicate', async () => {
+    await seedCampaign(OTHER_C, 'Owned capture', OTHER_WS, OTHER_ACC);
+    await persistCaptured({ data: canonical(OTHER_C, { workspaceId: OTHER_WS }) });
+    const foreign = randomUUID();
+    const controls = [
+      { workspace_id: WS, project_id: randomUUID(), user_id: 'synthetic-t3-test', platform: 'meta_ads' },
+      { workspace_id: WS, project_id: WS, user_id: 'synthetic-cleanup-control', platform: 'meta_ads' },
+      { workspace_id: WS, project_id: WS, user_id: 'synthetic-t3-test', platform: 'synthetic-cleanup-platform' },
+      { workspace_id: foreign, project_id: foreign, user_id: 'synthetic-t3-test', platform: 'meta_ads' },
+    ];
+    const inserted = [];
+    try {
+      for (const control of controls) {
+        const [row] = await prisma.$queryRaw`INSERT INTO public.marcom_credentials
+          (workspace_id,project_id,user_id,platform,is_active)
+          VALUES(${control.workspace_id},${control.project_id},${control.user_id},${control.platform},true)
+          RETURNING id,workspace_id,project_id,user_id,platform,is_active`;
+        inserted.push(row);
+      }
+      await removeCapturedCredentials('predicate-controls');
+      for (const row of inserted) {
+        const [survivor] = await prisma.$queryRaw`SELECT id,workspace_id,project_id,user_id,platform,is_active
+          FROM public.marcom_credentials WHERE id=${row.id}::uuid`;
+        expect(survivor).toEqual(row);
+      }
+      console.info('B2_UNRELATED_CREDENTIALS_PRESERVED', JSON.stringify(inserted));
+    } finally {
+      for (const row of inserted) {
+        await prisma.$executeRaw`DELETE FROM public.marcom_credentials WHERE id=${row.id}::uuid
+          AND workspace_id=${row.workspace_id} AND project_id=${row.project_id}
+          AND user_id=${row.user_id} AND platform=${row.platform}`;
+      }
+    }
+  });
 
   // ── 1. Contract shape ──────────────────────────────────────────────────────
   it('1. returns the aggregate structure with its provenance attached', async () => {
@@ -345,6 +381,21 @@ describe.skipIf(!DB_OK)('B2 — account aggregate over real rows', () => {
 });
 
 let captureVaultReady = false;
+async function removeCapturedCredentials(phase) {
+  const [table] = await prisma.$queryRaw`SELECT to_regclass('public.marcom_credentials') IS NOT NULL AS present`;
+  if (!table.present) {
+    console.info('B2_CREDENTIAL_CLEANUP', JSON.stringify({ phase, tablePresent: false, ownedCount: 0 }));
+    return;
+  }
+  const removed = await prisma.$executeRaw`DELETE FROM public.marcom_credentials
+    WHERE workspace_id IN (${WS},${OTHER_WS}) AND project_id=workspace_id
+      AND user_id=${'synthetic-t3-test'} AND platform=${'meta_ads'}`;
+  const [remaining] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM public.marcom_credentials
+    WHERE workspace_id IN (${WS},${OTHER_WS}) AND project_id=workspace_id
+      AND user_id=${'synthetic-t3-test'} AND platform=${'meta_ads'}`;
+  expect(remaining.count).toBe(0);
+  console.info('B2_CREDENTIAL_CLEANUP', JSON.stringify({ phase, tablePresent: true, removed, ownedCount: remaining.count }));
+}
 /** Create a NEW synthetic source and its snapshot/observation in one transaction.
  * Legacy, operational and wrong-level controls deliberately stay capture-less.
  * No existing snapshot is read back and relabelled as provider evidence. */

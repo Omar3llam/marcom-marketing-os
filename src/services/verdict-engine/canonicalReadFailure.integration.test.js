@@ -74,6 +74,7 @@ describe.skipIf(!DB_OK)('B5 F-2 · canonical read outcomes on real PostgreSQL', 
 
   afterAll(async () => {
     // Ordered by FK: snapshots carry no FK, entities do.
+    await removeCapturedCredentials(workspaceId);
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId } }).catch(() => {});
     await prisma.campaign.deleteMany({ where: { workspaceId } }).catch(() => {});
     await prisma.account.deleteMany({ where: { workspaceId } }).catch(() => {});
@@ -135,6 +136,16 @@ describe.skipIf(!DB_OK)('B5 F-2 · canonical read outcomes on real PostgreSQL', 
 });
 
 let captureVaultReady = false;
+async function removeCapturedCredentials(workspaceId) {
+  if (!captureVaultReady) return;
+  await prisma.$executeRaw`DELETE FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  const [remaining] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  expect(remaining.count).toBe(0);
+}
 /** Create a NEW synthetic source and its snapshot/observation in one transaction.
  * Legacy, operational and wrong-level controls deliberately stay capture-less.
  * No existing snapshot is read back and relabelled as provider evidence. */

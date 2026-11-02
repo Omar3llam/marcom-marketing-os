@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import postgres from 'postgres';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -52,6 +52,28 @@ async function expire(ids) {
 
 describe.skipIf(!DB_OK)('02B-1 additive canonical provenance / real PostgreSQL', () => {
   const T3_NOW = new Date('2026-10-25T07:00:00.000Z');
+  async function atT3Time(operation) {
+    try {
+      // Only the dated evaluation uses this clock; scheduling and PG time stay real.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T3_NOW);
+      return await operation();
+    } finally { vi.useRealTimers(); }
+  }
+  it.each([false, true])('T3 evaluation clock restores actual Date after failure=%s', async (fail) => {
+    const actualDate = globalThis.Date, actualTimeout = globalThis.setTimeout, actualImmediate = globalThis.setImmediate;
+    const failure = new Error('synthetic dated evaluation failure');
+    const result = atT3Time(async () => {
+      expect(Date.now()).toBe(T3_NOW.getTime());
+      expect(globalThis.setTimeout).toBe(actualTimeout);
+      expect(globalThis.setImmediate).toBe(actualImmediate);
+      if (fail) throw failure;
+      return 'observed';
+    });
+    if (fail) await expect(result).rejects.toBe(failure);
+    else await expect(result).resolves.toBe('observed');
+    expect(globalThis.Date).toBe(actualDate);
+  });
   const t3Auth = { accountExternalId: 'act_t3', currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED', accountTimeZone: 'UTC' };
   async function t3Capture({ failed = [], capped = false, missingDates = false, missingSpend = false, revenue = '3000', beforeLand, mutate } = {}) {
     await sql`UPDATE marcom_credentials SET account_id='act_t3' WHERE workspace_id=${f.ws}`;
@@ -113,7 +135,7 @@ describe.skipIf(!DB_OK)('02B-1 additive canonical provenance / real PostgreSQL',
     expect(rows.find((r) => r.level === 'campaign').source_receipt).toMatchObject({ outcome: 'CAPPED', pagesObserved: 50, hasNextAtStop: true });
     expect(rows.find((r) => r.level === 'ad').source_receipt.outcome).toBe('FAILED');
     expect(await t3Read()).toHaveLength(1);
-    const evaluation = await evaluateConnectorVerdicts(f.ws);
+    const evaluation = await atT3Time(() => evaluateConnectorVerdicts(f.ws));
     expect(evaluation.annotated.relativeRefusal.reason).toBe('COHORT_COMPLETENESS_UNPROVEN');
     expect(evaluation.annotated.children.every((c) => !c.relativeRank && !c.relativeContext)).toBe(true);
   });
@@ -135,9 +157,9 @@ describe.skipIf(!DB_OK)('02B-1 additive canonical provenance / real PostgreSQL',
     await t3Capture({ revenue: '4000' });
     const historical = await sql`SELECT committed_projection FROM canonical_observations WHERE workspace_id=${f.ws} AND id=${first._canonicalReference.observationId}`;
     expect(historical[0].committed_projection).toEqual(first._canonicalReference.committedProjection);
-    const evaluation = await evaluateConnectorVerdicts(f.ws);
+    const evaluation = await atT3Time(() => evaluateConnectorVerdicts(f.ws));
     expect(evaluation.campaigns.find((c) => c.entityId === t3Id()).revenueMinor).toBe(400000);
-    const result = await persistConnectorVerdicts(f.ws, evaluation);
+    const result = await atT3Time(() => persistConnectorVerdicts(f.ws, evaluation));
     expect(result.created).toHaveLength(1);
     const d = await prisma.decision.findFirst({ where: { workspaceId: f.ws, entityId: t3Id() } });
     expect(d.status).toBe('PROPOSED'); expect(d.evidenceReference.refs).toHaveLength(1);
