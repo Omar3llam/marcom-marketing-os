@@ -63,6 +63,7 @@ describe.skipIf(!DB_OK)('B5-01E · canonical resolution on real PostgreSQL', () 
   const EARLIER = period(1);  // ends yesterday — older measurement, still fresh
 
   beforeEach(async () => {
+    await removeCapturedCredentials(ws);
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: ws } });
     await prisma.workspace.deleteMany({ where: { id: ws } });
     await prisma.workspace.create({ data: { id: ws, name: `b5-01e-${ws.slice(0, 8)}` } });
@@ -79,6 +80,7 @@ describe.skipIf(!DB_OK)('B5-01E · canonical resolution on real PostgreSQL', () 
 
 
   afterAll(async () => {
+    await removeCapturedCredentials(ws);
     await prisma.metricSnapshot.deleteMany({ where: { workspaceId: ws } }).catch(() => {});
     await prisma.campaign.deleteMany({ where: { workspaceId: ws } }).catch(() => {});
     await prisma.account.deleteMany({ where: { workspaceId: ws } }).catch(() => {});
@@ -166,9 +168,37 @@ describe.skipIf(!DB_OK)('B5-01E · canonical resolution on real PostgreSQL', () 
     expect(staleEvidence).toHaveLength(1);
     expect(staleEvidence[0]).toMatchObject({ id: campaignId, reason: 'CANONICAL_EVIDENCE_STALE', measurementAgeDays: 213 });
   });
+  it('credential cleanup preserves unrelated synthetic credentials', async () => {
+    await persist({ period: RECENT, syncedAt: new Date(), spendMinor: 1000 });
+    const project = randomUUID();
+    const [control] = await prisma.$queryRaw`INSERT INTO public.marcom_credentials
+      (project_id,user_id,workspace_id,platform,is_active)
+      VALUES(${project},'synthetic-residue-control',${ws},'meta_ads',true) RETURNING id`;
+    try {
+      await removeCapturedCredentials(ws);
+      const [survivor] = await prisma.$queryRaw`SELECT id,project_id,user_id,workspace_id,platform,is_active
+        FROM public.marcom_credentials WHERE id=${control.id}::uuid`;
+      expect(survivor).toEqual({ id: control.id, project_id: project, user_id: 'synthetic-residue-control',
+        workspace_id: ws, platform: 'meta_ads', is_active: true });
+      console.info('UNRELATED_CREDENTIAL_PRESERVED', JSON.stringify({ fixture: 'resolver', ...survivor }));
+    } finally {
+      await prisma.$executeRaw`DELETE FROM public.marcom_credentials WHERE id=${control.id}::uuid
+        AND project_id=${project} AND workspace_id=${ws} AND user_id='synthetic-residue-control' AND platform='meta_ads'`;
+    }
+  });
 });
 
 let captureVaultReady = false;
+async function removeCapturedCredentials(workspaceId) {
+  if (!captureVaultReady) return;
+  await prisma.$executeRaw`DELETE FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  const [remaining] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM public.marcom_credentials
+    WHERE workspace_id=${workspaceId} AND project_id=${workspaceId}
+      AND user_id='synthetic-t3-test' AND platform='meta_ads'`;
+  expect(remaining.count).toBe(0);
+}
 /** Create a NEW synthetic source and its snapshot/observation in one transaction.
  * Legacy, operational and wrong-level controls deliberately stay capture-less.
  * No existing snapshot is read back and relabelled as provider evidence. */

@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 49 files', () => {
+  it('the census matches the current baseline of 50 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -225,7 +225,8 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // require one additional shared-probe-gated PostgreSQL integration suite.
     // 47 → 48: T1 Plan promotion parent locks, atomic artifacts and rollback.
     // 48 → 49: T2 Fatigue Memory locks/rollback and unmeasured durability.
-    expect(dbGatedFiles().length).toBe(49);
+    // 49 → 50: runtime-role capability observations through both real drivers.
+    expect(dbGatedFiles().length).toBe(50);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
