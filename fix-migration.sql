@@ -1,6 +1,6 @@
 -- ============================================================
 -- Fix Failed Migration P3009
--- Run: psql "postgresql://marcom_db_user:pn5W3vIihFjyPk8L6fl96mFUEv24TdBA@dpg-d7lsn5gg4nts739edsg0-a/marcom_db" -f fix-migration.sql
+-- Historical P3009 repair script. Independent DBA approval required before use; obtain credentials only from approved secret management.
 -- ============================================================
 
 -- Step 1: Check current status
