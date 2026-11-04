@@ -17,7 +17,56 @@ import { verifyCanonicalProvenanceCatalog } from '../../scripts/verify-canonical
 import { seed, admit, level } from './canonicalProvenanceFixtures.js';
 import { sealTemplate } from './dbIsolation.js';
 
-import { exclusiveControllerRequest } from '../../scripts/fresh-target/exclusiveTargetController.js';
+import { exclusiveControllerRequest, withExclusiveCellReservation, assertExclusiveCellStopReady } from '../../scripts/fresh-target/exclusiveTargetController.js';
+// Unprivileged regression: exercises the same admission and teardown guards as
+// the live controller without starting Root, PostgreSQL, or a writer process.
+describe('exclusive controller cell reservation (unprivileged)', () => {
+  const idle = () => ({ jobs: new Map() });
+
+  it('reserves synchronously before the first await, denying a second run and stop', async () => {
+    const cell = idle(); let release; let operations = 0;
+    const identityRead = new Promise(resolve => { release = resolve; });
+    const first = withExclusiveCellReservation(cell, async () => {
+      operations++;
+      await identityRead; // models the maintenance identity query before c.jobs.set
+      return { status: 'QUALIFIED' };
+    });
+    expect(cell.reserved).toBe(true);
+    expect(operations).toBe(1);
+    try {
+      await expect(withExclusiveCellReservation(cell, async () => { operations++; })).rejects.toThrow('CELL_NOT_IDLE');
+      expect(() => assertExclusiveCellStopReady(cell)).toThrow('WRITER_TERMINATION_UNCERTAIN');
+      expect(operations).toBe(1);
+    } finally { release(); }
+    await expect(first).resolves.toEqual({ status: 'QUALIFIED' });
+    expect(cell.reserved).toBe(false);
+    expect(() => assertExclusiveCellStopReady(cell)).not.toThrow();
+    await expect(withExclusiveCellReservation(cell, async () => { operations++; return 'next'; })).resolves.toBe('next');
+    expect(operations).toBe(2);
+  });
+
+  it('clears reservation on refused results and errors without releasing a recorded writer', async () => {
+    const cell = idle();
+    await expect(withExclusiveCellReservation(cell, async () => ({ status: 'REFUSED' }))).resolves.toEqual({ status: 'REFUSED' });
+    expect(cell.reserved).toBe(false);
+    await expect(withExclusiveCellReservation(cell, async () => { throw Error('VALIDATION_ERROR'); })).rejects.toThrow('VALIDATION_ERROR');
+    expect(cell.reserved).toBe(false);
+    cell.jobs.set('owned-writer', {});
+    await expect(withExclusiveCellReservation(cell, async () => 'unsafe')).rejects.toThrow('CELL_NOT_IDLE');
+    expect(() => assertExclusiveCellStopReady(cell)).toThrow('WRITER_TERMINATION_UNCERTAIN');
+    expect(cell.jobs.size).toBe(1);
+  });
+
+  it('refuses both exited and quarantined cells without executing an operation', async () => {
+    for (const blocked of [{ exit: { code: 1 } }, { quarantined: 'WRITER_TERMINATION_UNCERTAIN' }]) {
+      const cell = { ...idle(), ...blocked }; let called = false;
+      await expect(withExclusiveCellReservation(cell, async () => { called = true; })).rejects.toThrow('CELL_NOT_IDLE');
+      expect(called).toBe(false);
+      expect(cell.reserved).toBeUndefined();
+    }
+  });
+});
+
 let controller, controllerLab, lastControllerRun;
 const controllerCall = request => exclusiveControllerRequest(controller.socket, request);
 async function controlledOperation(input, inspect = false, extra = {}) {

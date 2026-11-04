@@ -14,6 +14,19 @@ const plain = value => value && Object.getPrototypeOf(value) === Object.prototyp
 const ns = pid => Object.fromEntries(['net','mnt','pid'].map(k => [k, readlinkSync(`/proc/${pid}/ns/${k}`)]));
 const RETAINED_BASE = '/var/lib/lumi-exclusive-613';
 
+// Reserve before the first await: concurrent socket requests must never share
+// one cell's controller state or replace its writer message handler.
+export async function withExclusiveCellReservation(cell, operation) {
+  if (cell.exit || cell.jobs.size || cell.quarantined || cell.reserved) throw Error('CELL_NOT_IDLE');
+  cell.reserved = true;
+  try { return await operation(); }
+  finally { cell.reserved = false; }
+}
+
+export function assertExclusiveCellStopReady(cell) {
+  if (cell.jobs.size || cell.reserved) throw Error('WRITER_TERMINATION_UNCERTAIN');
+}
+
 /** Read-only qualification; a location name alone is not persistence proof. */
 export function qualifyRetainedStorage(path) {
   if(process.platform!=='linux'||path!==RETAINED_BASE)throw Error('RETAINED_STORAGE_UNQUALIFIED');
@@ -391,7 +404,9 @@ export async function serveExclusiveController(sourceRoot, infoFile) {
     return {...app,rootVerified:true,fds};
   }
   async function run(c,request){
-    if(c.exit||c.jobs.size||c.quarantined)throw Error('CELL_NOT_IDLE');
+    return withExclusiveCellReservation(c,()=>runReserved(c,request));
+  }
+  async function runReserved(c,request){
     const input=request.input;
     const rejected=reason=>({result:{status:'REFUSED',reason,phase:'CONTROLLER',scope:'FRESH_TARGET_PROVISIONING_ONLY',runtimeAdmission:'NOT_WIRED'},checkpoint:false,processes:[],writersAbsent:true});
     let target;
@@ -474,7 +489,7 @@ export async function serveExclusiveController(sourceRoot, infoFile) {
     return completed;
   }
   async function stop(c){
-    if(c.jobs.size)throw Error('WRITER_TERMINATION_UNCERTAIN');
+    assertExclusiveCellStopReady(c);
     c.child.stdin.write(JSON.stringify({method:'stop'})+'\n');await c.closed;
     if(c.exit.code!==0||c.exit.signal||namespaceMembers(c.namespace).length)throw Error('CELL_TEARDOWN_UNQUALIFIED');
     const state={id:c.id,system:c.system,exit:c.exit,namespaceAbsent:true,dataRetained:true};journal('CELL_TEARDOWN',state);return state;
