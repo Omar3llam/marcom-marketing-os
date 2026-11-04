@@ -1,3 +1,4 @@
+import { assertExclusiveTargetBoundary } from './exclusiveTargetController.js';
 import { createHash, X509Certificate } from 'node:crypto';
 import { readFileSync, readdirSync, lstatSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +53,7 @@ export function loadFreshContract() {
   if (digest(profileText) !== PROFILE_SHA256) throw Error('PROFILE_UNQUALIFIED');
   const profile = JSON.parse(profileText);
   if (profile.version !== 'lumi-fresh-native-v1' || !profile.catalog || Object.keys(profile.catalog).length < 10) throw Error('PROFILE_UNQUALIFIED');
-  const implementation = Object.fromEntries(['contract.js', 'catalog.js', 'provision.js', 'cli.js'].map(file =>
+  const implementation = Object.fromEntries(['contract.js', 'catalog.js', 'provision.js', 'cli.js', 'exclusiveTargetController.js'].map(file =>
     [file, digest(readFileSync(new URL('./' + file, import.meta.url), 'utf8').replaceAll('\r\n', '\n'))]));
   const artifactSha256 = digest(JSON.stringify({ profile: PROFILE_SHA256, source, implementation, ddl: legacy.map(d => digest(d.query.replaceAll('\r\n', '\n'))) }));
   return { migrations, legacy, profile, artifactSha256, root };
@@ -83,7 +84,8 @@ export function validateApproval(approval, expectedHash, url, artifactSha256, no
 }
 
 // These seals are independently supplied by the approving lab controller. They
-// are an explicit trust boundary, not an in-band attestation of network policy.
+// are an explicit trust boundary. A live root-owned kernel lease is also
+// mandatory; hashes and an earlier identity query cannot authorize a writer.
 // Hosted endpoints remain contained, including endpoints carrying these seals.
 export function validateExclusiveTarget(approval, url, caPem, contract) {
   const refuse = () => { throw Error('MIGRATION_TARGET_BINDING_UNQUALIFIED'); };
@@ -98,7 +100,7 @@ export function validateExclusiveTarget(approval, url, caPem, contract) {
   const bytes = readFileSync(binding.qualificationFile);
   if (digest(bytes) !== binding.qualificationSha256) refuse();
   const q = JSON.parse(bytes);
-  if (!plain(q, ['version', 'scope', 'target', 'artifactSha256', 'caSha256', 'credentialSha256', 'cliSha256', 'engineSha256', 'engineRevision', 'networkPolicySha256', 'evidenceSha256'])
+  if (!plain(q, ['version', 'scope', 'target', 'artifactSha256', 'caSha256', 'credentialSha256', 'cliSha256', 'engineSha256', 'engineRevision', 'networkPolicySha256', 'evidenceSha256', 'kernelLeaseFile', 'kernelLeaseSha256'])
     || q.version !== 1 || q.scope !== binding.scope || JSON.stringify(q.target) !== JSON.stringify(t)
     || q.artifactSha256 !== contract.artifactSha256
     || q.engineRevision !== '605197351a3c8bdd595af2d2a9bc3025bca48ea2'
@@ -119,5 +121,8 @@ export function validateExclusiveTarget(approval, url, caPem, contract) {
     if (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink() || digest(readFileSync(file)) !== expected) throw Error('DEPENDENCY_UNQUALIFIED');
   }
   if (JSON.parse(readFileSync(new URL('node_modules/@prisma/engines/package.json', contract.root))).version !== '5.22.0') throw Error('DEPENDENCY_UNQUALIFIED');
-  return { cli, engine, caPem, engineRevision: q.engineRevision };
+  let boundary;
+  try { boundary = assertExclusiveTargetBoundary(t, q.kernelLeaseFile, q.kernelLeaseSha256); }
+  catch { refuse(); }
+  return { cli, engine, caPem, engineRevision: q.engineRevision, boundary };
 }
