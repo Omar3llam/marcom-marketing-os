@@ -209,8 +209,12 @@ describe('retained controller storage qualification', () => {
 
 
 describe.runIf(process.platform === 'linux')('F01 independent OS trust bootstrap', () => {
-  const closure = ['package.json', 'scripts/fresh-target/exclusiveTargetController.js', 'scripts/fresh-target/contract.js',
-    'node_modules/postgres/package.json', ...['index', 'types', 'connection', 'query', 'queue', 'errors', 'subscribe', 'large', 'result', 'bytes'].map(n => 'node_modules/postgres/src/' + n + '.js')];
+  const inventory = JSON.parse(readFileSync(new URL('../../scripts/legacy-schema/manifest.v2.json', import.meta.url), 'utf8')).source;
+  const closure = [...new Set(['package.json', 'scripts/fresh-target/exclusiveTargetController.js', 'scripts/fresh-target/contract.js',
+    'scripts/fresh-target/catalog.js', 'scripts/fresh-target/provision.js', 'scripts/fresh-target/cli.js',
+    'scripts/fresh-target/profile.v1.json', 'scripts/legacy-schema/manifest.v2.json', 'prisma/migrations/migration_lock.toml',
+    'node_modules/postgres/package.json', ...['index', 'types', 'connection', 'query', 'queue', 'errors', 'subscribe', 'large', 'result', 'bytes'].map(n => 'node_modules/postgres/src/' + n + '.js'),
+    ...Object.keys(inventory.sources), ...inventory.migrations.map(m => 'prisma/migrations/' + m.name + '/migration.sql')])];
   const document = readFileSync(new URL('../../docs/BACKEND_FRESH_TARGET_PROVISIONING.md', import.meta.url), 'utf8');
   const fence = String.fromCharCode(96).repeat(3);
   const bootstrap = document.split('<!-- F01_BOOTSTRAP_BEGIN -->\n' + fence + 'python\n')[1]?.split(fence + '\n<!-- F01_BOOTSTRAP_END -->')[0];
@@ -232,13 +236,13 @@ describe.runIf(process.platform === 'linux')('F01 independent OS trust bootstrap
     writeFileSync(identity, raw);
     return { base, source, runtime, identity, pin: digest(raw), marker: join(base, 'MUST_NOT_EXECUTE') };
   }
-  function check(f, mode = '--verify-intake') {
+  function check(f, mode = '--verify-intake', label = 'unit') {
     expect(bootstrap).toBeTruthy();
-    return spawnSync('/usr/bin/python3', ['-I', '-S', '-c', bootstrap, mode, f.source, f.runtime, f.identity, f.pin, 'unit'],
+    return spawnSync('/usr/bin/python3', ['-I', '-S', '-c', bootstrap, mode, f.source, f.runtime, f.identity, f.pin, label],
       { env: { PATH: '/usr/bin:/bin', HOME: f.base }, encoding: 'utf8', timeout: 3500 });
   }
-  function refused(f, mode) {
-    const r = check(f, mode);
+  function refused(f, mode, label) {
+    const r = check(f, mode, label);
     expect(r.status, r.stdout + r.stderr).toBe(1);
     expect(r.stdout).not.toContain('ROOT_SOURCE_SEALED');
     expect(r.stderr).toContain('PRIVILEGED_SOURCE_UNQUALIFIED');
@@ -250,6 +254,24 @@ describe.runIf(process.platform === 'linux')('F01 independent OS trust bootstrap
     expect(r.status, r.stderr).toBe(0);
     expect(JSON.parse(r.stdout)).toMatchObject({ status: 'INTAKE_BYTES_VERIFIED', applicationEvaluations: 0,
       databaseConnections: 0, migrationProcesses: 0 });
+  });
+  for (const path of ['scripts/fresh-target/catalog.js', 'scripts/fresh-target/profile.v1.json',
+    'scripts/legacy-schema/manifest.v2.json', 'scripts/migrate.js',
+    'prisma/migrations/' + inventory.migrations[0].name + '/migration.sql']) {
+    it('refuses a pinned manifest missing a mandatory contract read: ' + path, () => {
+      const f = fixture(), identity = JSON.parse(readFileSync(f.identity, 'utf8'));
+      delete identity.files[path];
+      const raw = JSON.stringify(identity); writeFileSync(f.identity, raw); f.pin = digest(raw);
+      refused(f);
+    });
+  }
+  it('refuses non-ASCII controller labels before any source execution', () => {
+    refused(fixture(), '--verify-intake', 'unité');
+  });
+  it('refuses an oversized independently pinned identity before parsing it', () => {
+    const f = fixture(), raw = ' '.repeat(262145);
+    writeFileSync(f.identity, raw); f.pin = digest(raw);
+    refused(f);
   });
   for (const path of ['scripts/fresh-target/exclusiveTargetController.js', 'scripts/fresh-target/contract.js', 'node_modules/postgres/src/index.js']) {
     it('refuses altered privileged closure bytes before evaluation: ' + path, () => {

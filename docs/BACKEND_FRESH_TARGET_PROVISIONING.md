@@ -78,16 +78,21 @@ def checked_open(path, directory=False):
         return fd
     except BaseException:
         os.close(fd);raise
+def read_bounded(fd, expected_size):
+    remaining=expected_size;chunks=[]
+    while remaining:
+        b=os.read(fd,min(1048576,remaining))
+        if not b: refuse()
+        chunks.append(b);remaining-=len(b)
+    if os.read(fd,1): refuse()
+    return b"".join(chunks)
 def read_exact(path, expected):
     fd=checked_open(path)
     try:
-        before=os.fstat(fd);chunks=[]
-        while True:
-            b=os.read(fd,1048576)
-            if not b: break
-            chunks.append(b)
-        data=b"".join(chunks)
-        if stable(before)!=stable(os.fstat(fd)) or len(data)!=expected["bytes"] or digest(data)!=expected["sha256"]: refuse()
+        before=os.fstat(fd)
+        if before.st_size!=expected["bytes"]: refuse()
+        data=read_bounded(fd,before.st_size)
+        if stable(before)!=stable(os.fstat(fd)) or digest(data)!=expected["sha256"]: refuse()
         current=os.stat(path,follow_symlinks=False)
         if stable(current)!=stable(before): refuse()
         return data,stable(before)
@@ -103,24 +108,42 @@ def main():
     if len(sys.argv)!=7: refuse()
     mode,source,runtime,identity,pin,label=sys.argv[1:]
     if mode not in ("--verify-intake","--launch") or len(pin)!=64 or any(c not in "0123456789abcdef" for c in pin): refuse()
-    if not label.isalnum() or len(label)>40: refuse()
+    if not label.isascii() or not label.isalnum() or len(label)>40: refuse()
     # The expected identity is an operator-supplied external pin, never a value
     # calculated by importing candidate code or supplied through its environment.
     identity_fd=checked_open(identity)
     try:
-        with os.fdopen(identity_fd,"rb") as stream: raw=stream.read()
-    except BaseException: raise
+        identity_before=os.fstat(identity_fd)
+        if not 0<identity_before.st_size<=262144: refuse()
+        raw=read_bounded(identity_fd,identity_before.st_size)
+        if stable(identity_before)!=stable(os.fstat(identity_fd)) or stable(os.stat(identity,follow_symlinks=False))!=stable(identity_before): refuse()
+    finally: os.close(identity_fd)
     if digest(raw)!=pin: refuse()
     manifest=json.loads(raw)
     if set(manifest)!={"version","scope","files","runtime"} or manifest["version"]!=1 or manifest["scope"]!="F01_REVIEWED_SOURCE_CLOSURE": refuse()
     files=manifest["files"]
-    required={"package.json","scripts/fresh-target/exclusiveTargetController.js","scripts/fresh-target/contract.js","node_modules/postgres/package.json"}
-    required.update("node_modules/postgres/src/"+x+".js" for x in ("index","types","connection","query","queue","errors","subscribe","large","result","bytes"))
-    if not isinstance(files,dict) or not required.issubset(files): refuse()
+    if not isinstance(files,dict): refuse()
     for name,record in files.items():
-        if not name or name.startswith("/") or os.path.normpath(name)!=name or ".." in name.split("/") or name.split("/")[-1]==".env": refuse()
-        if set(record)!={"sha256","bytes","executable"} or not isinstance(record["bytes"],int) or record["bytes"]<0 or len(record["sha256"])!=64 or not isinstance(record["executable"],bool): refuse()
+        if not isinstance(name,str) or not name or name.startswith("/") or os.path.normpath(name)!=name or ".." in name.split("/") or name.split("/")[-1]==".env": refuse()
+        if not isinstance(record,dict) or set(record)!={"sha256","bytes","executable"} or not isinstance(record["bytes"],int) or record["bytes"]<0 or not isinstance(record["sha256"],str) or len(record["sha256"])!=64 or not isinstance(record["executable"],bool): refuse()
     source_fd=checked_open(source,True)
+    legacy_path="scripts/legacy-schema/manifest.v2.json"
+    if legacy_path not in files: refuse()
+    legacy_bytes,_=read_exact(source+"/"+legacy_path,files[legacy_path])
+    if digest(legacy_bytes.replace(b"\r\n",b"\n"))!="dc4687bf45b8965de94acd93975218504c3294b9b3694ba0bd1c8a9a1faf3da4": refuse()
+    inventory=json.loads(legacy_bytes)["source"]
+    sources=inventory["sources"];migrations=inventory["migrations"]
+    if not isinstance(sources,dict) or not isinstance(migrations,list) or len(migrations)!=76: refuse()
+    migration_names=[m["name"] for m in migrations]
+    if any(not isinstance(n,str) or not n or "/" in n or "\\" in n or n in (".","..") for n in migration_names) or len(set(migration_names))!=76: refuse()
+    required={"package.json","scripts/fresh-target/exclusiveTargetController.js","scripts/fresh-target/contract.js",
+              "scripts/fresh-target/catalog.js","scripts/fresh-target/provision.js","scripts/fresh-target/cli.js",
+              "scripts/fresh-target/profile.v1.json",legacy_path,"prisma/migrations/migration_lock.toml",
+              "node_modules/postgres/package.json"}
+    required.update("node_modules/postgres/src/"+x+".js" for x in ("index","types","connection","query","queue","errors","subscribe","large","result","bytes"))
+    required.update(sources)
+    required.update("prisma/migrations/"+name+"/migration.sql" for name in migration_names)
+    if not required.issubset(files): refuse()
     runtime_bytes,runtime_stat=read_exact(runtime,manifest["runtime"])
     original_source=stable(os.fstat(source_fd))
     records={}
@@ -172,6 +195,12 @@ except BaseException as e:
     sys.exit(1)
 ```
 <!-- F01_BOOTSTRAP_END -->
+
+Any change to this bootstrap literal invalidates its previously reviewed digest.
+The operator must obtain a **new, independently approved literal pin** and
+independently approved complete source/runtime identity before `--launch`.
+A digest computed by this PR, a local test, or the candidate itself is NOT an
+external approval. Until those pins and retained-host proof exist: **HOLD**.
 
 Each cell has separate network, mount and PID namespaces. Its only network
 interface is loopback; it contains exactly its owned PostgreSQL server and no
